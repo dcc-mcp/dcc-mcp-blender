@@ -18,6 +18,19 @@ Quick start::
 from __future__ import annotations
 
 from dcc_mcp_blender.__version__ import __version__
+from dcc_mcp_blender._env import (
+    ENV_DISABLE_ARBITRARY_SCRIPT,
+    ENV_DISABLE_EXECUTE_PYTHON,
+    ENV_ENABLE_GATEWAY_FAILOVER,
+    ENV_ENABLE_WORKFLOWS,
+    ENV_METRICS,
+    ENV_STRICT_SKILL_SCAN,
+    resolve_enable_gateway_failover,
+    resolve_enable_workflows,
+    resolve_execute_python_disabled,
+    resolve_metrics_enabled,
+    resolve_strict_skill_scan,
+)
 from dcc_mcp_blender.api import (
     skill_entry,
     skill_error,
@@ -25,6 +38,21 @@ from dcc_mcp_blender.api import (
     skill_success,
 )
 from dcc_mcp_blender.capabilities import blender_capabilities, blender_capabilities_dict
+from dcc_mcp_blender.dispatcher import (
+    DEFAULT_BUDGET_MS,
+    DEFAULT_JOB_TIMEOUT_MS,
+    OVERRUN_MULTIPLIER,
+    BlenderStandaloneDispatcher,
+    BlenderUiDispatcher,
+    BlenderUiPump,
+    PyPumpedDispatcher,
+    _CorePump,
+    _current_job,
+    _JobEntry,
+    check_blender_cancelled,
+    create_dispatcher,
+    create_pumped_dispatcher,
+)
 from dcc_mcp_blender.server import (
     BlenderMcpServer,
     get_server,
@@ -47,4 +75,30 @@ __all__ = [
     "skill_error",
     "skill_exception",
     "skill_success",
+    # Environment variables
+    "ENV_METRICS",
+    "ENV_STRICT_SKILL_SCAN",
+    "ENV_ENABLE_WORKFLOWS",
+    "ENV_ENABLE_GATEWAY_FAILOVER",
+    "ENV_DISABLE_EXECUTE_PYTHON",
+    "ENV_DISABLE_ARBITRARY_SCRIPT",
+    "resolve_enable_gateway_failover",
+    "resolve_execute_python_disabled",
+    "resolve_metrics_enabled",
+    "resolve_strict_skill_scan",
+    "resolve_enable_workflows",
+    # Dispatchers
+    "BlenderUiDispatcher",
+    "BlenderStandaloneDispatcher",
+    "BlenderUiPump",
+    "PyPumpedDispatcher",
+    "create_dispatcher",
+    "create_pumped_dispatcher",
+    "check_blender_cancelled",
+    "DEFAULT_BUDGET_MS",
+    "DEFAULT_JOB_TIMEOUT_MS",
+    "OVERRUN_MULTIPLIER",
+    "_CorePump",
+    "_JobEntry",
+    "_current_job",
 ]
