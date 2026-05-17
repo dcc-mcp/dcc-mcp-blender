@@ -51,6 +51,17 @@ class TestCreateObject:
         result = load_and_call("blender-objects/scripts/create_object.py", bpy, object_type="cube", name="MyCube")
         assert result["success"] is True
 
+    def test_create_uses_context_object_fallback(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj("FallbackCube")
+        bpy.context.active_object = None
+        bpy.context.object = obj
+
+        result = load_and_call("blender-objects/scripts/create_object.py", bpy, object_type="cube", name="FallbackCube")
+
+        assert result["success"] is True
+        assert result["context"]["object_name"] == "FallbackCube"
+
     def test_invalid_type_returns_error(self):
         bpy = make_mock_bpy()
         result = load_and_call("blender-objects/scripts/create_object.py", bpy, object_type="invalid_type")
@@ -72,6 +83,27 @@ class TestCreateObject:
         result = load_and_call("blender-objects/scripts/create_object.py", bpy, object_type="empty")
         assert result["success"] is True
         bpy.ops.object.empty_add.assert_called_once()
+
+
+class TestDuplicateObject:
+    def test_duplicate_uses_context_object_fallback(self):
+        bpy = make_mock_bpy()
+        source = _make_obj("Cube")
+        duplicate = _make_obj("Cube.001", loc=[1.0, 2.0, 3.0])
+        bpy.data.objects.get.return_value = source
+        bpy.context.active_object = None
+        bpy.context.object = duplicate
+
+        result = load_and_call(
+            "blender-objects/scripts/duplicate_object.py",
+            bpy,
+            name="Cube",
+            new_name="Cube Copy",
+        )
+
+        assert result["success"] is True
+        assert duplicate.name == "Cube Copy"
+        assert result["context"]["new_name"] == "Cube Copy"
 
 
 class TestDeleteObject:

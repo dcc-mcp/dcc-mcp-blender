@@ -8,6 +8,14 @@ from typing import List, Optional
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _get_active_object(bpy):
+    return (
+        getattr(bpy.context, "active_object", None)
+        or getattr(bpy.context, "object", None)
+        or getattr(getattr(getattr(bpy.context, "view_layer", None), "objects", None), "active", None)
+    )
+
+
 def create_sphere(
     radius: float = 1.0,
     name: Optional[str] = None,
@@ -19,7 +27,7 @@ def create_sphere(
 
         loc = location or [0.0, 0.0, 0.0]
         bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, location=loc)
-        obj = bpy.context.active_object
+        obj = _get_active_object(bpy)
         if obj is not None and name:
             obj.name = name
             if getattr(obj, "data", None) is not None:

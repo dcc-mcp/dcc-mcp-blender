@@ -7,6 +7,14 @@ from typing import List, Optional
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _get_active_object(bpy):
+    return (
+        getattr(bpy.context, "active_object", None)
+        or getattr(bpy.context, "object", None)
+        or getattr(getattr(getattr(bpy.context, "view_layer", None), "objects", None), "active", None)
+    )
+
+
 def duplicate_object(
     name: str,
     new_name: Optional[str] = None,
@@ -35,7 +43,9 @@ def duplicate_object(
         bpy.context.view_layer.objects.active = source
 
         bpy.ops.object.duplicate(linked=False)
-        new_obj = bpy.context.active_object
+        new_obj = _get_active_object(bpy)
+        if new_obj is None:
+            return skill_error("Duplicate failed", "Blender did not report an active duplicated object.")
 
         if new_name:
             new_obj.name = new_name

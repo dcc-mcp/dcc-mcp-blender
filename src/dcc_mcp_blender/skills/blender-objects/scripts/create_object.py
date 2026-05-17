@@ -20,6 +20,14 @@ PRIMITIVE_TYPES = {
 }
 
 
+def _get_active_object(bpy):
+    return (
+        getattr(bpy.context, "active_object", None)
+        or getattr(bpy.context, "object", None)
+        or getattr(getattr(getattr(bpy.context, "view_layer", None), "objects", None), "active", None)
+    )
+
+
 def create_object(
     object_type: str = "cube",
     name: Optional[str] = None,
@@ -79,7 +87,7 @@ def create_object(
         elif object_type == "circle":
             bpy.ops.mesh.primitive_circle_add(radius=size / 2, **kwargs)
 
-        obj = bpy.context.active_object
+        obj = _get_active_object(bpy)
         if obj and name:
             obj.name = name
             if obj.data:

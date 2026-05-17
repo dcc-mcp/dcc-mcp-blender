@@ -26,6 +26,21 @@ def test_create_sphere_calls_bpy_operator():
     mock_bpy.ops.mesh.primitive_uv_sphere_add.assert_called_once_with(radius=2.5, location=[1.0, 2.0, 3.0])
 
 
+def test_create_sphere_uses_context_object_fallback():
+    active = SimpleNamespace(name="Sphere", data=SimpleNamespace(name="Sphere"))
+    mock_bpy = make_mock_bpy(context_attrs={"active_object": None, "object": active})
+
+    result = load_and_call(
+        "blender-geometry/scripts/create_sphere.py",
+        mock_bpy,
+        radius=1.5,
+        name="Fallback Sphere",
+    )
+
+    assert result["success"] is True
+    assert result["context"]["object_name"] == "Fallback Sphere"
+
+
 def test_save_blend_calls_save_as_mainfile():
     mock_bpy = make_mock_bpy()
 
