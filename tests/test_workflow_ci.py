@@ -7,6 +7,10 @@ import re
 
 ROOT = pathlib.Path(__file__).parent.parent
 E2E_WORKFLOW = ROOT / ".github" / "workflows" / "e2e.yml"
+SCRIPTS_DIR = ROOT / ".github" / "scripts"
+RUN_BLENDER_E2E = SCRIPTS_DIR / "run_blender_e2e.py"
+RUN_DOCKER_E2E = SCRIPTS_DIR / "run_docker_blender_e2e.sh"
+START_MCP_SERVER = SCRIPTS_DIR / "start_mcp_server.py"
 
 
 def test_mcporter_calls_use_registered_tool_names():
@@ -27,8 +31,10 @@ def test_mcporter_call_wrapper_fails_unknown_tools():
 
 
 def test_workflow_server_uses_blender_inprocess_dispatcher():
-    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+    workflow = E2E_WORKFLOW.read_text(encoding="utf-8")
+    text = START_MCP_SERVER.read_text(encoding="utf-8")
 
+    assert ".github/scripts/start_mcp_server.py" in workflow
     assert "from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost" in text
     assert "dispatcher = BlenderCallableDispatcher()" in text
     assert "dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)" in text
@@ -50,3 +56,42 @@ def test_geometry_export_verification_reads_paths_from_environment():
     assert "export GEOM_BLEND GEOM_FBX GEOM_OBJ" in text
     assert "path = os.environ[key]" in text
     assert "('$GEOM_BLEND', '$GEOM_FBX', '$GEOM_OBJ')" not in text
+
+
+def test_e2e_workflow_does_not_run_mock_unit_tests():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Run unit tests (system Python)" not in text
+    assert 'pytest tests/ -v --tb=short -m "not e2e and not packaging"' not in text
+
+
+def test_linux_e2e_runs_in_real_blender_docker_images():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+    docker_script = RUN_DOCKER_E2E.read_text(encoding="utf-8")
+
+    assert "e2e-linux-docker:" in text
+    assert "Run E2E tests in Blender Docker image" in text
+    assert ".github/scripts/run_docker_blender_e2e.sh" in text
+    assert '"$BLENDER_BIN" --background --python "$workspace/.github/scripts/run_blender_e2e.py"' in docker_script
+
+    images = re.findall(r'blender-image: "(linuxserver/blender:[^"]+)"', text)
+    assert images == [
+        "linuxserver/blender:4.4.3",
+        "linuxserver/blender:4.3.2",
+        "linuxserver/blender:4.2.0",
+        "linuxserver/blender:3.6.5",
+    ]
+
+
+def test_e2e_workflow_uses_checked_in_ci_scripts():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+    runner = RUN_BLENDER_E2E.read_text(encoding="utf-8")
+
+    assert "Write Docker E2E runner" not in text
+    assert "cat > /tmp/run_e2e.py" not in text
+    assert "cat > /tmp/start_mcp_server.py" not in text
+    assert "cat > /tmp/start_mcp_server2.py" not in text
+    assert ".github/scripts/run_blender_e2e.py" in text
+    assert ".github/scripts/start_mcp_server2.py" in text
+    assert "pytest.main" in runner
+    assert "os._exit(main())" in runner

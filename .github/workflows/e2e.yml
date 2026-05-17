@@ -1,11 +1,12 @@
 name: E2E (Blender)
 
 # End-to-end tests that run inside a real Blender interpreter in background mode.
-# Downloads Blender directly from the official mirror and uses its bundled Python.
+# Linux also runs against containerized Blender images; Windows and macOS
+# download Blender directly from the official mirror and use its bundled Python.
 #
 # Key design decisions:
-#   - Unit tests run with the SYSTEM Python (mock-based, no Blender needed)
 #   - E2E tests run INSIDE Blender's Python via `blender --background --python`
+#   - Unit tests stay in ci.yml so this workflow focuses on real Blender coverage
 #   - dcc-mcp-core's native _core module needs MSVC runtime on Windows;
 #     we copy the system's vcruntime140.dll into Blender's Python directory
 #
@@ -16,13 +17,14 @@ name: E2E (Blender)
 #   Blender 3.6.x  -> Python 3.10  (LTS)
 #
 # Test matrix (to keep CI cost reasonable):
-#   Linux   : 3.6.0 (LTS), 4.2.0 (LTS), 4.3.2, 4.4.3 (latest)
+#   Linux   : 3.6.5 (LTS), 4.2.0 (LTS), 4.3.2, 4.4.3 (latest), Docker images
 #   Windows : 4.2.0 (LTS), 4.4.3 (latest)
 #   macOS   : 4.2.0 (LTS), 4.4.3 (latest, arm64)
 #
 # References:
 #   https://download.blender.org/release/
 #   https://docs.blender.org/manual/en/latest/advanced/command_line/arguments.html
+#   https://hub.docker.com/r/linuxserver/blender
 
 on:
   push:
@@ -32,6 +34,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  e2e-linux-docker:
+    name: E2E Blender ${{ matrix.blender-version }} (linux docker)
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - blender-version: "4.4.3"
+            blender-image: "linuxserver/blender:4.4.3"
+          - blender-version: "4.3.2"
+            blender-image: "linuxserver/blender:4.3.2"
+          - blender-version: "4.2.0"
+            blender-image: "linuxserver/blender:4.2.0"
+          - blender-version: "3.6.5"
+            blender-image: "linuxserver/blender:3.6.5"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run E2E tests in Blender Docker image
+        shell: bash
+        run: |
+          docker run --rm \
+            --entrypoint /bin/bash \
+            --user root \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e GITHUB_WORKSPACE=/workspace \
+            -e RUNNER_TEMP=/tmp \
+            "${{ matrix.blender-image }}" \
+            .github/scripts/run_docker_blender_e2e.sh
+
   e2e:
     name: E2E Blender ${{ matrix.blender-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
@@ -40,35 +75,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── Linux ──────────────────────────────────────────────────────────
-          - os: linux
-            runner: ubuntu-latest
-            blender-version: "4.4.3"
-            blender-python: "3.11"
-            blender-url: "https://download.blender.org/release/Blender4.4/blender-4.4.3-linux-x64.tar.xz"
-            blender-dir: "blender-4.4.3-linux-x64"
-
-          - os: linux
-            runner: ubuntu-latest
-            blender-version: "4.3.2"
-            blender-python: "3.11"
-            blender-url: "https://download.blender.org/release/Blender4.3/blender-4.3.2-linux-x64.tar.xz"
-            blender-dir: "blender-4.3.2-linux-x64"
-
-          - os: linux
-            runner: ubuntu-latest
-            blender-version: "4.2.0"
-            blender-python: "3.11"
-            blender-url: "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz"
-            blender-dir: "blender-4.2.0-linux-x64"
-
-          - os: linux
-            runner: ubuntu-latest
-            blender-version: "3.6.0"
-            blender-python: "3.10"
-            blender-url: "https://download.blender.org/release/Blender3.6/blender-3.6.0-linux-x64.tar.xz"
-            blender-dir: "blender-3.6.0-linux-x64"
-
           # ── Windows ────────────────────────────────────────────────────────
           - os: windows
             runner: windows-latest
@@ -104,20 +110,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # ── Setup system Python for unit tests ─────────────────────────────────
-      - name: Setup Python
+      - name: Setup Python for Windows runtime DLLs
+        if: matrix.os == 'windows'
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-
-      - name: Install package (system Python)
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-
-      - name: Run unit tests (system Python)
-        run: |
-          python -m pytest tests/ -v --tb=short -m "not e2e and not packaging"
 
       # ── Cache Blender download ─────────────────────────────────────────────
       - name: Cache Blender
@@ -126,36 +123,6 @@ jobs:
         with:
           path: blender-cache
           key: blender-${{ matrix.blender-version }}-${{ matrix.os }}
-
-      # ── Linux: download + extract ─────────────────────────────────────────
-      - name: Download Blender (Linux)
-        if: matrix.os == 'linux' && steps.cache-blender.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p blender-cache
-          curl -L "${{ matrix.blender-url }}" -o blender-cache/blender.tar.xz
-          tar -xJf blender-cache/blender.tar.xz -C blender-cache/
-
-      - name: Install Linux dependencies for Blender
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          # libasound2t64 is the Ubuntu 24.04 package name; fall back to libasound2 on 22.04
-          if apt-cache show libasound2t64 >/dev/null 2>&1; then
-            sudo apt-get install -y libxrender1 libxxf86vm1 libxi6 libgl1 libasound2t64
-          else
-            sudo apt-get install -y libxrender1 libxxf86vm1 libxi6 libgl1 libasound2
-          fi
-
-      - name: Set Blender Python path (Linux)
-        if: matrix.os == 'linux'
-        run: |
-          BLENDER_PYTHON=$(ls blender-cache/${{ matrix.blender-dir }}/${{ matrix.blender-version }}/python/bin/python3* 2>/dev/null | head -1)
-          if [ -z "$BLENDER_PYTHON" ]; then
-            BLENDER_PYTHON=$(find blender-cache/${{ matrix.blender-dir }} -name "python3*" -type f | head -1)
-          fi
-          echo "BLENDER_PYTHON=$BLENDER_PYTHON" >> $GITHUB_ENV
-          echo "BLENDER_BIN=blender-cache/${{ matrix.blender-dir }}/blender" >> $GITHUB_ENV
-          echo "Using Blender Python: $BLENDER_PYTHON"
 
       # ── Windows: download + extract ───────────────────────────────────────
       - name: Download Blender (Windows)
@@ -282,39 +249,7 @@ jobs:
       - name: Run E2E tests (Blender background mode)
         shell: bash
         run: |
-          # Write a bootstrap script that runs pytest directly inside the Blender process.
-          # We call pytest.main() directly instead of using subprocess so that bpy remains
-          # available to the test code.
-          cat > /tmp/run_e2e.py << 'PYEOF'
-          import os
-          import sys
-
-          # Ensure the workspace is on sys.path so tests and source can be found
-          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
-          if workspace not in sys.path:
-              sys.path.insert(0, workspace)
-          # Also add the src directory for editable install resolution
-          src_dir = os.path.join(workspace, "src")
-          if os.path.isdir(src_dir) and src_dir not in sys.path:
-              sys.path.insert(0, src_dir)
-
-          import pytest
-          exit_code = pytest.main([
-              os.path.join(workspace, "tests", "e2e"),
-              "-v",
-              "--tb=short",
-              "-m", "e2e",
-              "--override-ini=addopts=",
-          ])
-          # Exit code 5 means no tests collected (all skipped); treat as success.
-          # Use os._exit() instead of sys.exit(): calling sys.exit() inside Blender's
-          # background process on Linux triggers Blender's C++ cleanup which tries to
-          # destroy X11/OpenGL resources that were never initialised, causing SIGABRT.
-          # os._exit() bypasses all destructors and exits immediately and safely.
-          os._exit(0 if exit_code == 5 else exit_code)
-          PYEOF
-
-          "$BLENDER_BIN" --background --python /tmp/run_e2e.py
+          "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/run_blender_e2e.py"
 
       # ── MCP connectivity test ─────────────────────────────────────────────
       - name: Setup Node.js for mcporter
@@ -325,53 +260,8 @@ jobs:
       - name: Test MCP connectivity and progressive loading
         shell: bash
         run: |
-          # Bootstrap: start MCP server with progressive loading inside Blender.
-          # The server discovers skill metadata immediately but only imports skill
-          # scripts when they are first called (lazy/deferred loading).
-          # Stays alive until the sentinel file signals completion.
-          cat > /tmp/start_mcp_server.py << 'PYEOF'
-          import os
-          import sys
-          import time
-
-          try:
-              import bpy  # noqa: F401
-          except ImportError:
-              print("WARNING: bpy not available, skipping MCP server test")
-              sys.exit(0)
-
-          import dcc_mcp_blender
-          from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
-
-          # Start server — create_skill_manager discovers all skills automatically.
-          # Then eagerly load all skills so their tools are registered for
-          # mcporter to call (progressive loading only registers metadata).
-          dispatcher = BlenderCallableDispatcher()
-          host = BlenderHost(dispatcher)
-          server = dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)
-          host.start()
-          print(f"MCP server started at {server.mcp_url}", flush=True)
-          for skill in server.list_skills():
-              name = skill.get("name", "")
-              if name and not server.is_skill_loaded(name):
-                  try:
-                      server.load_skill(name)
-                  except Exception as exc:
-                      print(f"WARNING: failed to load skill {name}: {exc}", flush=True)
-          print(f"Loaded skills: {server.loaded_skill_count()}", flush=True)
-          print(f"All skills: {[s.get('name', '?') for s in server.list_skills()]}", flush=True)
-
-          sentinel = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "mcp_test_done")
-          while not os.path.exists(sentinel):
-              time.sleep(1)
-
-          host.stop()
-          dcc_mcp_blender.stop_server()
-          print("MCP server stopped.", flush=True)
-          PYEOF
-
           # Start Blender MCP server in background
-          "$BLENDER_BIN" --background --python /tmp/start_mcp_server.py &
+          "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/start_mcp_server.py" &
           SERVER_PID=$!
           echo "Server PID: $SERVER_PID"
 
@@ -491,31 +381,7 @@ jobs:
 
           # ── 9. Multi-instance gateway — start a second instance on a random ─
           #       port and verify it can be reached independently.            ──
-          cat > /tmp/start_mcp_server2.py << 'PYEOF2'
-          import os, sys, time
-          try:
-              import bpy  # noqa: F401
-          except ImportError:
-              sys.exit(0)
-          import dcc_mcp_blender
-          from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
-          # Use port=0 → OS assigns a free port; simulates a second Blender instance
-          dispatcher = BlenderCallableDispatcher()
-          host = BlenderHost(dispatcher)
-          server = dcc_mcp_blender.start_server(port=0, dispatcher=dispatcher)
-          host.start()
-          url = server.mcp_url
-          print(f"Second instance MCP URL: {url}", flush=True)
-          with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "mcp_server2_url"), "w") as f:
-              f.write(url)
-          sentinel2 = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "mcp_test2_done")
-          while not os.path.exists(sentinel2):
-              time.sleep(1)
-          host.stop()
-          dcc_mcp_blender.stop_server()
-          PYEOF2
-
-          "$BLENDER_BIN" --background --python /tmp/start_mcp_server2.py &
+          "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/start_mcp_server2.py" &
           SERVER2_PID=$!
           sleep 10
 

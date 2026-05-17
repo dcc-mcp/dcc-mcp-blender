@@ -14,8 +14,8 @@ Or via the installed blender Python directly::
 
 CI::
 
-    Uses the ``docker://linuxserver/blender`` image or downloads Blender
-    directly, then runs blender --background to execute tests.
+    Linux uses Blender container images. Windows and macOS download Blender
+    directly. All variants run blender --background to execute tests.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def pytest_collection_modifyitems(items, config):
     except Exception:
         skip_marker = pytest.mark.skip(reason="bpy not available — run inside Blender Python interpreter")
         for item in items:
-            if "e2e" in item.nodeid:
+            if "tests/e2e" in item.path.as_posix():
                 item.add_marker(skip_marker)
 
 
