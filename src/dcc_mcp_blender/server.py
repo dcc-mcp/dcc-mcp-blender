@@ -23,11 +23,14 @@ Usage (inside Blender Python console or startup script)::
 from __future__ import annotations
 
 import logging
-import pathlib
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dcc_mcp_core import DccServerOptions
 from dcc_mcp_core.server_base import DccServerBase
 
+from dcc_mcp_blender import _env
 from dcc_mcp_blender.__version__ import __version__
 
 logger = logging.getLogger(__name__)
@@ -39,13 +42,72 @@ SERVER_VERSION = __version__
 DEFAULT_PORT = 8765
 
 # Built-in skills directory shipped with this package
-_BUILTIN_SKILLS_DIR = pathlib.Path(__file__).parent / "skills"
+_BUILTIN_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 
 # Environment variable for extra skill paths (colon/semicolon separated)
 _ENV_EXTRA_SKILL_PATHS = "DCC_MCP_BLENDER_SKILL_PATHS"
 _ENV_GENERIC_SKILL_PATHS = "DCC_MCP_SKILL_PATHS"
 
 _DCC_NAME = "blender"
+
+
+# ── options ─────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class BlenderServerOptions:
+    """Adapter-local options collapsed for the dcc-mcp-core 0.17+ server contract."""
+
+    port: int = DEFAULT_PORT
+    extra_skill_paths: Optional[List[str]] = None
+    server_name: str = SERVER_NAME
+    server_version: str = SERVER_VERSION
+    # Gateway options
+    gateway_port: Optional[int] = None
+    registry_dir: Optional[str] = None
+    dcc_version: Optional[str] = None
+    scene: Optional[str] = None
+    enable_gateway_failover: Optional[bool] = None
+    # Observability options
+    metrics_enabled: Optional[bool] = None
+    job_storage_path: Optional[str] = None
+    enable_workflows: Optional[bool] = None
+    # Diagnostics options (new in 0.17+)
+    dcc_pid: Optional[int] = None
+    dcc_window_title: Optional[str] = None
+    dcc_window_handle: Optional[int] = None
+    snapshot_provider: Optional[Any] = None
+    # Execution options (new in 0.17+)
+    dispatcher: Optional[Any] = None  # BaseDccCallableDispatcher
+    execution_bridge: Optional[Any] = None  # HostExecutionBridge
+
+    def to_core_options(self) -> DccServerOptions:
+        """Convert to core DccServerOptions using from_env()."""
+        return DccServerOptions.from_env(
+            dcc_name=_DCC_NAME,
+            builtin_skills_dir=_BUILTIN_SKILLS_DIR,
+            port=self.port,
+            server_name=self.server_name,
+            server_version=self.server_version,
+            # Gateway kwargs
+            gateway_port=self.gateway_port,
+            registry_dir=self.registry_dir,
+            dcc_version=self.dcc_version,
+            scene=self.scene,
+            enable_gateway_failover=_env.resolve_enable_gateway_failover(self.enable_gateway_failover),
+            # Observability kwargs
+            enable_file_logging=True,  # default
+            enable_job_persistence=_env.resolve_job_storage(self.job_storage_path) is not None,
+            enable_telemetry=True,  # default
+            # Diagnostics kwargs (new in 0.17+)
+            dcc_pid=self.dcc_pid,
+            dcc_window_title=self.dcc_window_title,
+            dcc_window_handle=self.dcc_window_handle,
+            snapshot_provider=self.snapshot_provider,
+            # Execution kwargs (new in 0.17+)
+            dispatcher=self.dispatcher,
+            execution_bridge=self.execution_bridge,
+        )
 
 
 # ── server class ─────────────────────────────────────────────────────────────
@@ -92,22 +154,57 @@ class BlenderMcpServer(DccServerBase):
         registry_dir: Optional[str] = None,
         dcc_version: Optional[str] = None,
         scene: Optional[str] = None,
-        enable_gateway_failover: bool = True,
+        enable_gateway_failover: Optional[bool] = None,
+        metrics_enabled: Optional[bool] = None,
+        job_storage_path: Optional[str] = None,
+        enable_workflows: Optional[bool] = None,
+        options: Optional[BlenderServerOptions] = None,
     ) -> None:
-        super().__init__(
-            dcc_name=_DCC_NAME,
-            builtin_skills_dir=_BUILTIN_SKILLS_DIR,
-            port=port,
-            server_name=server_name,
-            server_version=server_version,
-            gateway_port=gateway_port,
-            registry_dir=registry_dir,
-            dcc_version=dcc_version,
-            scene=scene,
-            enable_gateway_failover=enable_gateway_failover,
-        )
-        self._extra_skill_paths: List[str] = extra_skill_paths or []
-        self._port: int = port  # cached port; updated after start
+        if options is None:
+            options = BlenderServerOptions(
+                port=port,
+                extra_skill_paths=extra_skill_paths,
+                server_name=server_name,
+                server_version=server_version,
+                gateway_port=gateway_port,
+                registry_dir=registry_dir,
+                dcc_version=dcc_version,
+                scene=scene,
+                enable_gateway_failover=enable_gateway_failover,
+                metrics_enabled=metrics_enabled,
+                job_storage_path=job_storage_path,
+                enable_workflows=enable_workflows,
+            )
+
+        super().__init__(options=options.to_core_options())
+
+        self._extra_skill_paths: List[str] = list(options.extra_skill_paths or [])
+
+        if _env.resolve_metrics_enabled(options.metrics_enabled):
+            self._config.enable_prometheus = True
+            logger.info("[%s] Prometheus /metrics endpoint enabled", _DCC_NAME)
+
+        effective_job_path = _env.resolve_job_storage(options.job_storage_path)
+        if effective_job_path:
+            self._config.job_storage_path = effective_job_path
+            logger.info("[%s] Job storage: %s", _DCC_NAME, effective_job_path)
+        elif effective_job_path == "":
+            self._config.job_storage_path = ""
+
+        if _env.resolve_enable_workflows(options.enable_workflows):
+            try:
+                self._config.enable_workflows = True
+                logger.info(
+                    "[%s] Workflow engine enabled (workflows.run / .resume / .list_runs)",
+                    _DCC_NAME,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[%s] Could not enable workflows on inner config: %s", _DCC_NAME, exc)
+
+        gateway_port_arg = options.gateway_port
+        enable_gw = _env.resolve_enable_gateway_failover(options.enable_gateway_failover)
+        if gateway_port_arg == 0 or (gateway_port_arg is None and not enable_gw):
+            self._config.gateway_port = 0
 
     # ── Blender version detection ──────────────────────────────────────────────
 
@@ -127,14 +224,10 @@ class BlenderMcpServer(DccServerBase):
         """TCP port the server is listening on."""
         if self._handle is not None:
             try:
-                return self._handle.port
+                return int(self._handle.port)
             except Exception:
                 pass
-        return self._port
-
-    @port.setter
-    def port(self, value: int) -> None:
-        self._port = value
+        return int(self._options.port)
 
     # ── Skill search path helpers ──────────────────────────────────────────────
 
@@ -156,12 +249,6 @@ class BlenderMcpServer(DccServerBase):
     def start(self) -> "BlenderMcpServer":
         """Start the MCP HTTP server.  Returns *self* for chaining."""
         super().start()
-        # Update cached port
-        if self._handle is not None:
-            try:
-                self._port = self._handle.port
-            except Exception:
-                pass
         return self
 
     # ── Progressive skill loading ──────────────────────────────────────────────
@@ -249,6 +336,10 @@ class BlenderMcpServer(DccServerBase):
     ) -> List[Dict[str, Any]]:
         """Search for skills matching the given criteria.
 
+        Wraps the inner server's :meth:`search_skills` (dcc-mcp-core 0.15+); the
+        ``find_skills`` name is kept for backward compatibility with scripts
+        and tests.
+
         Args:
             query: Free-text query matched against skill name/description.
             tags: Required tags (skill must have all).
@@ -260,7 +351,7 @@ class BlenderMcpServer(DccServerBase):
         if self._handle is None:
             return []
         # The Rust binding requires a Sequence for tags; pass [] instead of None
-        return list(self._server.find_skills(query=query, tags=tags or [], dcc=dcc or _DCC_NAME))  # type: ignore[arg-type]
+        return list(self._server.search_skills(query=query, tags=tags or [], dcc=dcc or _DCC_NAME))  # type: ignore[arg-type]
 
     def is_skill_loaded(self, skill_name: str) -> bool:  # type: ignore[override]
         """Return ``True`` if the named skill is currently loaded."""
@@ -290,7 +381,10 @@ def start_server(
     registry_dir: Optional[str] = None,
     dcc_version: Optional[str] = None,
     scene: Optional[str] = None,
-    enable_gateway_failover: bool = True,
+    enable_gateway_failover: Optional[bool] = None,
+    metrics_enabled: Optional[bool] = None,
+    job_storage_path: Optional[str] = None,
+    enable_workflows: Optional[bool] = None,
 ) -> BlenderMcpServer:
     """Start the Blender MCP server (creates a process-level singleton).
 
@@ -314,6 +408,9 @@ def start_server(
         dcc_version: Blender version for gateway registry.
         scene: Currently open scene file path for the gateway registry.
         enable_gateway_failover: Enable automatic gateway failover.
+        metrics_enabled: Force Prometheus ``/metrics`` (``None`` = env ``DCC_MCP_BLENDER_METRICS``).
+        job_storage_path: SQLite job DB path (``None`` = env / default).
+        enable_workflows: Enable workflow MCP tools (``None`` = env).
 
     Returns:
         The running :class:`BlenderMcpServer` instance.
@@ -330,6 +427,9 @@ def start_server(
         dcc_version=dcc_version,
         scene=scene,
         enable_gateway_failover=enable_gateway_failover,
+        metrics_enabled=metrics_enabled,
+        job_storage_path=job_storage_path,
+        enable_workflows=enable_workflows,
     )
     if register_builtins:
         _server_instance.register_builtin_actions(include_bundled=include_bundled)
