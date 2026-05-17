@@ -159,8 +159,7 @@ def download_core_wheel(version: str, platform: str, dest_dir: pathlib.Path) -> 
     if pick is None:
         sample = [f["filename"] for f in release_files if f["filename"].endswith(".whl")][:12]
         raise RuntimeError(
-            f"No {CORE_PACKAGE} wheel for platform={platform!r} at version {version!r}. "
-            f"PyPI wheel sample: {sample}"
+            f"No {CORE_PACKAGE} wheel for platform={platform!r} at version {version!r}. PyPI wheel sample: {sample}"
         )
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -197,7 +196,7 @@ def _read_assigned_quoted_string(path: pathlib.Path, key: str) -> str:
     text = path.read_text(encoding="utf-8")
     m = re.search(rf"^{re.escape(key)}\s*=\s*\"([^\"]+)\"", text, re.MULTILINE)
     if not m:
-        raise RuntimeError(f"Could not find {key} = \"…\" in {path}")
+        raise RuntimeError(f'Could not find {key} = "…" in {path}')
     return m.group(1)
 
 

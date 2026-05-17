@@ -67,10 +67,14 @@
 
 ### Option 1 — Install as Blender Addon (ZIP)
 
-1. Download the latest `dcc_mcp_blender_addon_vX.Y.Z.zip` from the [Releases](https://github.com/loonghao/dcc-mcp-blender/releases) page
-2. In Blender: **Edit → Preferences → Add-ons → Install…** → select the ZIP
-3. Enable **DCC MCP Blender** in the addon list
+1. Download the latest platform ZIP from the [Releases](https://github.com/loonghao/dcc-mcp-blender/releases) page:
+   `dcc_mcp_blender_addon_win64_vX.Y.Z.zip`, `dcc_mcp_blender_addon_linux_vX.Y.Z.zip`, or
+   `dcc_mcp_blender_addon_macos_vX.Y.Z.zip`
+2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP
+3. Enable **DCC MCP Blender**
 4. The MCP server starts automatically on `http://127.0.0.1:8765`
+
+Release ZIPs include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
 ### Option 2 — Install via pip (for scripts / CI)
 
