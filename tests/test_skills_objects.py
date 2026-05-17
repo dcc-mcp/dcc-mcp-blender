@@ -176,6 +176,38 @@ class TestGetObjectInfo:
         assert ctx["vertex_count"] == 8
         assert ctx["face_count"] == 6
 
+    def test_returns_relationships_and_material_slots(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj("Cube", "MESH")
+        obj.parent = MagicMock()
+        obj.parent.name = "Parent"
+        child = MagicMock()
+        child.name = "Child"
+        obj.children = [child]
+        collection = MagicMock()
+        collection.name = "Collection"
+        obj.users_collection = [collection]
+        mat = MagicMock()
+        mat.name = "Red"
+        slot_with_mat = MagicMock()
+        slot_with_mat.material = mat
+        empty_slot = MagicMock()
+        empty_slot.material = None
+        obj.material_slots = [slot_with_mat, empty_slot]
+        obj.data.vertices = []
+        obj.data.edges = []
+        obj.data.polygons = []
+        bpy.data.objects.get.return_value = obj
+
+        result = load_and_call("blender-objects/scripts/get_object_info.py", bpy, name="Cube")
+
+        assert result["success"] is True
+        ctx = result["context"]
+        assert ctx["parent"] == "Parent"
+        assert ctx["children"] == ["Child"]
+        assert ctx["collections"] == ["Collection"]
+        assert ctx["material_slots"] == ["Red", None]
+
     def test_nonexistent_object_returns_error(self):
         bpy = make_mock_bpy()
         bpy.data.objects.get.return_value = None

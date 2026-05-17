@@ -67,6 +67,29 @@ class TestExecutePython:
         assert result["success"] is True
         assert result["context"]["result"] == "42"
 
+    def test_stderr_captured_on_success(self):
+        bpy = make_mock_bpy()
+        result = load_and_call(
+            "blender-scripting/scripts/execute_python.py",
+            bpy,
+            code="import sys\nprint('warn', file=sys.stderr)\nresult = 'ok'",
+        )
+
+        assert result["success"] is True
+        assert result["context"]["stderr"] == "warn\n"
+        assert result["context"]["result"] == "ok"
+
+    def test_execution_namespace_exposes_bpy(self):
+        bpy = make_mock_bpy(app_attrs={"version_string": "4.3.2"})
+        result = load_and_call(
+            "blender-scripting/scripts/execute_python.py",
+            bpy,
+            code="result = bpy.app.version_string",
+        )
+
+        assert result["success"] is True
+        assert result["context"]["result"] == "4.3.2"
+
 
 class TestExecuteScriptFile:
     def test_executes_valid_script(self):

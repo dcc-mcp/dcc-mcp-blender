@@ -130,3 +130,33 @@ class TestGetSceneInfo:
         ctx = result["context"]
         assert "scene_name" in ctx
         assert "collections" in ctx
+
+    def test_counts_objects_by_type_and_recurses_collections(self):
+        mesh = MagicMock()
+        mesh.name = "Cube"
+        mesh.type = "MESH"
+        light = MagicMock()
+        light.name = "Key"
+        light.type = "LIGHT"
+
+        child_col = MagicMock()
+        child_col.name = "Props"
+        child_col.objects = [mesh]
+        child_col.children = []
+        root_col = MagicMock()
+        root_col.name = "Scene Collection"
+        root_col.objects = [light]
+        root_col.children = [child_col]
+
+        bpy = make_mock_bpy()
+        bpy.context.scene.collection = root_col
+        bpy.context.scene.objects = [mesh, light]
+
+        result = load_and_call("blender-scene/scripts/get_scene_info.py", bpy)
+
+        assert result["success"] is True
+        ctx = result["context"]
+        assert ctx["total_objects"] == 2
+        assert ctx["objects_by_type"] == {"MESH": 1, "LIGHT": 1}
+        assert ctx["collections"]["children"][0]["name"] == "Props"
+        assert ctx["collections"]["children"][0]["objects"] == ["Cube"]
