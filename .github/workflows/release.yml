@@ -140,7 +140,7 @@ jobs:
           path: dist/
 
       - name: Attach wheel and sdist to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: dist/*
@@ -171,7 +171,7 @@ jobs:
           path: dist_addon/
 
       - name: Attach addon ZIPs to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: dist_addon/*.zip
