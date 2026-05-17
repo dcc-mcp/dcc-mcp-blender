@@ -72,13 +72,15 @@ def test_export_fbx_calls_export_scene():
     mock_bpy.ops.export_scene.fbx.assert_called_once_with(filepath="/tmp/out.fbx")
 
 
-def test_export_obj_prefers_blender_3_plus_operator():
+def test_export_obj_prefers_blender_3_plus_operator(tmp_path):
     mock_bpy = make_mock_bpy()
+    mock_bpy.ops.wm.obj_export.side_effect = lambda filepath: open(filepath, "w", encoding="utf-8").write("obj")
+    out_path = tmp_path / "out.obj"
 
-    result = load_and_call("blender-geometry/scripts/export_obj.py", mock_bpy, path="/tmp/out.obj")
+    result = load_and_call("blender-geometry/scripts/export_obj.py", mock_bpy, path=str(out_path))
 
     assert result["success"] is True
-    mock_bpy.ops.wm.obj_export.assert_called_once_with(filepath="/tmp/out.obj")
+    mock_bpy.ops.wm.obj_export.assert_called_once_with(filepath=str(out_path))
 
 
 def test_export_obj_writes_basic_obj_when_operator_context_fails(tmp_path):
@@ -106,3 +108,22 @@ def test_export_obj_writes_basic_obj_when_operator_context_fails(tmp_path):
         "v 0 1 0",
         "f 1 2 3",
     ]
+
+
+def test_export_obj_writes_basic_obj_when_operator_creates_no_file(tmp_path):
+    mock_bpy = make_mock_bpy()
+    mesh = SimpleNamespace(
+        vertices=[
+            SimpleNamespace(co=(0.0, 0.0, 0.0)),
+            SimpleNamespace(co=(1.0, 0.0, 0.0)),
+            SimpleNamespace(co=(0.0, 1.0, 0.0)),
+        ],
+        polygons=[SimpleNamespace(vertices=[0, 1, 2])],
+    )
+    mock_bpy.data.objects = [SimpleNamespace(name="Triangle", type="MESH", data=mesh)]
+    out_path = tmp_path / "fallback.obj"
+
+    result = load_and_call("blender-geometry/scripts/export_obj.py", mock_bpy, path=str(out_path))
+
+    assert result["success"] is True
+    assert "f 1 2 3" in out_path.read_text(encoding="utf-8")

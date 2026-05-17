@@ -7,16 +7,23 @@ from pathlib import Path
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _has_nonempty_file(path: str) -> bool:
+    target = Path(path)
+    return target.is_file() and target.stat().st_size > 0
+
+
 def _call_blender_exporter(bpy, path: str) -> None:
     wm_export = getattr(bpy.ops.wm, "obj_export", None)
     if callable(wm_export):
         wm_export(filepath=path)
-        return
+        if _has_nonempty_file(path):
+            return
 
     scene_export = getattr(getattr(bpy.ops, "export_scene", None), "obj", None)
     if callable(scene_export):
         scene_export(filepath=path)
-        return
+        if _has_nonempty_file(path):
+            return
 
     raise RuntimeError("No OBJ export operator is available")
 

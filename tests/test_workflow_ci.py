@@ -20,6 +20,8 @@ def test_mcporter_call_wrapper_fails_unknown_tools():
     text = E2E_WORKFLOW.read_text(encoding="utf-8")
 
     assert "call_tool() {" in text
+    assert "set +e" in text
+    assert "set -e" in text
     assert '"code": "ACTION_NOT_FOUND"' in text
     assert "Unknown tool" in text
 
@@ -40,3 +42,11 @@ def test_execute_python_smoke_call_avoids_shell_key_value_assignment():
     execute_python_calls = re.findall(r"call_tool execute_python \\\s*\n\s*\"code:([^\"]+)\"", text)
     assert execute_python_calls
     assert all(" = " not in code for code in execute_python_calls)
+
+
+def test_geometry_export_verification_reads_paths_from_environment():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "export GEOM_BLEND GEOM_FBX GEOM_OBJ" in text
+    assert "path = os.environ[key]" in text
+    assert "('$GEOM_BLEND', '$GEOM_FBX', '$GEOM_OBJ')" not in text

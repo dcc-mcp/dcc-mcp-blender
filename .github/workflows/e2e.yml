@@ -410,11 +410,13 @@ jobs:
             --allow-http
 
           call_tool() {
+            set +e
             output=$(npx mcporter call \
               --http-url http://127.0.0.1:8765/mcp \
               --allow-http \
               "$@" 2>&1)
             status=$?
+            set -e
             printf '%s\n' "$output"
             if [ "$status" -ne 0 ]; then
               return "$status"
@@ -461,9 +463,11 @@ jobs:
           call_tool export_obj \
             path:"$GEOM_OBJ"
 
+          export GEOM_BLEND GEOM_FBX GEOM_OBJ
           "$BLENDER_PYTHON" -c "
           import os
-          for path in ('$GEOM_BLEND', '$GEOM_FBX', '$GEOM_OBJ'):
+          for key in ('GEOM_BLEND', 'GEOM_FBX', 'GEOM_OBJ'):
+              path = os.environ[key]
               assert os.path.isfile(path), path
               assert os.path.getsize(path) > 0, path
           print('Geometry export files: OK')
