@@ -404,45 +404,39 @@ jobs:
             --name blender-ci \
             --allow-http
 
+          call_tool() {
+            output=$(npx mcporter call \
+              --http-url http://127.0.0.1:8765/mcp \
+              --allow-http \
+              "$@" 2>&1)
+            status=$?
+            printf '%s\n' "$output"
+            if [ "$status" -ne 0 ]; then
+              return "$status"
+            fi
+            if printf '%s\n' "$output" | grep -E '"code": "ACTION_NOT_FOUND"|Unknown tool|Traceback \(most recent call last\)'; then
+              return 1
+            fi
+          }
+
           # ── 3. Core scene skills ────────────────────────────────────────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_scene__get_session_info
+          call_tool get_session_info
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_scene__list_objects
+          call_tool list_objects
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_scene__get_scene_info
+          call_tool get_scene_info
 
           # ── 4. Object creation and manipulation ─────────────────────────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_objects__create_object \
+          call_tool create_object \
             object_type:cube name:mcporterCube
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_objects__create_object \
+          call_tool create_object \
             object_type:sphere name:mcporterSphere
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_objects__move_object \
+          call_tool move_object \
             name:mcporterCube "location:[1.0, 2.0, 3.0]"
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_objects__get_object_info \
+          call_tool get_object_info \
             name:mcporterCube
 
           # ── 4b. Geometry export smoke test ────────────────────────────────
@@ -450,28 +444,16 @@ jobs:
           GEOM_FBX="$RUNNER_TEMP/mcporter_geometry.fbx"
           GEOM_OBJ="$RUNNER_TEMP/mcporter_geometry.obj"
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_geometry__create_sphere \
+          call_tool create_sphere \
             radius:1.25 name:mcporterGeometrySphere "location:[0.0, 0.0, 0.0]"
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_geometry__save_blend \
+          call_tool save_blend \
             path:"$GEOM_BLEND"
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_geometry__export_fbx \
+          call_tool export_fbx \
             path:"$GEOM_FBX"
 
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_geometry__export_obj \
+          call_tool export_obj \
             path:"$GEOM_OBJ"
 
           "$BLENDER_PYTHON" -c "
@@ -483,31 +465,19 @@ jobs:
           "
 
           # ── 5. Mesh operations ──────────────────────────────────────────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_mesh__add_modifier \
+          call_tool add_modifier \
             object_name:mcporterCube modifier_type:SUBSURF
 
           # ── 6. Lighting ─────────────────────────────────────────────────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_lighting__add_light \
+          call_tool create_light \
             light_type:POINT name:mcporterLight "location:[0.0, 0.0, 5.0]"
 
           # ── 7. Materials ────────────────────────────────────────────────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_materials__create_material \
+          call_tool create_material \
             name:mcporterMat
 
           # ── 8. Python scripting (execute arbitrary Blender Python) ──────────
-          npx mcporter call \
-            --http-url http://127.0.0.1:8765/mcp \
-            --allow-http \
-            blender-ci.blender_scripting__execute_python \
+          call_tool execute_python \
             "code:import bpy; bpy.ops.mesh.primitive_cone_add(); result = bpy.context.active_object.name"
 
           # ── 9. Multi-instance gateway — start a second instance on a random ─
