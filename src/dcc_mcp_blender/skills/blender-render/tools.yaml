@@ -17,3 +17,9 @@ tools:
     read_only: true
     destructive: false
     idempotent: true
+  - name: capture_viewport
+    description: "Capture the active viewport to an image file"
+    source_file: scripts/capture_viewport.py
+    read_only: false
+    destructive: false
+    idempotent: false

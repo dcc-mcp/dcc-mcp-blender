@@ -17,3 +17,9 @@ tools:
     read_only: true
     destructive: false
     idempotent: true
+  - name: set_world_background
+    description: "Set the scene world background color and optional strength"
+    source_file: scripts/set_world_background.py
+    read_only: false
+    destructive: false
+    idempotent: true

@@ -41,6 +41,7 @@
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
 - **50+ pre-built skills** — scene management, object manipulation, materials, rendering, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
+- **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
 - **Claude Desktop ready** — ship a one-line `mcpServers` config and you're done
 
@@ -60,6 +61,7 @@
 | **blender-lighting** | `create_light`, `delete_light`, `set_light_properties`, `list_lights` |
 | **blender-camera** | `create_camera`, `set_active_camera`, `set_camera_properties`, `list_cameras` |
 | **blender-collection** | `create_collection`, `link_to_collection`, `unlink_from_collection`, `list_collections` |
+| **blender-geometry** | `create_sphere`, `save_blend`, `file_exists`, `export_fbx`, `export_obj` |
 
 ---
 
@@ -76,6 +78,8 @@
 
 Release ZIPs include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
+The addon ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits.
+
 ### Option 2 — Install via pip (for scripts / CI)
 
 ```bash
@@ -88,6 +92,16 @@ Then in Blender's Python console:
 import dcc_mcp_blender
 dcc_mcp_blender.start_server()
 ```
+
+### Headless Bootstrap
+
+For CI or automation that needs Blender's main thread dispatcher:
+
+```bash
+blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
+```
+
+The bootstrap prints `MCP_URL=...`, discovers bundled skills, and drives `BlenderHost` in headless mode until the process is stopped.
 
 ---
 

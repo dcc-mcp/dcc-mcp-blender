@@ -445,6 +445,43 @@ jobs:
             blender-ci.blender_objects__get_object_info \
             name:mcporterCube
 
+          # ── 4b. Geometry export smoke test ────────────────────────────────
+          GEOM_BLEND="$RUNNER_TEMP/mcporter_geometry.blend"
+          GEOM_FBX="$RUNNER_TEMP/mcporter_geometry.fbx"
+          GEOM_OBJ="$RUNNER_TEMP/mcporter_geometry.obj"
+
+          npx mcporter call \
+            --http-url http://127.0.0.1:8765/mcp \
+            --allow-http \
+            blender-ci.blender_geometry__create_sphere \
+            radius:1.25 name:mcporterGeometrySphere "location:[0.0, 0.0, 0.0]"
+
+          npx mcporter call \
+            --http-url http://127.0.0.1:8765/mcp \
+            --allow-http \
+            blender-ci.blender_geometry__save_blend \
+            path:"$GEOM_BLEND"
+
+          npx mcporter call \
+            --http-url http://127.0.0.1:8765/mcp \
+            --allow-http \
+            blender-ci.blender_geometry__export_fbx \
+            path:"$GEOM_FBX"
+
+          npx mcporter call \
+            --http-url http://127.0.0.1:8765/mcp \
+            --allow-http \
+            blender-ci.blender_geometry__export_obj \
+            path:"$GEOM_OBJ"
+
+          "$BLENDER_PYTHON" -c "
+          import os
+          for path in ('$GEOM_BLEND', '$GEOM_FBX', '$GEOM_OBJ'):
+              assert os.path.isfile(path), path
+              assert os.path.getsize(path) > 0, path
+          print('Geometry export files: OK')
+          "
+
           # ── 5. Mesh operations ──────────────────────────────────────────────
           npx mcporter call \
             --http-url http://127.0.0.1:8765/mcp \

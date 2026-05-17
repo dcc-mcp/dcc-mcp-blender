@@ -84,6 +84,9 @@ def make_mock_bpy(
     mock_scene.render.engine = "CYCLES"
     mock_scene.render.image_settings.file_format = "PNG"
     mock_scene.camera = None
+    mock_scene.world = MagicMock()
+    mock_scene.world.color = [0.0, 0.0, 0.0]
+    mock_scene.world.use_nodes = False
     mock_bpy.context.scene = mock_scene
     mock_bpy.context.active_object = None
     mock_bpy.context.view_layer.objects.active = None
@@ -106,6 +109,7 @@ def make_mock_bpy(
     mock_bpy.data.collections = MagicMock()
     mock_bpy.data.lights = MagicMock()
     mock_bpy.data.cameras = MagicMock()
+    mock_bpy.data.worlds = MagicMock()
     if data_attrs:
         for k, v in data_attrs.items():
             getattr(mock_bpy.data, k)
@@ -126,6 +130,7 @@ def make_mock_bpy(
     mock_bpy.ops.object = MagicMock()
     mock_bpy.ops.wm = MagicMock()
     mock_bpy.ops.render = MagicMock()
+    mock_bpy.ops.screen = MagicMock()
     if ops_attrs:
         for k, v in ops_attrs.items():
             setattr(mock_bpy.ops, k, v)

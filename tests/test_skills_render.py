@@ -89,3 +89,44 @@ class TestRenderScene:
         result = load_and_call("blender-render/scripts/render_scene.py", bpy, output_path="/custom/output.png")
         assert result["success"] is True
         assert bpy.context.scene.render.filepath == "/custom/output.png"
+
+
+class TestCaptureViewport:
+    def test_capture_viewport_uses_screen_screenshot_and_restores_settings(self):
+        bpy = make_mock_bpy()
+        bpy.context.scene.render.filepath = "/tmp/original.png"
+        bpy.context.scene.render.resolution_x = 1920
+        bpy.context.scene.render.resolution_y = 1080
+
+        result = load_and_call(
+            "blender-render/scripts/capture_viewport.py",
+            bpy,
+            filepath="/tmp/viewport.png",
+            resolution_x=800,
+            resolution_y=600,
+        )
+
+        assert result["success"] is True
+        assert result["context"]["filepath"] == "/tmp/viewport.png"
+        assert result["context"]["method"] == "screen"
+        bpy.ops.screen.screenshot.assert_called_once_with(filepath="/tmp/viewport.png")
+        assert bpy.context.scene.render.filepath == "/tmp/original.png"
+        assert bpy.context.scene.render.resolution_x == 1920
+        assert bpy.context.scene.render.resolution_y == 1080
+
+    def test_capture_viewport_falls_back_to_opengl(self):
+        bpy = make_mock_bpy()
+        bpy.ops.screen.screenshot.side_effect = RuntimeError("no screen area")
+
+        result = load_and_call("blender-render/scripts/capture_viewport.py", bpy, filepath="/tmp/viewport.png")
+
+        assert result["success"] is True
+        assert result["context"]["method"] == "opengl"
+        bpy.ops.render.opengl.assert_called_once_with(write_still=True, view_context=True)
+
+    def test_capture_viewport_requires_filepath(self):
+        bpy = make_mock_bpy()
+
+        result = load_and_call("blender-render/scripts/capture_viewport.py", bpy, filepath="")
+
+        assert result["success"] is False

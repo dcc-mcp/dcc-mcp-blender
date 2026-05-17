@@ -158,6 +158,8 @@ class BlenderMcpServer(DccServerBase):
         metrics_enabled: Optional[bool] = None,
         job_storage_path: Optional[str] = None,
         enable_workflows: Optional[bool] = None,
+        dispatcher: Optional[Any] = None,
+        execution_bridge: Optional[Any] = None,
         options: Optional[BlenderServerOptions] = None,
     ) -> None:
         if options is None:
@@ -174,6 +176,8 @@ class BlenderMcpServer(DccServerBase):
                 metrics_enabled=metrics_enabled,
                 job_storage_path=job_storage_path,
                 enable_workflows=enable_workflows,
+                dispatcher=dispatcher,
+                execution_bridge=execution_bridge,
             )
 
         super().__init__(options=options.to_core_options())
@@ -403,6 +407,8 @@ def start_server(
     metrics_enabled: Optional[bool] = None,
     job_storage_path: Optional[str] = None,
     enable_workflows: Optional[bool] = None,
+    dispatcher: Optional[Any] = None,
+    execution_bridge: Optional[Any] = None,
 ) -> BlenderMcpServer:
     """Start the Blender MCP server (creates a process-level singleton).
 
@@ -429,6 +435,8 @@ def start_server(
         metrics_enabled: Force Prometheus ``/metrics`` (``None`` = env ``DCC_MCP_BLENDER_METRICS``).
         job_storage_path: SQLite job DB path (``None`` = env / default).
         enable_workflows: Enable workflow MCP tools (``None`` = env).
+        dispatcher: Optional host dispatcher for main-thread execution.
+        execution_bridge: Optional execution bridge supplied by dcc-mcp-core.
 
     Returns:
         The running :class:`BlenderMcpServer` instance.
@@ -448,6 +456,8 @@ def start_server(
         metrics_enabled=metrics_enabled,
         job_storage_path=job_storage_path,
         enable_workflows=enable_workflows,
+        dispatcher=dispatcher,
+        execution_bridge=execution_bridge,
     )
     if register_builtins:
         _server_instance.register_builtin_actions(include_bundled=include_bundled)

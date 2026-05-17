@@ -112,3 +112,44 @@ class TestListLights:
         result = load_and_call("blender-lighting/scripts/list_lights.py", bpy)
         assert result["success"] is True
         assert result["context"]["count"] == 0
+
+
+class TestSetWorldBackground:
+    def test_sets_existing_world_color(self):
+        bpy = make_mock_bpy()
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_world_background.py",
+            bpy,
+            color=[0.1, 0.2, 0.3],
+        )
+
+        assert result["success"] is True
+        assert bpy.context.scene.world.color == [0.1, 0.2, 0.3]
+        assert result["context"]["color"] == [0.1, 0.2, 0.3, 1.0]
+
+    def test_creates_world_when_missing(self):
+        bpy = make_mock_bpy()
+        bpy.context.scene.world = None
+        new_world = MagicMock()
+        bpy.data.worlds.new.return_value = new_world
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_world_background.py",
+            bpy,
+            color=[0.4, 0.5, 0.6, 0.7],
+            strength=2.5,
+        )
+
+        assert result["success"] is True
+        bpy.data.worlds.new.assert_called_once_with(name="World")
+        assert bpy.context.scene.world is new_world
+        assert new_world.color == [0.4, 0.5, 0.6]
+        assert new_world.strength == 2.5
+
+    def test_rejects_invalid_color_length(self):
+        bpy = make_mock_bpy()
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[1.0, 0.5])
+
+        assert result["success"] is False

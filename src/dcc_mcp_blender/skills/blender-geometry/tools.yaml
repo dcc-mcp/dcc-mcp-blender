@@ -1,0 +1,36 @@
+tools:
+  - name: create_sphere
+    description: "Create a UV sphere in the Blender scene"
+    source_file: scripts/create_sphere.py
+    execution: sync
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: save_blend
+    description: "Save the current Blender file"
+    source_file: scripts/save_blend.py
+    execution: sync
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: file_exists
+    description: "Check whether a file exists and report its size"
+    source_file: scripts/file_exists.py
+    execution: sync
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: export_fbx
+    description: "Export the current scene to FBX"
+    source_file: scripts/export_fbx.py
+    execution: sync
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: export_obj
+    description: "Export the current scene to OBJ"
+    source_file: scripts/export_obj.py
+    execution: sync
+    read_only: false
+    destructive: false
+    idempotent: false

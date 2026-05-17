@@ -17,6 +17,7 @@ EXPECTED_SKILLS = [
     "blender-lighting",
     "blender-camera",
     "blender-collection",
+    "blender-geometry",
 ]
 
 
