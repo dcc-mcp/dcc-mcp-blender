@@ -285,6 +285,11 @@ _blender-addons-dir := _blender-scripts-dir + "/addons"
 @blender-link-win:
     powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-link-win.ps1 -BlenderVersion {{ blender-version }}
 
+# Build a Blender-installable addon ZIP (bundles dcc-mcp-core from PyPI). Output: dist_addon/
+# Pick platform from host OS — run with explicit platform: `python packaging/assemble_zip.py --platform win64`
+blender-addon-zip:
+    python packaging/assemble_zip.py --platform {{ if os() == "windows" { "win64" } else if os() == "macos" { "macos" } else { "linux" } }} --output-dir dist_addon/
+
 # Remove dev symlinks and addon files
 @blender-unlink:
     #!/usr/bin/env bash
@@ -357,3 +362,27 @@ blender-dev: blender-link verify-deps
     @echo "   Verify with:"
     @echo "     just blender-status       # Unix/macOS"
     @echo "     just blender-status-win   # Windows"
+
+# ============================================================================
+# Blender + Core Development (with dcc-mcp-core build)
+# ============================================================================
+
+# Windows: build dcc-mcp-core with Blender's Python, then symlink both
+# `dcc_mcp_core` (from core's `python/dcc_mcp_core`) and `dcc_mcp_blender` (from `src/dcc_mcp_blender`)
+# into Blender's addons directory. Then start Blender for debugging.
+#
+# After run, use MCP URL printed below; see Blender MCP setup docs for Cursor + debugpy.
+# Default core repo: sibling directory `../dcc-mcp-core` or env `DCC_MCP_CORE_REPO`.
+#
+#   just blender-dev-build-link-core-win
+#   just blender-dev-debug-win
+#   just blender-version=4.3 blender-dev-debug-win
+@blender-dev-build-link-core-win:
+    powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-dev-build-link-core-win.ps1 -BlenderVersion {{ blender-version }}
+
+@blender-dev-debug-win:
+    powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-dev-build-link-core-win.ps1 -BlenderVersion {{ blender-version }} -LaunchBlender
+
+# Windows: only refresh symlinks (skip maturin develop) after you already built core.
+@blender-dev-relink-core-win:
+    powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-dev-build-link-core-win.ps1 -BlenderVersion {{ blender-version }} -SkipBuild
