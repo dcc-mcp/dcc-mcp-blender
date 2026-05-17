@@ -22,3 +22,14 @@ def test_mcporter_call_wrapper_fails_unknown_tools():
     assert "call_tool() {" in text
     assert '"code": "ACTION_NOT_FOUND"' in text
     assert "Unknown tool" in text
+
+
+def test_workflow_server_uses_blender_inprocess_dispatcher():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "from dcc_mcp_core.host import BlockingDispatcher" in text
+    assert "from dcc_mcp_blender.host import BlenderHost" in text
+    assert "dispatcher = BlockingDispatcher()" in text
+    assert "dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)" in text
+    assert "host.start()" in text
+    assert "host.stop()" in text

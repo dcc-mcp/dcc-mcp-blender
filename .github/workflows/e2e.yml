@@ -334,6 +334,8 @@ jobs:
           import sys
           import time
 
+          from dcc_mcp_core.host import BlockingDispatcher
+
           try:
               import bpy  # noqa: F401
           except ImportError:
@@ -341,11 +343,15 @@ jobs:
               sys.exit(0)
 
           import dcc_mcp_blender
+          from dcc_mcp_blender.host import BlenderHost
 
           # Start server — create_skill_manager discovers all skills automatically.
           # Then eagerly load all skills so their tools are registered for
           # mcporter to call (progressive loading only registers metadata).
-          server = dcc_mcp_blender.start_server(port=8765)
+          dispatcher = BlockingDispatcher()
+          host = BlenderHost(dispatcher)
+          server = dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)
+          host.start()
           print(f"MCP server started at {server.mcp_url}", flush=True)
           for skill in server.list_skills():
               name = skill.get("name", "")
@@ -361,6 +367,7 @@ jobs:
           while not os.path.exists(sentinel):
               time.sleep(1)
 
+          host.stop()
           dcc_mcp_blender.stop_server()
           print("MCP server stopped.", flush=True)
           PYEOF
@@ -488,9 +495,14 @@ jobs:
               import bpy  # noqa: F401
           except ImportError:
               sys.exit(0)
+          from dcc_mcp_core.host import BlockingDispatcher
           import dcc_mcp_blender
+          from dcc_mcp_blender.host import BlenderHost
           # Use port=0 → OS assigns a free port; simulates a second Blender instance
-          server = dcc_mcp_blender.start_server(port=0)
+          dispatcher = BlockingDispatcher()
+          host = BlenderHost(dispatcher)
+          server = dcc_mcp_blender.start_server(port=0, dispatcher=dispatcher)
+          host.start()
           url = server.mcp_url
           print(f"Second instance MCP URL: {url}", flush=True)
           with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "mcp_server2_url"), "w") as f:
@@ -498,6 +510,7 @@ jobs:
           sentinel2 = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "mcp_test2_done")
           while not os.path.exists(sentinel2):
               time.sleep(1)
+          host.stop()
           dcc_mcp_blender.stop_server()
           PYEOF2
 
