@@ -483,7 +483,7 @@ jobs:
 
           # ── 8. Python scripting (execute arbitrary Blender Python) ──────────
           call_tool execute_python \
-            "code:import bpy; bpy.ops.mesh.primitive_cone_add(); result = bpy.context.active_object.name"
+            "code:import bpy; bpy.ops.mesh.primitive_cone_add()"
 
           # ── 9. Multi-instance gateway — start a second instance on a random ─
           #       port and verify it can be reached independently.            ──

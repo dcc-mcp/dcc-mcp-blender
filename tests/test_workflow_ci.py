@@ -32,3 +32,11 @@ def test_workflow_server_uses_blender_inprocess_dispatcher():
     assert "dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)" in text
     assert "host.start()" in text
     assert "host.stop()" in text
+
+
+def test_execute_python_smoke_call_avoids_shell_key_value_assignment():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    execute_python_calls = re.findall(r"call_tool execute_python \\\s*\n\s*\"code:([^\"]+)\"", text)
+    assert execute_python_calls
+    assert all(" = " not in code for code in execute_python_calls)
