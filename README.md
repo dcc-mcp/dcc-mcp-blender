@@ -3,9 +3,19 @@
 > Blender addon for the [DCC Model Context Protocol (MCP)](https://github.com/loonghao/dcc-mcp-core) ecosystem — embeds a Streamable HTTP MCP server directly inside Blender, letting any MCP-compatible AI client drive your 3D workflow.
 
 [![PyPI version](https://badge.fury.io/py/dcc-mcp-blender.svg)](https://badge.fury.io/py/dcc-mcp-blender)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/)
+[![PyPI - Wheel](https://img.shields.io/pypi/wheel/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/#files)
 [![CI](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/ci.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/ci.yml)
+[![E2E Blender](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/e2e.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/e2e.yml)
+[![Release](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/release.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/release.yml)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/dcc-mcp-blender.svg?label=PyPI%20downloads)](https://pypi.org/project/dcc-mcp-blender/)
+[![GitHub release downloads](https://img.shields.io/github/downloads/loonghao/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/loonghao/dcc-mcp-blender/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/loonghao/dcc-mcp-blender.svg)](https://github.com/loonghao/dcc-mcp-blender/releases)
+[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/loonghao/dcc-mcp-blender/blob/main/pyproject.toml)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.17.6-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
+[![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
+[![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 

@@ -95,3 +95,10 @@ def test_e2e_workflow_uses_checked_in_ci_scripts():
     assert ".github/scripts/start_mcp_server2.py" in text
     assert "pytest.main" in runner
     assert "os._exit(main())" in runner
+
+
+def test_windows_e2e_targets_vs2026_runner_explicitly():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "runner: windows-2025-vs2026" in text
+    assert "runner: windows-latest" not in text

@@ -36,6 +36,7 @@ venv.bak/
 # Testing
 .tox/
 .nox/
+.benchmarks/
 .coverage
 .coverage.*
 .cache
@@ -46,6 +47,20 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 htmlcov/
+mcporter_geometry.blend
+mcporter_geometry.fbx
+mcporter_geometry.obj
+mcp_server2_url
+mcp_test_done
+mcp_test2_done
+
+# CI / local workflow artifacts
+blender-cache/
+run_e2e.py
+start_mcp_server.py
+start_mcp_server2.py
+get-pip.py
+blender-e2e-site/
 
 # IDE
 .idea/

@@ -77,14 +77,14 @@ jobs:
         include:
           # ── Windows ────────────────────────────────────────────────────────
           - os: windows
-            runner: windows-latest
+            runner: windows-2025-vs2026
             blender-version: "4.4.3"
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.4/blender-4.4.3-windows-x64.zip"
             blender-dir: "blender-4.4.3-windows-x64"
 
           - os: windows
-            runner: windows-latest
+            runner: windows-2025-vs2026
             blender-version: "4.2.0"
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip"
