@@ -79,3 +79,30 @@ def test_export_obj_prefers_blender_3_plus_operator():
 
     assert result["success"] is True
     mock_bpy.ops.wm.obj_export.assert_called_once_with(filepath="/tmp/out.obj")
+
+
+def test_export_obj_writes_basic_obj_when_operator_context_fails(tmp_path):
+    mock_bpy = make_mock_bpy()
+    mock_bpy.ops.wm.obj_export.side_effect = RuntimeError("context is incorrect")
+    mesh = SimpleNamespace(
+        vertices=[
+            SimpleNamespace(co=(0.0, 0.0, 0.0)),
+            SimpleNamespace(co=(1.0, 0.0, 0.0)),
+            SimpleNamespace(co=(0.0, 1.0, 0.0)),
+        ],
+        polygons=[SimpleNamespace(vertices=[0, 1, 2])],
+    )
+    mock_bpy.data.objects = [SimpleNamespace(name="Triangle", type="MESH", data=mesh)]
+    out_path = tmp_path / "fallback.obj"
+
+    result = load_and_call("blender-geometry/scripts/export_obj.py", mock_bpy, path=str(out_path))
+
+    assert result["success"] is True
+    assert out_path.read_text(encoding="utf-8").splitlines() == [
+        "# Exported by dcc-mcp-blender",
+        "o Triangle",
+        "v 0 0 0",
+        "v 1 0 0",
+        "v 0 1 0",
+        "f 1 2 3",
+    ]
