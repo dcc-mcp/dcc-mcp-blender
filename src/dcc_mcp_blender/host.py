@@ -3,11 +3,55 @@
 from __future__ import annotations
 
 import threading
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from dcc_mcp_core.host import HostAdapter
+from dcc_mcp_core.host import BlockingDispatcher, HostAdapter
 
 TickFn = Callable[[], Optional[float]]
+
+
+class BlenderCallableDispatcher:
+    """Callable dispatcher driven by Blender's host tick loop."""
+
+    def __init__(self, dispatcher: Optional[BlockingDispatcher] = None) -> None:
+        self._dispatcher = dispatcher or BlockingDispatcher()
+
+    def dispatch_callable(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        affinity: str = "main",
+        context: Any = None,
+        action_name: str = "",
+        skill_name: Optional[str] = None,
+        execution: str = "sync",
+        timeout_hint_secs: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Post ``func`` to Blender's main-thread queue and wait for its result."""
+        _ = (affinity, context, action_name, skill_name, execution)
+
+        def _invoke() -> Any:
+            return func(*args, **kwargs)
+
+        handle = self._dispatcher.post(_invoke)
+        return handle.wait(timeout_hint_secs)
+
+    def tick(self, max_jobs: int):
+        """Drain queued callables from Blender's main thread."""
+        return self._dispatcher.tick(max_jobs)
+
+    def tick_blocking(self, max_jobs: int, timeout_ms: int):
+        """Drain queued callables, blocking briefly while headless."""
+        return self._dispatcher.tick_blocking(max_jobs, timeout_ms)
+
+    def shutdown(self) -> None:
+        """Stop accepting queued work."""
+        self._dispatcher.shutdown()
+
+    def is_shutdown(self) -> bool:
+        """Return whether the underlying dispatcher is shut down."""
+        return bool(self._dispatcher.is_shutdown())
 
 
 class BlenderHost(HostAdapter):

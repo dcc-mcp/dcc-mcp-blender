@@ -334,8 +334,6 @@ jobs:
           import sys
           import time
 
-          from dcc_mcp_core.host import BlockingDispatcher
-
           try:
               import bpy  # noqa: F401
           except ImportError:
@@ -343,12 +341,12 @@ jobs:
               sys.exit(0)
 
           import dcc_mcp_blender
-          from dcc_mcp_blender.host import BlenderHost
+          from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
 
           # Start server — create_skill_manager discovers all skills automatically.
           # Then eagerly load all skills so their tools are registered for
           # mcporter to call (progressive loading only registers metadata).
-          dispatcher = BlockingDispatcher()
+          dispatcher = BlenderCallableDispatcher()
           host = BlenderHost(dispatcher)
           server = dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)
           host.start()
@@ -495,11 +493,10 @@ jobs:
               import bpy  # noqa: F401
           except ImportError:
               sys.exit(0)
-          from dcc_mcp_core.host import BlockingDispatcher
           import dcc_mcp_blender
-          from dcc_mcp_blender.host import BlenderHost
+          from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
           # Use port=0 → OS assigns a free port; simulates a second Blender instance
-          dispatcher = BlockingDispatcher()
+          dispatcher = BlenderCallableDispatcher()
           host = BlenderHost(dispatcher)
           server = dcc_mcp_blender.start_server(port=0, dispatcher=dispatcher)
           host.start()

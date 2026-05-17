@@ -79,3 +79,22 @@ def test_blender_host_attaches_and_detaches_timer():
         assert not host.is_running
         assert registered == []
         assert dispatcher.shutdown_called is True
+
+
+def test_blender_callable_dispatcher_posts_work_to_tick_loop():
+    from dcc_mcp_blender.host import BlenderCallableDispatcher
+
+    dispatcher = BlenderCallableDispatcher()
+    result = []
+
+    def worker():
+        result.append(dispatcher.dispatch_callable(lambda: "done"))
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+
+    while thread.is_alive() and not result:
+        dispatcher.tick(1)
+
+    thread.join(timeout=1)
+    assert result == ["done"]
