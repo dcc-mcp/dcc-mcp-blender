@@ -6,10 +6,12 @@ import pathlib
 import sys
 
 import yaml
+from dcc_mcp_core import validate_skill
 
 SKILLS_DIR = pathlib.Path(__file__).parent.parent / "src" / "dcc_mcp_blender" / "skills"
 
-REQUIRED_FIELDS = {"name", "description", "dcc", "version", "tools"}
+REQUIRED_FIELDS = {"name", "description", "metadata"}
+REQUIRED_DCC_MCP_FIELDS = {"dcc", "version", "tags", "search-hint", "tools"}
 REQUIRED_TOOL_FIELDS = {"name", "description", "source_file"}
 
 
@@ -51,13 +53,35 @@ def test_all_skill_md_files():
             errors.append(f"{skill_dir.name}: empty or missing front-matter")
             continue
 
+        report = validate_skill(str(skill_dir))
+        if report.has_errors:
+            for issue in report.issues:
+                errors.append(f"{skill_dir.name}: {issue.category}: {issue.message}")
+
         missing = REQUIRED_FIELDS - set(front.keys())
         if missing:
             errors.append(f"{skill_dir.name}: missing fields: {missing}")
 
-        tools = front.get("tools", [])
+        dcc_mcp = front.get("metadata", {}).get("dcc-mcp", {})
+        missing_dcc_mcp = REQUIRED_DCC_MCP_FIELDS - set(dcc_mcp.keys())
+        if missing_dcc_mcp:
+            errors.append(f"{skill_dir.name}: missing metadata.dcc-mcp fields: {missing_dcc_mcp}")
+            continue
+
+        tools_file = skill_dir / str(dcc_mcp.get("tools", ""))
+        if not tools_file.exists():
+            errors.append(f"{skill_dir.name}: tools file not found: {dcc_mcp.get('tools')}")
+            continue
+
+        try:
+            tools_doc = yaml.safe_load(tools_file.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            errors.append(f"{skill_dir.name}: tools YAML parse error: {e}")
+            continue
+
+        tools = tools_doc.get("tools", [])
         if not isinstance(tools, list) or not tools:
-            errors.append(f"{skill_dir.name}: 'tools' must be a non-empty list")
+            errors.append(f"{skill_dir.name}: tools file must contain a non-empty 'tools' list")
             continue
 
         for tool in tools:

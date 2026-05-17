@@ -1,56 +1,16 @@
 ---
 name: blender-objects
 description: "Blender object manipulation — create, delete, move, rotate, scale and duplicate objects"
-dcc: blender
-version: "1.0.0"
-tags: [blender, objects, transform]
-search-hint: "create object, delete, move, rotate, scale, duplicate, select"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
-depends: []
-tools:
-  - name: create_object
-    description: "Create a new Blender object (mesh primitive, empty, etc.)"
-    source_file: scripts/create_object.py
-    read_only: false
-    destructive: false
-    idempotent: false
-  - name: delete_object
-    description: "Delete an object from the scene"
-    source_file: scripts/delete_object.py
-    read_only: false
-    destructive: true
-    idempotent: false
-  - name: duplicate_object
-    description: "Duplicate an existing object"
-    source_file: scripts/duplicate_object.py
-    read_only: false
-    destructive: false
-    idempotent: false
-  - name: move_object
-    description: "Move an object to a specified location"
-    source_file: scripts/move_object.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: rotate_object
-    description: "Rotate an object by Euler angles (degrees)"
-    source_file: scripts/rotate_object.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: scale_object
-    description: "Scale an object"
-    source_file: scripts/scale_object.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: get_object_info
-    description: "Get detailed information about an object"
-    source_file: scripts/get_object_info.py
-    read_only: true
-    destructive: false
-    idempotent: true
+metadata:
+  dcc-mcp:
+    dcc: blender
+    version: "1.0.0"
+    tags: [blender, objects, transform]
+    search-hint: "create object, delete, move, rotate, scale, duplicate, select"
+    depends: []
+    tools: tools.yaml
 ---
 
 # blender-objects

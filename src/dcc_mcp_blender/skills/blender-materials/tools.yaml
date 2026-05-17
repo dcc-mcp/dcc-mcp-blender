@@ -1,0 +1,31 @@
+tools:
+  - name: create_material
+    description: "Create a new Principled BSDF material"
+    source_file: scripts/create_material.py
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: assign_material
+    description: "Assign a material to an object"
+    source_file: scripts/assign_material.py
+    read_only: false
+    destructive: false
+    idempotent: true
+  - name: set_material_color
+    description: "Set the base color of a material"
+    source_file: scripts/set_material_color.py
+    read_only: false
+    destructive: false
+    idempotent: true
+  - name: list_materials
+    description: "List all materials in the current scene"
+    source_file: scripts/list_materials.py
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: delete_material
+    description: "Delete a material"
+    source_file: scripts/delete_material.py
+    read_only: false
+    destructive: true
+    idempotent: false

@@ -80,6 +80,11 @@ def _verify_skills_payload(staged_pkg: pathlib.Path) -> None:
         raise RuntimeError(
             f"Expected at least 10 bundled skills (SKILL.md), found {len(skill_manifests)} under {skills_dir}"
         )
+    missing_tools = [
+        skill_md.parent.name for skill_md in skill_manifests if not (skill_md.parent / "tools.yaml").is_file()
+    ]
+    if missing_tools:
+        raise RuntimeError(f"Missing tools.yaml for bundled skills: {', '.join(sorted(missing_tools))}")
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────

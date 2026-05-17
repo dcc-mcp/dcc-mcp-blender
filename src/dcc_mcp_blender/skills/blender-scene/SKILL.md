@@ -1,50 +1,16 @@
 ---
 name: blender-scene
 description: "Blender scene management — create, open, save, list and inspect scene objects"
-dcc: blender
-version: "1.0.0"
-tags: [blender, scene, hierarchy]
-search-hint: "new scene, open, save, list objects, hierarchy, scene info"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
-depends: []
-tools:
-  - name: new_scene
-    description: "Create a new empty Blender scene"
-    source_file: scripts/new_scene.py
-    read_only: false
-    destructive: true
-    idempotent: false
-  - name: save_scene
-    description: "Save the current Blender scene"
-    source_file: scripts/save_scene.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: open_scene
-    description: "Open a Blender scene file (.blend) from disk"
-    source_file: scripts/open_scene.py
-    read_only: false
-    destructive: true
-    idempotent: false
-  - name: list_objects
-    description: "List all objects in the current Blender scene"
-    source_file: scripts/list_objects.py
-    read_only: true
-    destructive: false
-    idempotent: true
-  - name: get_scene_info
-    description: "Return a hierarchical description of the current scene"
-    source_file: scripts/get_scene_info.py
-    read_only: true
-    destructive: false
-    idempotent: true
-  - name: get_session_info
-    description: "Return Blender version, scene path, and basic session statistics"
-    source_file: scripts/get_session_info.py
-    read_only: true
-    destructive: false
-    idempotent: true
+metadata:
+  dcc-mcp:
+    dcc: blender
+    version: "1.0.0"
+    tags: [blender, scene, hierarchy]
+    search-hint: "new scene, open, save, list objects, hierarchy, scene info"
+    depends: []
+    tools: tools.yaml
 ---
 
 # blender-scene

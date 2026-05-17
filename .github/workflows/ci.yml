@@ -37,8 +37,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: Install PyYAML
-        run: pip install pyyaml
+      - name: Install skill validation dependencies
+        run: pip install pyyaml "dcc-mcp-core>=0.17.5,<1.0.0"
       - name: Validate SKILL.md front-matter
         run: python tests/test_lint_skills.py
 
@@ -133,6 +133,8 @@ jobs:
           assert not triple, f"unexpected triple-nested paths: {triple[:5]}"
           skill_md = [n for n in names if n.endswith("/SKILL.md") and "/skills/" in n]
           assert len(skill_md) >= 10, f"expected >=10 SKILL.md under skills/, got {len(skill_md)}"
+          tools_yaml = [n for n in names if n.endswith("/tools.yaml") and "/skills/" in n]
+          assert len(tools_yaml) >= 10, f"expected >=10 tools.yaml under skills/, got {len(tools_yaml)}"
           with zipfile.ZipFile(zips[-1]) as zf:
               raw = zf.read("dcc_mcp_blender/blender_manifest.toml").decode("utf-8")
           assert "wheels = [" in raw and "./wheels/" in raw, raw[:400]

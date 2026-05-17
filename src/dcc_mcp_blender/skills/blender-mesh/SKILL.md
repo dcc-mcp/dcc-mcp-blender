@@ -1,38 +1,16 @@
 ---
 name: blender-mesh
 description: "Blender mesh operations — modifiers, subdivision, and mesh editing"
-dcc: blender
-version: "1.0.0"
-tags: [blender, mesh, modifier, geometry]
-search-hint: "modifier, subdivision, smooth, apply modifier, mesh edit"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
-depends: []
-tools:
-  - name: add_modifier
-    description: "Add a modifier to a mesh object (Subdivision, Mirror, Array, etc.)"
-    source_file: scripts/add_modifier.py
-    read_only: false
-    destructive: false
-    idempotent: false
-  - name: apply_modifier
-    description: "Apply (bake) a modifier permanently to the mesh"
-    source_file: scripts/apply_modifier.py
-    read_only: false
-    destructive: true
-    idempotent: false
-  - name: list_modifiers
-    description: "List all modifiers on an object"
-    source_file: scripts/list_modifiers.py
-    read_only: true
-    destructive: false
-    idempotent: true
-  - name: get_mesh_info
-    description: "Get vertex, edge, and face count of a mesh"
-    source_file: scripts/get_mesh_info.py
-    read_only: true
-    destructive: false
-    idempotent: true
+metadata:
+  dcc-mcp:
+    dcc: blender
+    version: "1.0.0"
+    tags: [blender, mesh, modifier, geometry]
+    search-hint: "modifier, subdivision, smooth, apply modifier, mesh edit"
+    depends: []
+    tools: tools.yaml
 ---
 
 # blender-mesh

@@ -1,44 +1,16 @@
 ---
 name: blender-materials
 description: "Blender material system — create, assign, modify and list materials"
-dcc: blender
-version: "1.0.0"
-tags: [blender, materials, shading]
-search-hint: "create material, assign, color, shader, PBR, list materials"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
-depends: []
-tools:
-  - name: create_material
-    description: "Create a new Principled BSDF material"
-    source_file: scripts/create_material.py
-    read_only: false
-    destructive: false
-    idempotent: false
-  - name: assign_material
-    description: "Assign a material to an object"
-    source_file: scripts/assign_material.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: set_material_color
-    description: "Set the base color of a material"
-    source_file: scripts/set_material_color.py
-    read_only: false
-    destructive: false
-    idempotent: true
-  - name: list_materials
-    description: "List all materials in the current scene"
-    source_file: scripts/list_materials.py
-    read_only: true
-    destructive: false
-    idempotent: true
-  - name: delete_material
-    description: "Delete a material"
-    source_file: scripts/delete_material.py
-    read_only: false
-    destructive: true
-    idempotent: false
+metadata:
+  dcc-mcp:
+    dcc: blender
+    version: "1.0.0"
+    tags: [blender, materials, shading]
+    search-hint: "create material, assign, color, shader, PBR, list materials"
+    depends: []
+    tools: tools.yaml
 ---
 
 # blender-materials
