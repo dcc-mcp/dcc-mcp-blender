@@ -1,0 +1,30 @@
+# Blender extension manifest (4.2+ extensions / bundling).
+# https://docs.blender.org/manual/en/latest/advanced/extensions/getting_started.html
+# Version is bumped only by release-please (keep in sync with pyproject / wheel).
+
+schema_version = "1.0.0"
+
+id = "dcc_mcp_blender"
+# x-release-please-version
+version = "0.1.2"
+name = "DCC MCP Blender"
+tagline = "MCP Streamable HTTP server inside Blender for AI-driven workflows"
+maintainer = "Long Hao <hal.long@outlook.com>"
+type = "add-on"
+
+tags = ["System", "Pipeline", "Animation"]
+
+# Minimum Blender version for the Extensions + wheels workflow (see Blender manual).
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+location = "Top Bar > DCC MCP"
+description = "Embeds an MCP HTTP server (2025-03-26) for Claude, Cursor, and other MCP clients."
+category = "System"
+
+website = "https://github.com/loonghao/dcc-mcp-blender"
+
+[permissions]
+network = "Host MCP HTTP/SSE and optional gateway election on localhost"
+files = "Read bundled skills and SKILL packages from disk"

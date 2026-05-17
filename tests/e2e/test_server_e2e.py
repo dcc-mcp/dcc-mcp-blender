@@ -27,6 +27,12 @@ def _new_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+def _skill_get(skill, key, default=None):
+    if isinstance(skill, dict):
+        return skill.get(key, default)
+    return getattr(skill, key, default)
+
+
 # ── Server lifecycle ──────────────────────────────────────────────────────────
 
 
@@ -140,29 +146,33 @@ class TestProgressiveLoadingE2E:
         server = dcc_mcp_blender.start_server(port=0)
 
         # Pick the first skill that is currently loaded (eager or lazy)
-        loaded = [s for s in server.list_skills() if s.get("loaded") or server.is_skill_loaded(s.get("name", ""))]
+        loaded = [
+            s
+            for s in server.list_skills()
+            if _skill_get(s, "loaded") or server.is_skill_loaded(_skill_get(s, "name", ""))
+        ]
         if not loaded:
             # create_skill_manager only discovered but did not load — load one now
             discovered = server.list_skills()
             if not discovered:
                 return  # no skills at all; nothing to test
-            skill_name = discovered[0].get("name", "blender-scene")
+            skill_name = _skill_get(discovered[0], "name", "blender-scene")
             server.load_skill(skill_name)
             loaded = [{"name": skill_name}]
 
-        skill_name = loaded[0].get("name", "blender-scene")
+        skill_name = _skill_get(loaded[0], "name", "blender-scene")
 
         # Ensure it is loaded before unloading
         if not server.is_skill_loaded(skill_name):
             server.load_skill(skill_name)
 
         removed = server.unload_skill(skill_name)
-        assert removed >= 0  # may be 0 if unload is no-op but doesn't raise
+        assert removed is True
         assert not server.is_skill_loaded(skill_name)
 
         # Reload
-        actions = server.load_skill(skill_name)
-        assert isinstance(actions, list)
+        loaded_again = server.load_skill(skill_name)
+        assert loaded_again is True
         assert server.is_skill_loaded(skill_name)
 
     def test_discover_extra_paths_no_crash(self):

@@ -72,3 +72,60 @@ jobs:
 
       - name: Run unit tests
         run: pytest tests/ -v --tb=short -m "not e2e and not packaging"
+
+  # Ensure sdist/wheel build succeeds before release (PyPI / hatchling).
+  build:
+    name: Build package (wheel + sdist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build backend
+        run: pip install --upgrade pip build hatchling
+      - name: python -m build
+        run: python -m build
+      - name: Verify artifacts
+        run: |
+          ls -la dist/
+          test -f dist/*.whl
+          test -f dist/*.tar.gz
+
+  addon-zip:
+    name: Blender addon ZIP bundles dcc-mcp-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install tooling
+        run: pip install --upgrade pip packaging
+      - name: Assemble Linux addon ZIP
+        run: python packaging/assemble_zip.py --platform linux --output-dir dist_addon/
+      - name: Verify dcc-mcp-core wheel bundled in ZIP
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          zips = sorted(glob.glob("dist_addon/dcc_mcp_blender_addon_linux_v*.zip"))
+          assert zips, "expected dist_addon/dcc_mcp_blender_addon_linux_v*.zip"
+          with zipfile.ZipFile(zips[-1]) as zf:
+              names = zf.namelist()
+          wheels = [n for n in names if "/wheels/" in n and n.endswith(".whl")]
+          assert wheels, f"expected bundled .whl under wheels/, sample: {names[:30]}"
+          assert not any(
+              n.startswith("dcc_mcp_blender/dcc_mcp_core/") for n in names
+          ), "unexpected extracted dcc_mcp_core tree — use manifest wheels instead"
+          assert any(n.endswith("dcc_mcp_blender/__init__.py") for n in names), names[:25]
+          assert any(n.endswith("dcc_mcp_blender/blender_manifest.toml") for n in names), names[:25]
+          triple = [n for n in names if "dcc_mcp_blender/dcc_mcp_blender/dcc_mcp_blender/" in n]
+          assert not triple, f"unexpected triple-nested paths: {triple[:5]}"
+          skill_md = [n for n in names if n.endswith("/SKILL.md") and "/skills/" in n]
+          assert len(skill_md) >= 10, f"expected >=10 SKILL.md under skills/, got {len(skill_md)}"
+          with zipfile.ZipFile(zips[-1]) as zf:
+              raw = zf.read("dcc_mcp_blender/blender_manifest.toml").decode("utf-8")
+          assert "wheels = [" in raw and "./wheels/" in raw, raw[:400]
+          PY

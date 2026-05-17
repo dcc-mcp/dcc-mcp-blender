@@ -20,6 +20,10 @@ lib/
 lib64/
 MANIFEST
 
+# Never commit mistaken wheel extracts / nested copies under the adapter package
+src/dcc_mcp_blender/dcc_mcp_core/
+src/dcc_mcp_blender/dcc_mcp_blender/
+
 # Virtual environments
 .env
 .venv
@@ -81,3 +85,4 @@ site/
 # Release
 CHANGELOG.md
 *.zip
+dist_*

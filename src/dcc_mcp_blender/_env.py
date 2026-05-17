@@ -84,13 +84,18 @@ def resolve_strict_skill_scan() -> bool:
     return _env_truthy(ENV_STRICT_SKILL_SCAN)
 
 
-def resolve_enable_workflows() -> bool:
+def resolve_enable_workflows(enable_workflows: Optional[bool] = None) -> bool:
     """Return True when workflow engine surface should be enabled.
 
     Opt-in workflow engine surface (``workflows.run``, ``workflows.resume``,
     ``workflows.list_runs`` MCP tools).  Off by default so the minimal-mode
     tools/list stays small.
+
+    Priority: explicit ``enable_workflows`` argument >
+    ``DCC_MCP_BLENDER_ENABLE_WORKFLOWS`` truthy tokens > ``False``.
     """
+    if enable_workflows is not None:
+        return bool(enable_workflows)
     return _env_truthy(ENV_ENABLE_WORKFLOWS)
 
 

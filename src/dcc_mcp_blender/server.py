@@ -246,9 +246,9 @@ class BlenderMcpServer(DccServerBase):
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    def start(self) -> "BlenderMcpServer":
+    def start(self, *, install_atexit_hook: bool = True) -> "BlenderMcpServer":
         """Start the MCP HTTP server.  Returns *self* for chaining."""
-        super().start()
+        super().start(install_atexit_hook=install_atexit_hook)
         return self
 
     # ── Progressive skill loading ──────────────────────────────────────────────
@@ -279,41 +279,37 @@ class BlenderMcpServer(DccServerBase):
         logger.debug("BlenderMcpServer: discovered %d new skill(s)", count)
         return count
 
-    def load_skill(self, skill_name: str) -> List[str]:  # type: ignore[override]
-        """Load a skill by name — imports scripts and registers tools.
+    def load_skill(self, skill_name: str) -> bool:
+        """Load a skill by name.
 
         Args:
             skill_name: Skill name as declared in ``SKILL.md`` (e.g. ``"blender-scene"``).
 
         Returns:
-            List of action names that were registered.
-
-        Raises:
-            RuntimeError: If the server is not running.
+            ``True`` when the core server accepted the load request.
         """
-        if self._handle is None:
-            raise RuntimeError("Server is not running — call start() first")
-        actions = self._server.load_skill(skill_name)
-        logger.debug("BlenderMcpServer: loaded skill %r → actions: %s", skill_name, actions)
-        return actions
+        try:
+            self._server.load_skill(skill_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("BlenderMcpServer: load_skill(%r) failed: %s", skill_name, exc)
+            return False
+        return True
 
-    def unload_skill(self, skill_name: str) -> int:  # type: ignore[override]
+    def unload_skill(self, skill_name: str) -> bool:
         """Unload a skill, removing its tools from the registry.
 
         Args:
             skill_name: Skill name to unload.
 
         Returns:
-            Number of actions removed.
-
-        Raises:
-            RuntimeError: If the server is not running.
+            ``True`` when the core server accepted the unload request.
         """
-        if self._handle is None:
-            raise RuntimeError("Server is not running — call start() first")
-        count = self._server.unload_skill(skill_name)
-        logger.debug("BlenderMcpServer: unloaded skill %r (%d action(s) removed)", skill_name, count)
-        return count
+        try:
+            self._server.unload_skill(skill_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("BlenderMcpServer: unload_skill(%r) failed: %s", skill_name, exc)
+            return False
+        return True
 
     def list_skills(self, status: Optional[str] = None) -> List[Dict[str, Any]]:  # type: ignore[override]
         """List all discovered skills with their load status.
@@ -328,30 +324,52 @@ class BlenderMcpServer(DccServerBase):
             return []
         return list(self._server.list_skills(status=status))  # type: ignore[arg-type]
 
-    def find_skills(  # type: ignore[override]
+    def search_skills(  # type: ignore[override]
         self,
         query: Optional[str] = None,
         tags: Optional[List[str]] = None,
         dcc: Optional[str] = None,
+        scope: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Search for skills matching the given criteria.
-
-        Wraps the inner server's :meth:`search_skills` (dcc-mcp-core 0.15+); the
-        ``find_skills`` name is kept for backward compatibility with scripts
-        and tests.
 
         Args:
             query: Free-text query matched against skill name/description.
             tags: Required tags (skill must have all).
             dcc: DCC filter (defaults to ``"blender"``).
+            scope: Optional skill scope filter (``"system"``, ``"project"``, etc.).
+            limit: Optional maximum number of results.
 
         Returns:
             List of matching skill metadata dicts, or ``[]`` if not running.
         """
         if self._handle is None:
             return []
-        # The Rust binding requires a Sequence for tags; pass [] instead of None
-        return list(self._server.search_skills(query=query, tags=tags or [], dcc=dcc or _DCC_NAME))  # type: ignore[arg-type]
+        try:
+            return list(
+                self._server.search_skills(
+                    query=query,
+                    tags=tags or [],
+                    dcc=dcc or _DCC_NAME,
+                    scope=scope,
+                    limit=limit,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("BlenderMcpServer: search_skills failed: %s", exc)
+            return []
+
+    def find_skills(
+        self,
+        query: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        dcc: Optional[str] = None,
+        scope: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Backward-compatible alias for :meth:`search_skills`."""
+        return self.search_skills(query=query, tags=tags, dcc=dcc, scope=scope, limit=limit)
 
     def is_skill_loaded(self, skill_name: str) -> bool:  # type: ignore[override]
         """Return ``True`` if the named skill is currently loaded."""

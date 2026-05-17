@@ -217,23 +217,17 @@ class TestProgressiveLoading:
         server = BlenderMcpServer(port=0)
         assert not server.is_skill_loaded("blender-scene")
 
-    def test_load_skill_raises_when_not_running(self):
-        import pytest
-
+    def test_load_skill_returns_false_when_not_discovered(self):
         from dcc_mcp_blender.server import BlenderMcpServer
 
         server = BlenderMcpServer(port=0)
-        with pytest.raises(RuntimeError, match="not running"):
-            server.load_skill("blender-scene")
+        assert server.load_skill("blender-scene") is False
 
-    def test_unload_skill_raises_when_not_running(self):
-        import pytest
-
+    def test_unload_skill_returns_false_when_not_discovered(self):
         from dcc_mcp_blender.server import BlenderMcpServer
 
         server = BlenderMcpServer(port=0)
-        with pytest.raises(RuntimeError, match="not running"):
-            server.unload_skill("blender-scene")
+        assert server.unload_skill("blender-scene") is False
 
     def test_list_skills_after_start(self):
         from dcc_mcp_blender.server import BlenderMcpServer
@@ -304,13 +298,39 @@ class TestProgressiveLoading:
         from unittest.mock import MagicMock
 
         mock_inner = MagicMock()
-        mock_inner.find_skills.return_value = [{"name": "blender-scene"}]
+        mock_inner.search_skills.return_value = [{"name": "blender-scene"}]
 
         server = self._make_server_with_mock(mock_inner)
         try:
             result = server.find_skills(query="scene", tags=["blender"], dcc="blender")
             assert result == [{"name": "blender-scene"}]
-            mock_inner.find_skills.assert_called_once_with(query="scene", tags=["blender"], dcc="blender")
+            mock_inner.search_skills.assert_called_once_with(
+                query="scene",
+                tags=["blender"],
+                dcc="blender",
+                scope=None,
+                limit=None,
+            )
+        finally:
+            server.stop()
+
+    def test_search_skills_forwards_scope_and_limit(self):
+        from unittest.mock import MagicMock
+
+        mock_inner = MagicMock()
+        mock_inner.search_skills.return_value = [{"name": "blender-scene"}]
+
+        server = self._make_server_with_mock(mock_inner)
+        try:
+            result = server.search_skills(query="scene", scope="system", limit=3)
+            assert result == [{"name": "blender-scene"}]
+            mock_inner.search_skills.assert_called_once_with(
+                query="scene",
+                tags=[],
+                dcc="blender",
+                scope="system",
+                limit=3,
+            )
         finally:
             server.stop()
 
@@ -319,12 +339,12 @@ class TestProgressiveLoading:
         from unittest.mock import MagicMock
 
         mock_inner = MagicMock()
-        mock_inner.find_skills.return_value = []
+        mock_inner.search_skills.return_value = []
 
         server = self._make_server_with_mock(mock_inner)
         try:
             server.find_skills(dcc="blender")  # tags not passed → None
-            _call_kwargs = mock_inner.find_skills.call_args
+            _call_kwargs = mock_inner.search_skills.call_args
             assert _call_kwargs.kwargs["tags"] == []
         finally:
             server.stop()
@@ -338,8 +358,7 @@ class TestProgressiveLoading:
 
         server = self._make_server_with_mock(mock_inner)
         try:
-            actions = server.load_skill("blender-scene")
-            assert actions == ["blender_scene__get_session_info", "blender_scene__list_objects"]
+            assert server.load_skill("blender-scene") is True
             mock_inner.load_skill.assert_called_once_with("blender-scene")
             # is_skill_loaded now delegates to _server.is_loaded
             assert server.is_skill_loaded("blender-scene") is True
@@ -355,8 +374,7 @@ class TestProgressiveLoading:
 
         server = self._make_server_with_mock(mock_inner)
         try:
-            removed = server.unload_skill("blender-scene")
-            assert removed == 5
+            assert server.unload_skill("blender-scene") is True
             mock_inner.unload_skill.assert_called_once_with("blender-scene")
             assert server.is_skill_loaded("blender-scene") is False
         finally:
@@ -422,14 +440,12 @@ class TestProgressiveLoading:
         server = self._make_server_with_mock(mock_inner)
         try:
             # Load
-            actions = server.load_skill("blender-scene")
-            assert actions == ["action_a", "action_b"]
+            assert server.load_skill("blender-scene") is True
             assert server.is_skill_loaded("blender-scene") is True
             assert server.loaded_skill_count() == 1
 
             # Unload
-            removed = server.unload_skill("blender-scene")
-            assert removed == 2
+            assert server.unload_skill("blender-scene") is True
             assert server.is_skill_loaded("blender-scene") is False
             assert server.loaded_skill_count() == 0
 

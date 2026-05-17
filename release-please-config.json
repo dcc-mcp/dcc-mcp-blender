@@ -12,13 +12,12 @@
       "bump-patch-for-minor-pre-major": true,
       "extra-files": [
         {
-          "type": "toml",
-          "path": "pyproject.toml",
-          "jsonpath": "$.project.version"
+          "type": "generic",
+          "path": "src/dcc_mcp_blender/__version__.py"
         },
         {
           "type": "generic",
-          "path": "src/dcc_mcp_blender/__version__.py"
+          "path": "packaging/addon_entry/blender_manifest.toml"
         }
       ]
     }

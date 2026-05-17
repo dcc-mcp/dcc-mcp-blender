@@ -1,10 +1,24 @@
 """Assemble a Blender addon ZIP package for dcc-mcp-blender.
 
 This script:
-1. Resolves the latest compatible dcc-mcp-core version from PyPI
-2. Downloads the appropriate platform wheel(s)
-3. Bundles the dcc_mcp_blender package + dcc-mcp-core into a Blender addon ZIP
-4. Produces a file named ``dcc_mcp_blender_addon_{platform}_v{version}.zip``
+1. Resolves the latest compatible dcc-mcp-core version from PyPI (>= MIN_CORE_VERSION).
+2. Downloads the best platform wheel (prefer ``cp38-abi3-*`` — PyPI does not ship
+   ``cp311-cp311-*`` builds; Blender 4.x Python still loads stable-ABI wheels).
+3. Copies the ``dcc-mcp-core`` **wheel** into ``wheels/`` and records it in
+   ``blender_manifest.toml`` under ``wheels = [...]`` so Blender installs it into
+   the extension's isolated ``site-packages`` (no ``sys.path`` hacks, no loose
+   ``dcc_mcp_core/`` tree — required for Blender 4.2+ extensions policy).
+4. Bundles ``dcc_mcp_blender/`` (adapter + skills) under the same folder.
+5. Produces ``dcc_mcp_blender_addon_{platform}_v{version}.zip`` — install via
+   **Edit → Preferences → Extensions → Install from Disk** (recommended) or
+   legacy add-ons path (extensions layout + wheels is still valid when installed
+   as an extension from disk).
+
+Version strings in ``pyproject.toml``, ``src/dcc_mcp_blender/__version__.py``, and
+``packaging/addon_entry/blender_manifest.toml`` are maintained by **release-please**
+only; this script reads ``pyproject.toml`` for the ZIP filename, copies the manifest
+from ``addon_entry/``, then appends the ``wheels = [...]`` entry for the downloaded
+``dcc-mcp-core`` wheel basename.
 
 Usage::
 
@@ -16,12 +30,9 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import io
-import os
 import pathlib
 import re
 import shutil
-import sys
 import tempfile
 import urllib.request
 import zipfile
@@ -30,19 +41,45 @@ import zipfile
 
 PACKAGE_ROOT = pathlib.Path(__file__).parent.parent
 SRC_DIR = PACKAGE_ROOT / "src" / "dcc_mcp_blender"
+ADDON_ENTRY_DIR = PACKAGE_ROOT / "packaging" / "addon_entry"
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 
-MIN_CORE_VERSION = "0.12.18"
+# Must stay in sync with ``pyproject.toml`` dependency floor.
+MIN_CORE_VERSION = "0.17.5"
 CORE_PACKAGE = "dcc-mcp-core"
+ADDON_PLATFORMS = ("win64", "linux", "macos")
 
-# Platform → Python ABI tag (Blender 4.x ships Python 3.11+)
-PLATFORM_PYTHON = {
-    "win64": [("cp311-cp311-win_amd64", "3.11"), ("cp310-cp310-win_amd64", "3.10")],
-    "linux": [("cp311-cp311-linux_x86_64", "3.11"), ("cp310-cp310-linux_x86_64", "3.10")],
-    "macos": [("cp311-cp311-macosx_10_15_x86_64", "3.11"), ("cp311-cp311-macosx_11_0_arm64", "3.11")],
-}
+# PyPI ships ``cp38-abi3-*`` wheels (stable ABI) for win/linux/macos — not cp311-tagged wheels.
+# Match platform first, then prefer stable abi3 builds.
 
 PYPI_URL = "https://pypi.org/pypi/{package}/json"
+
+# Never bundle mistaken local trees (e.g. accidental wheel extracts under src/).
+_SKIPPED_TOP_LEVEL_NAMES = frozenset({"dcc_mcp_blender", "dcc_mcp_core", "__pycache__"})
+
+
+def _ignore_for_addon_copy(path: str, names: list[str]) -> set[str]:
+    """Skip junk subtrees and bytecode when staging the addon."""
+    ignored: set[str] = set()
+    try:
+        if pathlib.Path(path).resolve() == SRC_DIR.resolve():
+            ignored.update(n for n in names if n in _SKIPPED_TOP_LEVEL_NAMES)
+    except OSError:
+        pass
+    ignored.update(n for n in names if n == "__pycache__" or n.endswith(".pyc"))
+    return ignored
+
+
+def _verify_skills_payload(staged_pkg: pathlib.Path) -> None:
+    """Fail fast when the bundled skill tree is incomplete."""
+    skills_dir = staged_pkg / "skills"
+    if not skills_dir.is_dir():
+        raise RuntimeError(f"Missing skills directory after copy: {skills_dir}")
+    skill_manifests = list(skills_dir.glob("*/SKILL.md"))
+    if len(skill_manifests) < 10:
+        raise RuntimeError(
+            f"Expected at least 10 bundled skills (SKILL.md), found {len(skill_manifests)} under {skills_dir}"
+        )
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -70,39 +107,72 @@ def resolve_core_version(min_version: str = MIN_CORE_VERSION) -> str:
     return str(best)
 
 
-def download_core_wheels(version: str, platform: str, dest_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Download dcc-mcp-core wheel(s) for the given platform."""
+def _wheel_matches_platform(filename: str, platform: str) -> bool:
+    if not filename.endswith(".whl"):
+        return False
+    if platform == "win64":
+        return "win_amd64" in filename or "win32" in filename
+    if platform == "linux":
+        return "linux" in filename and ("x86_64" in filename or "aarch64" in filename)
+    if platform == "macos":
+        return "macosx" in filename
+    return False
+
+
+def _wheel_rank(filename: str) -> tuple[int, str]:
+    """Lower tuple sorts first (more desirable)."""
+    if "cp38-abi3" in filename:
+        pri = 0
+    elif "abi3" in filename:
+        pri = 1
+    elif "cp312" in filename:
+        pri = 2
+    elif "cp311" in filename:
+        pri = 3
+    elif "cp310" in filename:
+        pri = 4
+    elif "py3-none-any" in filename or "py310-none-any" in filename or "py311-none-any" in filename:
+        pri = 5
+    else:
+        pri = 50
+    return (pri, filename)
+
+
+def pick_core_wheel_file(release_files: list[dict], platform: str) -> dict | None:
+    """Return the single best PyPI file dict for *platform*, or ``None``."""
+    candidates = [f for f in release_files if _wheel_matches_platform(f.get("filename", ""), platform)]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda f: _wheel_rank(f["filename"]))
+    return candidates[0]
+
+
+def download_core_wheel(version: str, platform: str, dest_dir: pathlib.Path) -> pathlib.Path:
+    """Download exactly one dcc-mcp-core wheel for *platform*.
+
+    Raises:
+        RuntimeError: When no compatible wheel exists on PyPI for this platform/version.
+    """
     data = _fetch_json(PYPI_URL.format(package=CORE_PACKAGE))
     release_files = data["releases"].get(version, [])
+    pick = pick_core_wheel_file(release_files, platform)
+    if pick is None:
+        sample = [f["filename"] for f in release_files if f["filename"].endswith(".whl")][:12]
+        raise RuntimeError(
+            f"No {CORE_PACKAGE} wheel for platform={platform!r} at version {version!r}. "
+            f"PyPI wheel sample: {sample}"
+        )
 
-    abi_patterns = PLATFORM_PYTHON.get(platform, [])
-    # Also accept any3 / abi3 wheels (py3-none-any or cp3X-abi3)
-    generic_patterns = ["py3-none-any", "py310-none-any", "py311-none-any"]
-
-    downloaded: list[pathlib.Path] = []
     dest_dir.mkdir(parents=True, exist_ok=True)
-
-    for file_info in release_files:
-        filename = file_info["filename"]
-        if not filename.endswith(".whl"):
-            continue
-
-        matched = any(pat in filename for pat, _ in abi_patterns)
-        generic_match = any(p in filename for p in generic_patterns)
-
-        if matched or generic_match:
-            url = file_info["url"]
-            dest = dest_dir / filename
-            if not dest.exists():
-                print(f"  Downloading: {filename}")
-                urllib.request.urlretrieve(url, dest)  # noqa: S310
-            else:
-                print(f"  Cached: {filename}")
-            downloaded.append(dest)
-
-    if not downloaded:
-        print(f"  Warning: no wheels found for platform '{platform}', skipping core bundling")
-    return downloaded
+    filename = pick["filename"]
+    url = pick["url"]
+    dest = dest_dir / filename
+    if not dest.exists():
+        print(f"  Downloading: {filename}")
+        urllib.request.urlretrieve(url, dest)  # noqa: S310
+    else:
+        print(f"  Cached: {filename}")
+    return dest
 
 
 def extract_wheel(wheel_path: pathlib.Path, dest_dir: pathlib.Path) -> None:
@@ -123,11 +193,36 @@ def get_package_version() -> str:
     return m.group(1)
 
 
+def _read_assigned_quoted_string(path: pathlib.Path, key: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    m = re.search(rf"^{re.escape(key)}\s*=\s*\"([^\"]+)\"", text, re.MULTILINE)
+    if not m:
+        raise RuntimeError(f"Could not find {key} = \"…\" in {path}")
+    return m.group(1)
+
+
+def assert_release_please_versions_aligned() -> None:
+    """Fail fast when version sources drift (all bumps go through release-please)."""
+    py_v = get_package_version()
+    mod_v = _read_assigned_quoted_string(PACKAGE_ROOT / "src" / "dcc_mcp_blender" / "__version__.py", "__version__")
+    man_v = _read_assigned_quoted_string(ADDON_ENTRY_DIR / "blender_manifest.toml", "version")
+    if py_v == mod_v == man_v:
+        return
+    raise RuntimeError(
+        "Version mismatch — keep pyproject.toml, __version__.py, and blender_manifest.toml "
+        "in sync via release-please only:\n"
+        f"  pyproject.toml:        {py_v!r}\n"
+        f"  __version__.py:        {mod_v!r}\n"
+        f"  blender_manifest.toml: {man_v!r}"
+    )
+
+
 def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
     """Assemble the addon ZIP for the given platform.
 
     Returns the path to the created ZIP file.
     """
+    assert_release_please_versions_aligned()
     version = get_package_version()
     zip_name = f"dcc_mcp_blender_addon_{platform}_v{version}.zip"
     zip_path = output_dir / zip_name
@@ -141,22 +236,24 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
 
         # 1) Copy dcc_mcp_blender package source
         print("Copying dcc_mcp_blender package...")
-        shutil.copytree(SRC_DIR, addon_dir / "dcc_mcp_blender")
+        staged_pkg = addon_dir / "dcc_mcp_blender"
+        shutil.copytree(SRC_DIR, staged_pkg, ignore=_ignore_for_addon_copy, dirs_exist_ok=False)
+        _verify_skills_payload(staged_pkg)
 
         # 2) Download and extract dcc-mcp-core
         print(f"Resolving {CORE_PACKAGE}...")
-        try:
-            core_version = resolve_core_version()
-            wheels_dir = tmp_dir / "wheels"
-            wheels = download_core_wheels(core_version, platform, wheels_dir)
-            for wheel in wheels:
-                print(f"  Extracting {wheel.name}...")
-                extract_wheel(wheel, addon_dir)
-        except Exception as e:
-            print(f"Warning: could not bundle dcc-mcp-core: {e}")
+        core_version = resolve_core_version()
+        wheels_dir = tmp_dir / "wheels"
+        wheel = download_core_wheel(core_version, platform, wheels_dir)
+        wheels_out = addon_dir / "wheels"
+        wheels_out.mkdir(parents=True, exist_ok=True)
+        staged_wheel = wheels_out / wheel.name
+        shutil.copy2(wheel, staged_wheel)
+        print(f"  Bundled wheel: {staged_wheel.relative_to(addon_dir)}")
 
-        # 3) Write __init__.py for Blender addon registration
-        _write_addon_init(addon_dir, version)
+        # 3) Stage add-on root: ``__init__.py`` + ``blender_manifest.toml`` (4.2+ extensions)
+        _stage_addon_entry(addon_dir)
+        _inject_wheels_into_manifest(addon_dir / "blender_manifest.toml", [wheel.name])
 
         # 4) Zip everything
         print(f"Creating {zip_name}...")
@@ -170,61 +267,29 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
     return zip_path
 
 
-def _write_addon_init(addon_dir: pathlib.Path, version: str) -> None:
-    """Write a Blender-compatible __init__.py at the addon root."""
-    init_path = addon_dir / "__init__.py"
-    # Only overwrite if it doesn't already have bl_info
-    existing = init_path.read_text(encoding="utf-8") if init_path.exists() else ""
-    if "bl_info" in existing:
-        return
+def _inject_wheels_into_manifest(manifest_path: pathlib.Path, wheel_basenames: list[str]) -> None:
+    """Write ``wheels = [...]`` for Blender's extension wheel installer.
 
-    major, minor, patch = version.split(".")[:3]
-    content = f'''"""Blender Addon: DCC MCP Blender.
-
-Auto-generated addon entry point — wraps dcc_mcp_blender.
-"""
-
-import sys
-import os
-
-# Ensure the addon directory is on sys.path so bundled packages are importable
-_addon_dir = os.path.dirname(__file__)
-if _addon_dir not in sys.path:
-    sys.path.insert(0, _addon_dir)
-
-bl_info = {{
-    "name": "DCC MCP Blender",
-    "author": "Long Hao",
-    "version": ({major}, {minor}, {patch}),
-    "blender": (4, 0, 0),
-    "location": "Properties > Scene > DCC MCP",
-    "description": "Embeds an MCP HTTP server directly inside Blender for AI-driven 3D workflows",
-    "category": "System",
-    "doc_url": "https://github.com/loonghao/dcc-mcp-blender",
-    "tracker_url": "https://github.com/loonghao/dcc-mcp-blender/issues",
-}}
+    See https://docs.blender.org/manual/en/latest/advanced/extensions/python_wheels.html
+    """
+    text = manifest_path.read_text(encoding="utf-8")
+    text = re.sub(r"\n+wheels\s*=\s*\[.*?\]\s*", "\n", text, flags=re.DOTALL)
+    lines = [f'    "./wheels/{name}"' for name in wheel_basenames]
+    block = "\nwheels = [\n" + ",\n".join(lines) + ",\n]\n"
+    manifest_path.write_text(text.rstrip() + block, encoding="utf-8")
 
 
-def register():
-    """Start the MCP server when the addon is enabled."""
-    try:
-        from dcc_mcp_blender.server import start_server
-        start_server()
-        print("[DCC MCP Blender] Server started on http://127.0.0.1:8765/mcp")
-    except Exception as e:
-        print(f"[DCC MCP Blender] Failed to start server: {{e}}")
+def _stage_addon_entry(addon_dir: pathlib.Path) -> None:
+    """Copy packaged add-on entry (menu, manifest) into the staged ZIP root."""
+    init_src = ADDON_ENTRY_DIR / "__init__.py"
+    manifest_src = ADDON_ENTRY_DIR / "blender_manifest.toml"
+    if not init_src.is_file():
+        raise RuntimeError(f"Missing add-on entry __init__.py: {init_src}")
+    if not manifest_src.is_file():
+        raise RuntimeError(f"Missing blender_manifest.toml: {manifest_src}")
 
-
-def unregister():
-    """Stop the MCP server when the addon is disabled."""
-    try:
-        from dcc_mcp_blender.server import stop_server
-        stop_server()
-        print("[DCC MCP Blender] Server stopped")
-    except Exception as e:
-        print(f"[DCC MCP Blender] Failed to stop server: {{e}}")
-'''
-    init_path.write_text(content, encoding="utf-8")
+    shutil.copy2(init_src, addon_dir / "__init__.py")
+    shutil.copy2(manifest_src, addon_dir / "blender_manifest.toml")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -234,7 +299,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Assemble Blender addon ZIP for dcc-mcp-blender")
     parser.add_argument(
         "--platform",
-        choices=list(PLATFORM_PYTHON.keys()),
+        choices=list(ADDON_PLATFORMS),
         default="linux",
         help="Target platform (default: linux)",
     )
