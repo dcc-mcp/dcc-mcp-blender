@@ -21,8 +21,9 @@
           "path": "src/dcc_mcp_blender/__version__.py"
         },
         {
-          "type": "generic",
-          "path": "packaging/addon_entry/blender_manifest.toml"
+          "type": "toml",
+          "path": "packaging/addon_entry/blender_manifest.toml",
+          "jsonpath": "$.version"
         }
       ]
     }
