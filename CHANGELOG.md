@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.3](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.2...v0.1.3) (2026-05-18)
+
+
+### Features
+
+* add _env module and dispatcher module for Blender MCP server ([b1f7597](https://github.com/loonghao/dcc-mcp-blender/commit/b1f7597508d609a0d5d713c61c23d2633f27628a))
+* add blender-dev-build-link-core-win (align with Maya) ([05a3dcb](https://github.com/loonghao/dcc-mcp-blender/commit/05a3dcb0643dcf2644d5a977128a602b0ddc6d53))
+* add justfile and tools for local Blender development ([5bac68d](https://github.com/loonghao/dcc-mcp-blender/commit/5bac68dac54b04680797a3d02b337b2f38839cac))
+* align addon packaging with core 0.17.5 ([091a19c](https://github.com/loonghao/dcc-mcp-blender/commit/091a19c8ef9eb2f867769bf2920c68b8293eb189))
+* align with dcc-mcp-core 0.17.2 API (add diagnostics/execution options) ([d1d7a49](https://github.com/loonghao/dcc-mcp-blender/commit/d1d7a49904e2d62a99d7540c8db8d4f8ef6c6a23))
+* expand Blender host skills and release flow ([ccc6b77](https://github.com/loonghao/dcc-mcp-blender/commit/ccc6b7785e91929e7ce9f22eaf75b7a9d3385992))
+
+
+### Bug Fixes
+
+* add blender callable dispatcher ([ce5fe91](https://github.com/loonghao/dcc-mcp-blender/commit/ce5fe916a46bbd28c7eaf9284fa911ab93263ec1))
+* export obj without ui context ([30c478c](https://github.com/loonghao/dcc-mcp-blender/commit/30c478c1188ef3b7a4fb4cd701307b6e452b7673))
+* migrate blender skills metadata schema ([4d41b71](https://github.com/loonghao/dcc-mcp-blender/commit/4d41b716a0106c2efc39c4fbdb2cb5d94f99ff84))
+* resolve active object in headless blender ([ba644e6](https://github.com/loonghao/dcc-mcp-blender/commit/ba644e6e2d4a43bb5f00002d039b0b57ed06ba30))
+
+
+### Code Refactoring
+
+* inherit DccServerBase from dcc-mcp-core, upgrade to &gt;=0.12.29 ([#10](https://github.com/loonghao/dcc-mcp-blender/issues/10)) ([4a453c5](https://github.com/loonghao/dcc-mcp-blender/commit/4a453c5929c89a1dfe2fcf7d57ef2c1f75b4f81c))
+
 ## [0.1.2](https://github.com/loonghao/dcc-mcp-blender/compare/dcc-mcp-blender-v0.1.1...dcc-mcp-blender-v0.1.2) (2026-04-15)
 
 
