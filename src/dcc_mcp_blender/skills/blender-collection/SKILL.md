@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, collection, hierarchy, organization]
     search-hint: "collection, group, organize, hierarchy"
-    depends: []
     tools: tools.yaml
 ---
 

@@ -47,23 +47,19 @@ default:
 # Run ruff check on src/ and tests/
 @lint:
     echo "🔍 Running ruff lint check..."
-    python -m ruff check src/ tests/
+    python -m ruff check src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
     echo "✅ Lint check passed"
 
 # Auto-fix ruff errors
 @lint-fix:
     echo "🔧 Auto-fixing ruff errors..."
-    python -m ruff check --fix src/ tests/
+    python -m ruff check --fix src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
     echo "✅ Lint errors fixed"
 
 # Lint SKILL.md files
 @lint-skills:
     echo "🔍 Linting SKILL.md files..."
-    @if [ -f "tools/lint_skills.py" ]; then \
-        python tools/lint_skills.py --error-only; \
-    else \
-        echo "⚠️  tools/lint_skills.py not found, skipping"; \
-    fi
+    python tools/lint_skills.py --warnings-as-errors
     echo "✅ SKILL.md lint passed"
 
 # Run all lint checks
@@ -75,14 +71,12 @@ lint-all: lint lint-skills
 # Usage: vx just prek   or   just prek
 @prek:
     echo "🔧 Auto-fixing ruff errors..."
-    python -m ruff check --fix src/ tests/
+    python -m ruff check --fix src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
     echo "🎨 Formatting with ruff..."
-    python -m ruff format src/ tests/
+    python -m ruff format src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
     echo "🔍 Running all lint checks..."
-    python -m ruff check src/ tests/
-    @if [ -f "tools/lint_skills.py" ]; then \
-        python tools/lint_skills.py --error-only; \
-    fi
+    python -m ruff check src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
+    python tools/lint_skills.py --warnings-as-errors
     echo "🧪 Running quick tests..."
     python -m pytest tests/ -x -q --ignore=tests/test_e2e_blender_standalone.py 2>/dev/null || python -m pytest tests/ -x -q
     echo "✅ prek passed — safe to commit"

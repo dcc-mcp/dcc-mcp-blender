@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, animation, keyframes]
     search-hint: "keyframe, animation, frame range, action, timeline"
-    depends: []
     tools: tools.yaml
 ---
 

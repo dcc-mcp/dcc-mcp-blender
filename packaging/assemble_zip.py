@@ -45,7 +45,7 @@ ADDON_ENTRY_DIR = PACKAGE_ROOT / "packaging" / "addon_entry"
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 
 # Must stay in sync with ``pyproject.toml`` dependency floor.
-MIN_CORE_VERSION = "0.17.6"
+MIN_CORE_VERSION = "0.17.8"
 CORE_PACKAGE = "dcc-mcp-core"
 ADDON_PLATFORMS = ("win64", "linux", "macos")
 

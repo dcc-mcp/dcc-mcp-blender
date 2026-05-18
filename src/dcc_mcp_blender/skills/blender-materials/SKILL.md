@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, materials, shading]
     search-hint: "create material, assign, color, shader, PBR, list materials"
-    depends: []
     tools: tools.yaml
 ---
 

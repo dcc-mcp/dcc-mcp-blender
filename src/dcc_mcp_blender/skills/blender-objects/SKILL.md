@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, objects, transform]
     search-hint: "create object, delete, move, rotate, scale, duplicate, select"
-    depends: []
     tools: tools.yaml
 ---
 

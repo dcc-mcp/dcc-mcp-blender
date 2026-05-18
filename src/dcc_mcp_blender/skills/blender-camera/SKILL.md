@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, camera, viewport]
     search-hint: "camera, lens, focal length, active camera, perspective"
-    depends: []
     tools: tools.yaml
 ---
 

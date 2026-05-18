@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, lighting, lights, world]
     search-hint: "create light, point, sun, area, spot, energy, color, world background, environment lighting"
-    depends: []
     tools: tools.yaml
 ---
 

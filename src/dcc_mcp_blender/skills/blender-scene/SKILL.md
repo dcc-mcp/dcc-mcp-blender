@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, scene, hierarchy]
     search-hint: "new scene, open, save, list objects, hierarchy, scene info"
-    depends: []
     tools: tools.yaml
 ---
 

@@ -25,9 +25,9 @@ jobs:
       - name: Install ruff
         run: pip install ruff>=0.8.0
       - name: Ruff check
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
       - name: Ruff format check
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ tools/lint_skills.py packaging/assemble_zip.py
 
   lint-skills:
     name: Lint SKILL.md files
@@ -38,9 +38,14 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install skill validation dependencies
-        run: pip install pyyaml "dcc-mcp-core>=0.17.6,<1.0.0"
+        run: pip install pyyaml "dcc-mcp-core>=0.17.8,<1.0.0"
+      - name: Install dcc-mcp-cli
+        run: |
+          export DCC_MCP_INSTALL_DIR="$RUNNER_TEMP/dcc-mcp-bin"
+          curl -fsSL https://raw.githubusercontent.com/loonghao/dcc-mcp-core/main/scripts/install-cli.sh | bash
+          echo "$RUNNER_TEMP/dcc-mcp-bin" >> "$GITHUB_PATH"
       - name: Validate SKILL.md front-matter
-        run: python tests/test_lint_skills.py
+        run: python tools/lint_skills.py --warnings-as-errors
 
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}

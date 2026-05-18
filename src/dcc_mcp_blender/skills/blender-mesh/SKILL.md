@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, mesh, modifier, geometry]
     search-hint: "modifier, subdivision, smooth, apply modifier, mesh edit"
-    depends: []
     tools: tools.yaml
 ---
 

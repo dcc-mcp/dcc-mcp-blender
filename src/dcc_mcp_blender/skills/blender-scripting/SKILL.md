@@ -9,7 +9,6 @@ metadata:
     version: "1.0.0"
     tags: [blender, scripting, python, automation]
     search-hint: "execute python, run script, blender python, bpy"
-    depends: []
     tools: tools.yaml
 ---
 
