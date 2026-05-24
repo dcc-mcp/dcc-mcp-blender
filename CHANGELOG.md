@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.3...v0.1.4) (2026-05-24)
+
+
+### Features
+
+* expand blender mcp skills ([f7c2f4e](https://github.com/loonghao/dcc-mcp-blender/commit/f7c2f4e20206f2ebf190eea2c052c0d61d01a357))
+
 ## [0.1.3](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.2...v0.1.3) (2026-05-18)
 
 
