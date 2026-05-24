@@ -2,42 +2,56 @@ tools:
   - name: create_object
     description: "Create a new Blender object (mesh primitive, empty, etc.)"
     source_file: scripts/create_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: delete_object
     description: "Delete an object from the scene"
     source_file: scripts/delete_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: true
     idempotent: false
   - name: duplicate_object
     description: "Duplicate an existing object"
     source_file: scripts/duplicate_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: move_object
     description: "Move an object to a specified location"
     source_file: scripts/move_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true
   - name: rotate_object
     description: "Rotate an object by Euler angles (degrees)"
     source_file: scripts/rotate_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true
   - name: scale_object
     description: "Scale an object"
     source_file: scripts/scale_object.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true
   - name: get_object_info
     description: "Get detailed information about an object"
     source_file: scripts/get_object_info.py
+    execution: sync
+    affinity: main
     read_only: true
     destructive: false
     idempotent: true

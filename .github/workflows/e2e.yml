@@ -375,6 +375,28 @@ jobs:
           call_tool create_material \
             name:mcporterMat
 
+          # ── 7b. Shader nodes, geometry nodes, and physics ───────────────────
+          call_tool list_material_nodes \
+            material_name:mcporterMat
+
+          call_tool set_principled_input \
+            material_name:mcporterMat input_name:Metallic value:0.35
+
+          call_tool add_geometry_nodes_modifier \
+            object_name:mcporterCube name:mcporterGeoNodes group_name:mcporterGeoGroup
+
+          call_tool list_geometry_nodes_modifiers \
+            object_name:mcporterCube
+
+          call_tool add_rigid_body \
+            object_name:mcporterCube mass:2.0 collision_shape:BOX
+
+          call_tool set_rigid_body_properties \
+            object_name:mcporterCube mass:3.0 friction:0.2
+
+          call_tool remove_rigid_body \
+            object_name:mcporterCube
+
           # ── 8. Python scripting (execute arbitrary Blender Python) ──────────
           call_tool execute_python \
             "code:import bpy; bpy.ops.mesh.primitive_cone_add()"

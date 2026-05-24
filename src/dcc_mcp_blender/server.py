@@ -27,11 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dcc_mcp_core import DccServerOptions
+from dcc_mcp_core import DccServerOptions, HostExecutionBridge
 from dcc_mcp_core.server_base import DccServerBase
 
 from dcc_mcp_blender import _env
 from dcc_mcp_blender.__version__ import __version__
+from dcc_mcp_blender.host import BlenderInlineCallableDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,21 @@ _ENV_EXTRA_SKILL_PATHS = "DCC_MCP_BLENDER_SKILL_PATHS"
 _ENV_GENERIC_SKILL_PATHS = "DCC_MCP_SKILL_PATHS"
 
 _DCC_NAME = "blender"
+
+
+def _is_host_queue_dispatcher(dispatcher: Any) -> bool:
+    """Return True for core QueueDispatcher / BlockingDispatcher-like objects."""
+    return callable(getattr(dispatcher, "post", None)) and callable(getattr(dispatcher, "tick", None))
+
+
+def _host_dispatcher_from(dispatcher: Any) -> Any | None:
+    """Resolve the core host dispatcher hidden behind adapter wrappers."""
+    if _is_host_queue_dispatcher(dispatcher):
+        return dispatcher
+    host_dispatcher = getattr(dispatcher, "host_dispatcher", None)
+    if host_dispatcher is not None and _is_host_queue_dispatcher(host_dispatcher):
+        return host_dispatcher
+    return None
 
 
 # ── options ─────────────────────────────────────────────────────────────────
@@ -83,6 +99,22 @@ class BlenderServerOptions:
 
     def to_core_options(self) -> DccServerOptions:
         """Convert to core DccServerOptions using from_env()."""
+        dispatcher = self.dispatcher
+        execution_bridge = self.execution_bridge
+        if execution_bridge is None and dispatcher is not None:
+            host_dispatcher = _host_dispatcher_from(dispatcher)
+            bridge_dispatcher = (
+                BlenderInlineCallableDispatcher(host_dispatcher) if host_dispatcher is not None else dispatcher
+            )
+            execution_bridge = HostExecutionBridge(
+                dispatcher=bridge_dispatcher,
+                host_dispatcher=host_dispatcher,
+                default_thread_affinity="main",
+            )
+            dispatcher = None
+        elif execution_bridge is not None:
+            dispatcher = None
+
         return DccServerOptions.from_env(
             dcc_name=_DCC_NAME,
             builtin_skills_dir=_BUILTIN_SKILLS_DIR,
@@ -105,8 +137,8 @@ class BlenderServerOptions:
             dcc_window_handle=self.dcc_window_handle,
             snapshot_provider=self.snapshot_provider,
             # Execution kwargs (new in 0.17+)
-            dispatcher=self.dispatcher,
-            execution_bridge=self.execution_bridge,
+            dispatcher=dispatcher,
+            execution_bridge=execution_bridge,
         )
 
 

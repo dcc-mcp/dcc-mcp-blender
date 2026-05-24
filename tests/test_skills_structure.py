@@ -18,6 +18,9 @@ EXPECTED_SKILLS = [
     "blender-camera",
     "blender-collection",
     "blender-geometry",
+    "blender-shader-nodes",
+    "blender-geometry-nodes",
+    "blender-physics",
 ]
 
 

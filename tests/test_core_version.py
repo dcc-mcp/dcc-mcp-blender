@@ -17,10 +17,10 @@ def _load_assemble_zip_module():
     return mod
 
 
-def test_core_dependency_floor_is_0178():
+def test_core_dependency_floor_is_01725():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '"dcc-mcp-core>=0.17.8,<1.0.0"' in pyproject
+    assert '"dcc-mcp-core>=0.17.25,<1.0.0"' in pyproject
 
 
 def test_packaging_core_floor_matches_pyproject():

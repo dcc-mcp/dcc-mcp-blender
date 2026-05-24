@@ -54,6 +54,37 @@ class TestBlenderMcpServerBasic:
         server = BlenderMcpServer()
         assert server.mcp_url is None
 
+    def test_dispatcher_is_wrapped_as_execution_bridge(self):
+        from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderInlineCallableDispatcher
+        from dcc_mcp_blender.server import BlenderMcpServer
+
+        dispatcher = BlenderCallableDispatcher()
+        server = BlenderMcpServer(port=0, dispatcher=dispatcher)
+
+        mode = server._options.execution.mode
+        assert getattr(mode, "kind", None) == "bridge"
+        assert isinstance(mode.bridge.dispatcher, BlenderInlineCallableDispatcher)
+        assert mode.bridge.host_dispatcher is dispatcher.host_dispatcher
+        assert mode.bridge.dispatch_callable(lambda: "ok") == "ok"
+
+    def test_explicit_execution_bridge_takes_precedence(self):
+        from dcc_mcp_core import HostExecutionBridge
+
+        from dcc_mcp_blender.host import BlenderCallableDispatcher
+        from dcc_mcp_blender.server import BlenderMcpServer
+
+        dispatcher = BlenderCallableDispatcher()
+        bridge = HostExecutionBridge(dispatcher=dispatcher)
+        server = BlenderMcpServer(
+            port=0,
+            dispatcher=BlenderCallableDispatcher(),
+            execution_bridge=bridge,
+        )
+
+        mode = server._options.execution.mode
+        assert getattr(mode, "kind", None) == "bridge"
+        assert mode.bridge is bridge
+
 
 class TestSkillPathCollection:
     """_collect_skill_paths respects all path sources."""

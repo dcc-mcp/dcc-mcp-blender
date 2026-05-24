@@ -18,7 +18,19 @@ DEFAULT_SKILLS_DIR = ROOT / "src" / "dcc_mcp_blender" / "skills"
 
 REQUIRED_FIELDS = {"name", "description", "metadata"}
 REQUIRED_DCC_MCP_FIELDS = {"dcc", "version", "tags", "search-hint", "tools"}
-REQUIRED_TOOL_FIELDS = {"name", "description", "source_file"}
+REQUIRED_TOOL_FIELDS = {
+    "name",
+    "description",
+    "source_file",
+    "execution",
+    "affinity",
+    "read_only",
+    "destructive",
+    "idempotent",
+}
+VALID_EXECUTION = {"sync", "async"}
+VALID_AFFINITY = {"main", "any"}
+SAFETY_FIELDS = {"read_only", "destructive", "idempotent"}
 
 
 def _find_dcc_mcp_cli() -> Optional[str]:
@@ -84,12 +96,12 @@ def lint_skills(
     warnings_as_errors: bool = False,
 ) -> List[str]:
     """Return validation errors for all skill directories under *skills_dir*."""
+    errors: List[str] = []
     if use_cli:
         cli_errors = lint_skills_with_cli(skills_dir, warnings_as_errors=warnings_as_errors)
         if cli_errors is not None:
-            return cli_errors
+            errors.extend(cli_errors)
 
-    errors: List[str] = []
     skill_dirs = [d for d in skills_dir.iterdir() if d.is_dir()]
     if not skill_dirs:
         return [f"No skill directories found under {skills_dir}"]
@@ -142,13 +154,52 @@ def lint_skills(
             continue
 
         for tool in tools:
+            tool_name = tool.get("name", "?")
             missing_tool = REQUIRED_TOOL_FIELDS - set(tool.keys())
             if missing_tool:
-                errors.append(f"{skill_dir.name}/{tool.get('name', '?')}: missing tool fields: {missing_tool}")
+                errors.append(f"{skill_dir.name}/{tool_name}: missing tool fields: {missing_tool}")
 
-            source = skill_dir / tool.get("source_file", "")
+            execution = tool.get("execution")
+            if execution is not None and execution not in VALID_EXECUTION:
+                errors.append(
+                    f"{skill_dir.name}/{tool_name}: invalid execution {execution!r}; "
+                    f"expected one of {sorted(VALID_EXECUTION)}"
+                )
+
+            affinity = tool.get("affinity")
+            if affinity is not None and affinity not in VALID_AFFINITY:
+                errors.append(
+                    f"{skill_dir.name}/{tool_name}: invalid affinity {affinity!r}; "
+                    f"expected one of {sorted(VALID_AFFINITY)}"
+                )
+
+            for field in SAFETY_FIELDS:
+                if field in tool and not isinstance(tool[field], bool):
+                    errors.append(f"{skill_dir.name}/{tool_name}: {field} must be a boolean")
+
+            if execution == "async" and "timeout_hint_secs" not in tool:
+                errors.append(f"{skill_dir.name}/{tool_name}: async tools must declare timeout_hint_secs")
+
+            source_file = tool.get("source_file", "")
+            if source_file and pathlib.PurePosixPath(source_file).parts[:1] != ("scripts",):
+                errors.append(f"{skill_dir.name}/{tool_name}: source_file must be under scripts/: {source_file}")
+
+            source = skill_dir / source_file
             if not source.exists():
-                errors.append(f"{skill_dir.name}: source_file not found: {tool.get('source_file')}")
+                errors.append(f"{skill_dir.name}: source_file not found: {source_file}")
+                continue
+
+            try:
+                script_text = source.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                errors.append(f"{skill_dir.name}/{tool_name}: could not read source file as UTF-8: {exc}")
+                continue
+
+            for forbidden in ("import bpy", "from bpy"):
+                if any(line.startswith(forbidden) for line in script_text.splitlines()):
+                    errors.append(
+                        f"{skill_dir.name}/{tool_name}: host API import must be lazy inside the tool function"
+                    )
 
     return errors
 

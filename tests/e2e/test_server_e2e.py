@@ -16,9 +16,14 @@ Run::
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="bpy not available — run inside Blender Python interpreter")
+
+if sys.platform == "win32":
+    pytest.skip("server lifecycle is covered by separate-process workflow smoke on Windows", allow_module_level=True)
 
 pytestmark = pytest.mark.e2e
 
@@ -147,38 +152,28 @@ class TestProgressiveLoadingE2E:
     def test_unload_and_reload_skill(self):
         """Unload a skill then reload it — verifies round-trip."""
         import dcc_mcp_blender
+        from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
 
-        server = dcc_mcp_blender.start_server(port=0)
+        dispatcher = BlenderCallableDispatcher()
+        host = BlenderHost(dispatcher)
+        server = dcc_mcp_blender.start_server(port=0, dispatcher=dispatcher)
+        host.start()
+        try:
+            skill_name = "blender-scene"
 
-        # Pick the first skill that is currently loaded (eager or lazy)
-        loaded = [
-            s
-            for s in server.list_skills()
-            if _skill_get(s, "loaded") or server.is_skill_loaded(_skill_get(s, "name", ""))
-        ]
-        if not loaded:
-            # create_skill_manager only discovered but did not load — load one now
-            discovered = server.list_skills()
-            if not discovered:
-                return  # no skills at all; nothing to test
-            skill_name = _skill_get(discovered[0], "name", "blender-scene")
-            server.load_skill(skill_name)
-            loaded = [{"name": skill_name}]
+            if not server.is_skill_loaded(skill_name):
+                assert server.load_skill(skill_name) is True
+            assert server.is_skill_loaded(skill_name)
 
-        skill_name = _skill_get(loaded[0], "name", "blender-scene")
+            removed = server.unload_skill(skill_name)
+            assert removed is True
+            assert not server.is_skill_loaded(skill_name)
 
-        # Ensure it is loaded before unloading
-        if not server.is_skill_loaded(skill_name):
-            server.load_skill(skill_name)
-
-        removed = server.unload_skill(skill_name)
-        assert removed is True
-        assert not server.is_skill_loaded(skill_name)
-
-        # Reload
-        loaded_again = server.load_skill(skill_name)
-        assert loaded_again is True
-        assert server.is_skill_loaded(skill_name)
+            loaded_again = server.load_skill(skill_name)
+            assert loaded_again is True
+            assert server.is_skill_loaded(skill_name)
+        finally:
+            host.stop()
 
     def test_discover_extra_paths_no_crash(self):
         """Calling discover_skills() with no extra paths must not raise."""
@@ -204,8 +199,12 @@ class TestMultiInstanceGatewayE2E:
 
         from dcc_mcp_blender.server import BlenderMcpServer
 
-        s1 = BlenderMcpServer(port=0)
-        s2 = BlenderMcpServer(port=0)
+        # This is an in-process HTTP isolation check. Gateway election is covered
+        # by separate-process workflow smoke tests and can leave native threads
+        # racing Blender teardown on Windows when two elected gateways run inside
+        # one interpreter.
+        s1 = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+        s2 = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
         s1.start()
         s2.start()
         try:

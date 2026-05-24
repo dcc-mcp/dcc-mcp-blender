@@ -38,7 +38,7 @@ def test_workflow_server_uses_blender_inprocess_dispatcher():
     assert "from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost" in text
     assert "dispatcher = BlenderCallableDispatcher()" in text
     assert "dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)" in text
-    assert "host.start()" in text
+    assert "host.run_headless(stop_event=stop_event)" in text
     assert "host.stop()" in text
 
 
@@ -56,6 +56,21 @@ def test_geometry_export_verification_reads_paths_from_environment():
     assert "export GEOM_BLEND GEOM_FBX GEOM_OBJ" in text
     assert "path = os.environ[key]" in text
     assert "('$GEOM_BLEND', '$GEOM_FBX', '$GEOM_OBJ')" not in text
+
+
+def test_e2e_workflow_smokes_nodes_and_physics_tools():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+
+    for tool_name in (
+        "list_material_nodes",
+        "set_principled_input",
+        "add_geometry_nodes_modifier",
+        "list_geometry_nodes_modifiers",
+        "add_rigid_body",
+        "set_rigid_body_properties",
+        "remove_rigid_body",
+    ):
+        assert f"call_tool {tool_name}" in text
 
 
 def test_e2e_workflow_does_not_run_mock_unit_tests():

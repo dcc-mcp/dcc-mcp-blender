@@ -110,6 +110,7 @@ def make_mock_bpy(
     mock_bpy.data.lights = MagicMock()
     mock_bpy.data.cameras = MagicMock()
     mock_bpy.data.worlds = MagicMock()
+    mock_bpy.data.node_groups = MagicMock()
     if data_attrs:
         for k, v in data_attrs.items():
             getattr(mock_bpy.data, k)
@@ -131,6 +132,7 @@ def make_mock_bpy(
     mock_bpy.ops.wm = MagicMock()
     mock_bpy.ops.render = MagicMock()
     mock_bpy.ops.screen = MagicMock()
+    mock_bpy.ops.rigidbody = MagicMock()
     if ops_attrs:
         for k, v in ops_attrs.items():
             setattr(mock_bpy.ops, k, v)

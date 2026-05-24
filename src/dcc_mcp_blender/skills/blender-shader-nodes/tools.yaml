@@ -1,0 +1,17 @@
+tools:
+  - name: list_material_nodes
+    description: "List shader nodes and sockets for a material"
+    source_file: scripts/list_material_nodes.py
+    execution: sync
+    affinity: main
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: set_principled_input
+    description: "Set a value on a material's Principled BSDF shader"
+    source_file: scripts/set_principled_input.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: true

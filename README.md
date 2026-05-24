@@ -12,7 +12,7 @@
 [![GitHub release downloads](https://img.shields.io/github/downloads/loonghao/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/loonghao/dcc-mcp-blender/releases)
 [![GitHub Release](https://img.shields.io/github/v/release/loonghao/dcc-mcp-blender.svg)](https://github.com/loonghao/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/loonghao/dcc-mcp-blender/blob/main/pyproject.toml)
-[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.17.6-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.17.25-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -29,7 +29,7 @@
 ├─────────────────────────────────┤
 │  dcc_mcp_blender                │
 │  ├─ BlenderMcpServer            │
-│  ├─ SkillCatalog (50+ skills)   │
+│  ├─ SkillCatalog (55+ tools)    │
 │  ├─ ActionRegistry              │
 │  └─ HTTP Handlers               │
 ├─────────────────────────────────┤
@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **50+ pre-built skills** — scene management, object manipulation, materials, rendering, scripting and more
+- **55+ pre-built tools** — scene management, object manipulation, materials, rendering, nodes, physics, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -62,16 +62,19 @@
 | Category | Tools |
 |---|---|
 | **blender-scene** | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info`, `get_session_info` |
-| **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `list_objects` |
-| **blender-mesh** | `create_mesh`, `apply_modifier`, `subdivide_mesh`, `extrude_faces`, `merge_vertices` |
+| **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `get_object_info` |
+| **blender-mesh** | `add_modifier`, `apply_modifier`, `list_modifiers`, `get_mesh_info` |
 | **blender-materials** | `create_material`, `assign_material`, `set_material_color`, `list_materials`, `delete_material` |
-| **blender-render** | `render_scene`, `set_render_settings`, `set_camera`, `get_render_info` |
+| **blender-shader-nodes** | `list_material_nodes`, `set_principled_input` |
+| **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
-| **blender-animation** | `set_keyframe`, `delete_keyframe`, `set_frame_range`, `get_frame_range`, `bake_action` |
-| **blender-lighting** | `create_light`, `delete_light`, `set_light_properties`, `list_lights` |
+| **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame` |
+| **blender-lighting** | `create_light`, `set_light_properties`, `list_lights`, `set_world_background` |
 | **blender-camera** | `create_camera`, `set_active_camera`, `set_camera_properties`, `list_cameras` |
-| **blender-collection** | `create_collection`, `link_to_collection`, `unlink_from_collection`, `list_collections` |
+| **blender-collection** | `create_collection`, `link_to_collection`, `list_collections` |
 | **blender-geometry** | `create_sphere`, `save_blend`, `file_exists`, `export_fbx`, `export_obj` |
+| **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers` |
+| **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body` |
 
 ---
 

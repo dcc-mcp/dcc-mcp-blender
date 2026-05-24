@@ -16,6 +16,11 @@ class BlenderCallableDispatcher:
     def __init__(self, dispatcher: Optional[BlockingDispatcher] = None) -> None:
         self._dispatcher = dispatcher or BlockingDispatcher()
 
+    @property
+    def host_dispatcher(self) -> BlockingDispatcher:
+        """Return the core dispatcher that backs HTTP main-thread routing."""
+        return self._dispatcher
+
     def dispatch_callable(
         self,
         func: Callable[..., Any],
@@ -52,6 +57,27 @@ class BlenderCallableDispatcher:
     def is_shutdown(self) -> bool:
         """Return whether the underlying dispatcher is shut down."""
         return bool(self._dispatcher.is_shutdown())
+
+
+class BlenderInlineCallableDispatcher:
+    """Callable bridge used after the core dispatcher owns the main-thread hop."""
+
+    def __init__(self, host_dispatcher: Any) -> None:
+        self._host_dispatcher = host_dispatcher
+
+    def dispatch_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Execute ``func`` inline once HTTP has dispatched onto Blender's thread."""
+        return func(*args, **kwargs)
+
+    def shutdown(self, reason: str = "Interrupted") -> Any:
+        """Forward shutdown to the underlying host dispatcher when supported."""
+        shutdown = getattr(self._host_dispatcher, "shutdown", None)
+        if not callable(shutdown):
+            return None
+        try:
+            return shutdown(reason)
+        except TypeError:
+            return shutdown()
 
 
 class BlenderHost(HostAdapter):

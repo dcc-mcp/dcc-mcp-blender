@@ -2,18 +2,24 @@ tools:
   - name: execute_python
     description: "Execute a Python code snippet inside Blender"
     source_file: scripts/execute_python.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: execute_script_file
     description: "Execute a Python script file inside Blender"
     source_file: scripts/execute_script_file.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: get_blender_info
     description: "Get Blender version and Python environment information"
     source_file: scripts/get_blender_info.py
+    execution: sync
+    affinity: main
     read_only: true
     destructive: false
     idempotent: true

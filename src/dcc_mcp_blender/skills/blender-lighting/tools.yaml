@@ -2,24 +2,32 @@ tools:
   - name: create_light
     description: "Create a new light object (POINT, SUN, AREA, SPOT)"
     source_file: scripts/create_light.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: set_light_properties
     description: "Set energy, color, and other light properties"
     source_file: scripts/set_light_properties.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true
   - name: list_lights
     description: "List all lights in the current scene"
     source_file: scripts/list_lights.py
+    execution: sync
+    affinity: main
     read_only: true
     destructive: false
     idempotent: true
   - name: set_world_background
     description: "Set the scene world background color and optional strength"
     source_file: scripts/set_world_background.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true

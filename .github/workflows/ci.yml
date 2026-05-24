@@ -41,13 +41,13 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install skill validation dependencies
-        run: pip install pyyaml "dcc-mcp-core>=0.17.8,<1.0.0"
+        run: python -m pip install -e ".[dev]"
       - name: Install dcc-mcp-cli
         run: |
           export DCC_MCP_INSTALL_DIR="$RUNNER_TEMP/dcc-mcp-bin"
           curl -fsSL https://raw.githubusercontent.com/loonghao/dcc-mcp-core/main/scripts/install-cli.sh | bash
           echo "$RUNNER_TEMP/dcc-mcp-bin" >> "$GITHUB_PATH"
-      - name: Validate SKILL.md front-matter
+      - name: Validate SKILL.md and tool metadata
         run: python tools/lint_skills.py --warnings-as-errors
 
   test:
@@ -140,9 +140,9 @@ jobs:
           triple = [n for n in names if "dcc_mcp_blender/dcc_mcp_blender/dcc_mcp_blender/" in n]
           assert not triple, f"unexpected triple-nested paths: {triple[:5]}"
           skill_md = [n for n in names if n.endswith("/SKILL.md") and "/skills/" in n]
-          assert len(skill_md) >= 10, f"expected >=10 SKILL.md under skills/, got {len(skill_md)}"
+          assert len(skill_md) >= 13, f"expected >=13 SKILL.md under skills/, got {len(skill_md)}"
           tools_yaml = [n for n in names if n.endswith("/tools.yaml") and "/skills/" in n]
-          assert len(tools_yaml) >= 10, f"expected >=10 tools.yaml under skills/, got {len(tools_yaml)}"
+          assert len(tools_yaml) >= 13, f"expected >=13 tools.yaml under skills/, got {len(tools_yaml)}"
           with zipfile.ZipFile(zips[-1]) as zf:
               raw = zf.read("dcc_mcp_blender/blender_manifest.toml").decode("utf-8")
           assert "wheels = [" in raw and "./wheels/" in raw, raw[:400]

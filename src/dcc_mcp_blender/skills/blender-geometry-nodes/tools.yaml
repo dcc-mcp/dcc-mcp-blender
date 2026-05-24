@@ -1,0 +1,17 @@
+tools:
+  - name: add_geometry_nodes_modifier
+    description: "Add a Geometry Nodes modifier to a mesh object"
+    source_file: scripts/add_geometry_nodes_modifier.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: list_geometry_nodes_modifiers
+    description: "List Geometry Nodes modifiers on an object"
+    source_file: scripts/list_geometry_nodes_modifiers.py
+    execution: sync
+    affinity: main
+    read_only: true
+    destructive: false
+    idempotent: true

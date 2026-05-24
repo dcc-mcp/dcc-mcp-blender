@@ -2,24 +2,32 @@ tools:
   - name: render_scene
     description: "Render the current scene and save to a file"
     source_file: scripts/render_scene.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false
   - name: set_render_settings
     description: "Configure render settings (engine, resolution, samples, output path)"
     source_file: scripts/set_render_settings.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: true
   - name: get_render_info
     description: "Return current render settings"
     source_file: scripts/get_render_info.py
+    execution: sync
+    affinity: main
     read_only: true
     destructive: false
     idempotent: true
   - name: capture_viewport
     description: "Capture the active viewport to an image file"
     source_file: scripts/capture_viewport.py
+    execution: sync
+    affinity: main
     read_only: false
     destructive: false
     idempotent: false

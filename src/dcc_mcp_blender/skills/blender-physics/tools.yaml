@@ -1,0 +1,25 @@
+tools:
+  - name: add_rigid_body
+    description: "Add a rigid body physics component to an object"
+    source_file: scripts/add_rigid_body.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: set_rigid_body_properties
+    description: "Update rigid body physics properties on an object"
+    source_file: scripts/set_rigid_body_properties.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: true
+  - name: remove_rigid_body
+    description: "Remove rigid body physics from an object"
+    source_file: scripts/remove_rigid_body.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: true
+    idempotent: false
