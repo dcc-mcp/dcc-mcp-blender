@@ -102,7 +102,7 @@ def test_blender_callable_dispatcher_posts_work_to_tick_loop():
 
 
 def test_blender_ui_dispatcher_uses_core_queue_and_timer_pump():
-    from dcc_mcp_core._server.host_ui_dispatcher import HostUiDispatcherBase
+    from dcc_mcp_core import HostUiDispatcherBase
 
     from dcc_mcp_blender.host import BlenderUiDispatcher
 

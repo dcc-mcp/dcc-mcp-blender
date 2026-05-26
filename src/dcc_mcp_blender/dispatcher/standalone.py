@@ -1,97 +1,78 @@
-"""Blender standalone dispatcher (background mode).
-
-Provides ``BlenderStandaloneDispatcher`` — a dispatcher that runs callbacks
-directly (no main-thread marshalling needed because there's no UI).
-
-In background mode (``blender --background``), all code runs in the
-main thread anyway, so no special dispatch is needed.
-"""
+"""Core-backed Blender standalone dispatcher compatibility wrapper."""
 
 # Import future modules
 from __future__ import annotations
 
-# Import built-in modules
-import logging
-import threading
-import time
+import uuid
 from typing import Any, Callable, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from dcc_mcp_core import InProcessCallableDispatcher, JobOutcome
 
 
 class BlenderStandaloneDispatcher:
     """Dispatcher for Blender standalone (background) mode.
 
-    Runs callbacks directly — no main-thread marshalling needed.
+    Uses core's reference in-process dispatcher and keeps the adapter's small
+    historical ``dispatch`` / ``dispatch_async`` convenience API.
     """
 
     def __init__(self, timeout_ms: int = 30000) -> None:
         self.timeout_ms = timeout_ms
-        self._pending: Dict[str, Callable] = {}
+        self._dispatcher = InProcessCallableDispatcher()
         self._results: Dict[str, Any] = {}
-        self._errors: Dict[str, Exception] = {}
-        self._lock = threading.Lock()
+        self._errors: Dict[str, str] = {}
 
     def dispatch(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
-        """Dispatch a call (runs directly in standalone mode).
-
-        Args:
-            func: The function to call.
-            *args: Positional arguments.
-            **kwargs: Keyword arguments.
-
-        Returns:
-            The function's return value.
-        """
-        return func(*args, **kwargs)
+        """Dispatch a call inline through core's in-process dispatcher."""
+        outcome = self._dispatcher.submit_callable(
+            self._request_id(func),
+            lambda: func(*args, **kwargs),
+            affinity="main",
+            timeout_ms=self.timeout_ms,
+        )
+        return self._value_or_raise(outcome)
 
     def dispatch_async(self, func: Callable, *args: Any, **kwargs: Any) -> str:
-        """Dispatch a call asynchronously.
+        """Dispatch a call asynchronously and return a pollable request id."""
+        job_id = self._request_id(func)
 
-        Returns a job ID that can be polled for completion.
+        def _complete(outcome: JobOutcome) -> None:
+            if outcome.ok:
+                self._results[job_id] = outcome.value
+            else:
+                self._errors[job_id] = outcome.error or "Blender standalone dispatch failed"
 
-        Args:
-            func: The function to call.
-            *args: Positional arguments.
-            **kwargs: Keyword arguments.
-
-        Returns:
-            Job ID string.
-        """
-        job_id = f"job_{time.time()}_{id(func)}"
-        try:
-            result = func(*args, **kwargs)
-            with self._lock:
-                self._results[job_id] = result
-        except Exception as e:
-            with self._lock:
-                self._errors[job_id] = e
+        self._dispatcher.submit_async_callable(
+            job_id,
+            lambda: func(*args, **kwargs),
+            affinity="main",
+            timeout_ms=self.timeout_ms,
+            on_complete=_complete,
+        )
         return job_id
 
     def get_result(self, job_id: str) -> Optional[Any]:
-        """Get the result of an async job.
-
-        Args:
-            job_id: The job ID returned by ``dispatch_async``.
-
-        Returns:
-            The job result, or ``None`` if not ready.
-        """
-        with self._lock:
-            if job_id in self._results:
-                return self._results[job_id]
-            if job_id in self._errors:
-                raise self._errors[job_id]
+        """Get an async job result, or ``None`` when still pending."""
+        if job_id in self._results:
+            return self._results[job_id]
+        if job_id in self._errors:
+            raise RuntimeError(self._errors[job_id])
         return None
 
     def is_done(self, job_id: str) -> bool:
-        """Check if an async job is done.
+        """Check whether an async job has finished."""
+        return job_id in self._results or job_id in self._errors
 
-        Args:
-            job_id: The job ID returned by ``dispatch_async``.
+    @staticmethod
+    def _request_id(func: Callable) -> str:
+        label = getattr(func, "__name__", "callable")
+        return f"{label}:{uuid.uuid4().hex}"
 
-        Returns:
-            ``True`` if the job is done (success or error).
-        """
-        with self._lock:
-            return job_id in self._results or job_id in self._errors
+    @staticmethod
+    def _value_or_raise(outcome: JobOutcome) -> Any:
+        if outcome.ok:
+            return outcome.value
+        raise RuntimeError(outcome.error or "Blender standalone dispatch failed")
+
+
+__all__ = ["BlenderStandaloneDispatcher"]

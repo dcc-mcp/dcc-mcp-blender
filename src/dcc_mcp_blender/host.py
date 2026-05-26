@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from dcc_mcp_core._server.host_ui_dispatcher import HostUiDispatcherBase
+from dcc_mcp_core import HostUiDispatcherBase
 from dcc_mcp_core.host import BlockingDispatcher, HostAdapter
 
 TickFn = Callable[[], Optional[float]]
@@ -30,7 +30,7 @@ class BlenderTimerPump:
     primitive so future core pump abstractions can replace it cleanly.
     """
 
-    def __init__(self, *, budget_ms: float = 200.0) -> None:
+    def __init__(self, budget_ms: float = 200.0) -> None:
         if budget_ms <= 0:
             raise ValueError("budget_ms must be > 0")
         self.budget_ms = float(budget_ms)
@@ -89,6 +89,20 @@ class BlenderTimerPump:
             bpy.app.timers.unregister(tick_fn)
         self._registered_fn = None
         self._tick_fn = None
+
+    def pumped_ms(self) -> float:
+        """Return the most recent timer tick duration in milliseconds."""
+        return self.stats.last_tick_ms
+
+    def pump_count(self) -> int:
+        """Return the number of timer ticks."""
+        return self.stats.ticks
+
+    def reset_stats(self) -> None:
+        """Reset timer-pump counters."""
+        self.stats.ticks = 0
+        self.stats.overrun_cycles = 0
+        self.stats.last_tick_ms = 0.0
 
 
 class BlenderUiDispatcher(HostUiDispatcherBase):

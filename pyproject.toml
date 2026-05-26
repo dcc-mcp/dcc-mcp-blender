@@ -27,10 +27,9 @@ classifiers = [
 ]
 
 dependencies = [
-    # Align with dcc-mcp-core 0.17.34: DccServerOptions composition root,
-    # HostExecutionBridge, diagnostics/resources contracts, gateway capability
-    # index expectations, and current skill-management/search/lint contracts.
-    "dcc-mcp-core>=0.17.34,<1.0.0",
+    # Align with dcc-mcp-core 0.17.36 public dispatcher, cancellation,
+    # execution-bridge, diagnostics/resources, and skill-management contracts.
+    "dcc-mcp-core>=0.17.36,<1.0.0",
 ]
 
 [project.optional-dependencies]

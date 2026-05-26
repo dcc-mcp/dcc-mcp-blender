@@ -1,26 +1,4 @@
-"""Blender thread-affinity dispatchers.
-
-Public dispatcher symbols are re-exported from their focused submodules
-through the :pep:`8`-compliant ``__all__`` below.
-
-The implementation is split per Single Responsibility into:
-
-================  ====================================================
-Module            Purpose
-================  ====================================================
-``job``           ``_JobEntry`` + ``_current_job`` ContextVar
-``cancel``        ``check_blender_cancelled`` cooperative checkpoint
-``ui``            ``BlenderUiDispatcher`` (core-backed interactive)
-``standalone``    ``BlenderStandaloneDispatcher`` (background)
-``pump``          ``BlenderTimerPump`` + factory helpers
-================  ====================================================
-
-This re-export layer is **zero-overhead**: every name binds to the same
-object as the originating submodule.  External callers do not need to
-update their imports.
-
-See: https://github.com/loonghao/dcc-mcp-blender/issues/49
-"""
+"""Blender dispatcher compatibility exports backed by dcc-mcp-core."""
 
 from __future__ import annotations
 

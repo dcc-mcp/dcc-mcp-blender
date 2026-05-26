@@ -2,41 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any
+
+from dcc_mcp_core import PyPumpedDispatcher
 
 from dcc_mcp_blender.host import BlenderTimerPump, BlenderUiDispatcher
 
 DEFAULT_BUDGET_MS = 200
 OVERRUN_MULTIPLIER = 1.0
 
-
-class _CorePump:
-    """Compatibility wrapper for code that only needs pump counters."""
-
-    def __init__(self, budget_ms: int = DEFAULT_BUDGET_MS) -> None:
-        self._pump = BlenderTimerPump(budget_ms=budget_ms)
-
-    @property
-    def stats(self):
-        """Return Blender timer-pump stats."""
-        return self._pump.stats
-
-    def pumped_ms(self) -> float:
-        """Return the most recent timer tick duration in milliseconds."""
-        return self._pump.stats.last_tick_ms
-
-    def pump_count(self) -> int:
-        """Return number of timer pump ticks."""
-        return self._pump.stats.ticks
-
-    def reset_stats(self) -> None:
-        """Reset pump statistics."""
-        self._pump.stats.ticks = 0
-        self._pump.stats.overrun_cycles = 0
-        self._pump.stats.last_tick_ms = 0.0
-
-
 BlenderUiPump = BlenderTimerPump
+_CorePump = BlenderTimerPump
 
 
 def create_dispatcher(
@@ -61,29 +37,6 @@ def create_pumped_dispatcher(
     if ui_mode:
         return BlenderUiDispatcher(timeout_ms=timeout_ms, budget_ms=budget_ms)
     return create_dispatcher(ui_mode=False, timeout_ms=timeout_ms)
-
-
-class PyPumpedDispatcher:
-    """Compatibility wrapper that pumps before delegating string-payload dispatch."""
-
-    def __init__(
-        self,
-        dispatcher: Any,
-        pump: Optional[_CorePump] = None,
-    ) -> None:
-        self.dispatcher = dispatcher
-        self._pump = pump
-
-    def dispatch(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
-        """Dispatch after recording one optional pump tick."""
-        if self._pump:
-            self._pump.stats.ticks += 1
-        return self.dispatcher.dispatch(func, *args, **kwargs)
-
-    def pump(self) -> None:
-        """Record a manual pump tick for compatibility callers."""
-        if self._pump:
-            self._pump.stats.ticks += 1
 
 
 __all__ = [
