@@ -71,6 +71,8 @@
 | **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
 | **blender-export-preset** | `list_export_presets`, `save_export_preset`, `load_export_preset`, `delete_export_preset` |
 | **blender-shot-export** | `get_shot_info`, `export_camera` |
+| **blender-validation** | `run_scene_checks`, `validate_mesh`, `validate_materials`, `validate_animation`, `validate_export_readiness`, `get_validation_report` |
+| **blender-pipeline** | `get_asset_metadata`, `tag_asset_metadata`, `clear_asset_metadata`, `set_project_context`, `create_publish_manifest`, `prepare_publish_package` |
 | **blender-materials** | `create_material`, `assign_material`, `set_material_color`, `list_materials`, `delete_material` |
 | **blender-shader-nodes** | `list_material_nodes`, `set_principled_input`, `list_node_trees`, `list_nodes`, `create_node`, `delete_node`, `list_node_sockets`, `connect_nodes`, `disconnect_nodes`, `list_node_links`, `set_node_input`, `get_node_value`, `create_material_with_nodes`, `assign_texture_node`, `set_principled_inputs` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |

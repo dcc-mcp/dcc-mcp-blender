@@ -16,6 +16,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-interchange` | interchange, pipeline | Import FBX/OBJ files and export GLTF, USD, Alembic, or batch export jobs. | Load when assets move between DCC/game/pipeline formats. | Disk-writing and scene mutation for imports. | import file, import fbx, import obj, export gltf, export usd, export alembic |
 | `blender-export-preset` | interchange, pipeline | Save, list, load, and delete reusable scene-stored export option presets. | Load when export settings need repeatable named presets. | Mutating except preset listing/loading. | export preset, batch export, reusable export options |
 | `blender-shot-export` | interchange, shot | Inspect shot metadata and export camera metadata JSON. | Load for camera, shot, and animation delivery metadata. | Disk-writing except shot info. | shot export, camera metadata, frame range, camera json |
+| `blender-validation` | pipeline, diagnostics | Run scene, mesh, material, animation, and export-readiness checks with severity-coded reports. | Load before export, publish, or package preparation. | Read-only diagnostics. | validation report, scene checks, mesh validation, export readiness, severity |
+| `blender-pipeline` | pipeline, metadata, publish | Manage local asset metadata, project context, publish manifests, and lightweight publish packages. | Load for local publish preparation after validation passes or warnings are accepted. | Metadata mutation and local filesystem writes for manifests/packages. | asset metadata, project context, publish manifest, prepare package |
 | `blender-materials` | authoring, lookdev | Create, assign, edit, list, and delete materials. | Load before shader nodes when material slots or colors are enough. | Mutating except material listing. | material, assign, color, shader base, delete material |
 | `blender-shader-nodes` | authoring, node graph, lookdev | Inspect and edit shader/material node graphs plus shared node tree sockets, links, and values. | Load after materials when node-level shader edits or generic node graph operations are requested. | Mixed: read-only graph inspection plus node/link/socket mutations. | shader nodes, node graph, sockets, links, principled, texture node |
 | `blender-geometry-nodes` | authoring, node graph, procedural | Create Geometry Nodes groups, assign them to modifiers, set exposed inputs, and inspect procedural graph state. | Load for procedural geometry setup, modifier input updates, or geometry node group assignment. | Mixed: modifier/group creation plus read-only graph summaries. | geometry nodes, procedural, node group, modifier input, exposed socket |
@@ -45,6 +47,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
 | Shot and render delivery | `blender-camera` -> `blender-lighting` -> `blender-render` |
 | File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
+| Export validation | `blender-validation` -> `blender-interchange` -> `blender-export-preset` |
+| Local publish prep | `blender-validation` -> `blender-pipeline` -> `blender-interchange` when files need export |
 | Shot delivery | `blender-camera` -> `blender-animation` -> `blender-shot-export` -> `blender-interchange` |
 | Add-on diagnostics | `blender-dev` -> `blender-scripting` only when no diagnostic helper fits |
 | Custom fallback | Typed domain skill -> `blender-scripting` only for the missing operation |
@@ -56,6 +60,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 - Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
 - Use `blender-shader-nodes` for graph-level socket/link edits; use `blender-materials` when material slots or simple colors are enough, and `blender-geometry-nodes` when the workflow is about modifier assignment or exposed procedural inputs.
 - Use `blender-interchange` and `blender-shot-export` for import/export and delivery before writing custom Python exporters.
+- Use `blender-validation` before interchange/export or publish prep, and use `blender-pipeline` for Blender-native metadata and local manifests/packages.
 - Use `blender-dev` for add-on/runtime diagnostics, structured UI metadata, module reloads, and reproducible development entrypoints before reaching for arbitrary Python.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.
