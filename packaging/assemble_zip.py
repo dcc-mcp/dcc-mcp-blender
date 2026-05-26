@@ -8,11 +8,10 @@ This script:
    ``blender_manifest.toml`` under ``wheels = [...]`` so Blender installs it into
    the extension's isolated ``site-packages`` (no ``sys.path`` hacks, no loose
    ``dcc_mcp_core/`` tree — required for Blender 4.2+ extensions policy).
-4. Bundles ``dcc_mcp_blender/`` (adapter + skills) under the same folder.
+4. Bundles the adapter modules and skills directly in the add-on package root.
 5. Produces ``dcc_mcp_blender_addon_{platform}_v{version}.zip`` — install via
    **Edit → Preferences → Extensions → Install from Disk** (recommended) or
-   legacy add-ons path (extensions layout + wheels is still valid when installed
-   as an extension from disk).
+   Blender's extension package installer.
 
 Version strings in ``pyproject.toml``, ``src/dcc_mcp_blender/__version__.py``, and
 ``packaging/addon_entry/blender_manifest.toml`` are maintained by **release-please**
@@ -45,7 +44,7 @@ ADDON_ENTRY_DIR = PACKAGE_ROOT / "packaging" / "addon_entry"
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 
 # Must stay in sync with ``pyproject.toml`` dependency floor.
-MIN_CORE_VERSION = "0.17.25"
+MIN_CORE_VERSION = "0.17.34"
 CORE_PACKAGE = "dcc-mcp-core"
 ADDON_PLATFORMS = ("win64", "linux", "macos")
 
@@ -55,7 +54,7 @@ ADDON_PLATFORMS = ("win64", "linux", "macos")
 PYPI_URL = "https://pypi.org/pypi/{package}/json"
 
 # Never bundle mistaken local trees (e.g. accidental wheel extracts under src/).
-_SKIPPED_TOP_LEVEL_NAMES = frozenset({"dcc_mcp_blender", "dcc_mcp_core", "__pycache__"})
+_SKIPPED_TOP_LEVEL_NAMES = frozenset({"dcc_mcp_blender", "dcc_mcp_core", "__pycache__", "__init__.py"})
 
 
 def _ignore_for_addon_copy(path: str, names: list[str]) -> set[str]:
@@ -85,6 +84,34 @@ def _verify_skills_payload(staged_pkg: pathlib.Path) -> None:
     ]
     if missing_tools:
         raise RuntimeError(f"Missing tools.yaml for bundled skills: {', '.join(sorted(missing_tools))}")
+
+
+def _copy_adapter_package_into_addon_root(addon_dir: pathlib.Path) -> None:
+    """Copy adapter modules into the add-on package root.
+
+    The release add-on itself is the top-level ``dcc_mcp_blender`` package. If
+    the adapter package is copied below another ``dcc_mcp_blender/`` directory,
+    Blender imports the add-on entrypoint but ``dcc_mcp_blender.server`` cannot
+    resolve from a clean extension install.
+    """
+    for child in SRC_DIR.iterdir():
+        if child.name in _SKIPPED_TOP_LEVEL_NAMES:
+            continue
+        dest = addon_dir / child.name
+        if child.is_dir():
+            shutil.copytree(child, dest, ignore=_ignore_for_addon_copy, dirs_exist_ok=False)
+        else:
+            shutil.copy2(child, dest)
+
+
+def _version_tuple_from_string(version: str) -> tuple[int, int, int]:
+    """Return a Blender ``bl_info`` version tuple from a PEP 440-ish version."""
+    release = version.split("+", 1)[0].split("-", 1)[0]
+    parts = (release.split(".") + ["0", "0", "0"])[:3]
+    try:
+        return int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError as exc:
+        raise RuntimeError(f"Could not render Blender bl_info version from {version!r}") from exc
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -238,11 +265,10 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         addon_dir = tmp_dir / "dcc_mcp_blender"
         addon_dir.mkdir()
 
-        # 1) Copy dcc_mcp_blender package source
+        # 1) Copy dcc_mcp_blender package source into the add-on package root.
         print("Copying dcc_mcp_blender package...")
-        staged_pkg = addon_dir / "dcc_mcp_blender"
-        shutil.copytree(SRC_DIR, staged_pkg, ignore=_ignore_for_addon_copy, dirs_exist_ok=False)
-        _verify_skills_payload(staged_pkg)
+        _copy_adapter_package_into_addon_root(addon_dir)
+        _verify_skills_payload(addon_dir)
 
         # 2) Download and extract dcc-mcp-core
         print(f"Resolving {CORE_PACKAGE}...")
@@ -256,15 +282,16 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         print(f"  Bundled wheel: {staged_wheel.relative_to(addon_dir)}")
 
         # 3) Stage add-on root: ``__init__.py`` + ``blender_manifest.toml`` (4.2+ extensions)
-        _stage_addon_entry(addon_dir)
+        _stage_addon_entry(addon_dir, version=version)
         _inject_wheels_into_manifest(addon_dir / "blender_manifest.toml", [wheel.name])
 
-        # 4) Zip everything
+        # 4) Zip the extension package contents at archive root. Blender's
+        # extension installer expects ``blender_manifest.toml`` at ZIP root.
         print(f"Creating {zip_name}...")
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for file in addon_dir.rglob("*"):
                 if file.is_file() and "__pycache__" not in str(file):
-                    arcname = file.relative_to(tmp_dir)
+                    arcname = file.relative_to(addon_dir)
                     zf.write(file, arcname)
 
     print(f"Created: {zip_path}")
@@ -280,10 +307,30 @@ def _inject_wheels_into_manifest(manifest_path: pathlib.Path, wheel_basenames: l
     text = re.sub(r"\n+wheels\s*=\s*\[.*?\]\s*", "\n", text, flags=re.DOTALL)
     lines = [f'    "./wheels/{name}"' for name in wheel_basenames]
     block = "\nwheels = [\n" + ",\n".join(lines) + ",\n]\n"
-    manifest_path.write_text(text.rstrip() + block, encoding="utf-8")
+    first_table = re.search(r"\n\[[^\]]+\]", text)
+    if first_table is None:
+        rendered = text.rstrip() + block
+    else:
+        rendered = text[: first_table.start()].rstrip() + block + text[first_table.start() :]
+    manifest_path.write_text(rendered, encoding="utf-8")
 
 
-def _stage_addon_entry(addon_dir: pathlib.Path) -> None:
+def _render_static_bl_info_version(init_path: pathlib.Path, version: str) -> None:
+    """Render the staged add-on entry's static ``bl_info['version']`` tuple."""
+    major, minor, patch = _version_tuple_from_string(version)
+    text = init_path.read_text(encoding="utf-8")
+    rendered, count = re.subn(
+        r'("version"\s*:\s*)\([0-9]+\s*,\s*[0-9]+\s*,\s*[0-9]+\)',
+        rf"\1({major}, {minor}, {patch})",
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError(f"Could not find static bl_info version tuple in {init_path}")
+    init_path.write_text(rendered, encoding="utf-8")
+
+
+def _stage_addon_entry(addon_dir: pathlib.Path, *, version: str) -> None:
     """Copy packaged add-on entry (menu, manifest) into the staged ZIP root."""
     init_src = ADDON_ENTRY_DIR / "__init__.py"
     manifest_src = ADDON_ENTRY_DIR / "blender_manifest.toml"
@@ -293,6 +340,7 @@ def _stage_addon_entry(addon_dir: pathlib.Path) -> None:
         raise RuntimeError(f"Missing blender_manifest.toml: {manifest_src}")
 
     shutil.copy2(init_src, addon_dir / "__init__.py")
+    _render_static_bl_info_version(addon_dir / "__init__.py", version)
     shutil.copy2(manifest_src, addon_dir / "blender_manifest.toml")
 
 

@@ -9,34 +9,25 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import webbrowser
-from typing import List, Tuple
+from contextlib import suppress
+from typing import Any, List, Tuple
 
 import bpy
 
 # Do not mutate sys.path — Blender extensions forbid injecting the add-on root into
 # sys.path (policy violation). Dependencies are loaded via blender_manifest.toml wheels.
+_self_module = sys.modules.get(__name__)
+if __name__ != "dcc_mcp_blender" and globals().get("__path__") is not None and _self_module is not None:
+    sys.modules.setdefault("dcc_mcp_blender", _self_module)
 
 logger = logging.getLogger(__name__)
-
-try:
-    from dcc_mcp_blender.__version__ import __version__ as _PKG_VERSION  # noqa: E402
-except Exception:  # noqa: BLE001
-    _PKG_VERSION = "0.1.0"
-
-
-def _version_tuple() -> Tuple[int, int, int]:
-    parts = (_PKG_VERSION.split(".") + ["0", "0", "0"])[:3]
-    try:
-        return int(parts[0]), int(parts[1]), int(parts[2])
-    except ValueError:
-        return 0, 1, 0
-
 
 bl_info = {
     "name": "DCC MCP Blender",
     "author": "Long Hao",
-    "version": _version_tuple(),
+    "version": (0, 1, 4),
     "blender": (4, 2, 0),
     "location": "Top Bar > DCC MCP",
     "description": "Embeds an MCP HTTP server inside Blender for AI-driven 3D workflows",
@@ -48,6 +39,55 @@ bl_info = {
 _DEFAULT_GATEWAY_PORT = 9765
 
 _draw_handlers: List[Tuple[str, object]] = []
+_server_dispatcher: Any = None
+_server_host: Any = None
+
+
+def _start_server_with_host():
+    """Start the MCP server with a Blender main-thread dispatcher attached."""
+    global _server_dispatcher, _server_host  # noqa: PLW0603
+
+    from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost  # noqa: PLC0415
+    from dcc_mcp_blender.server import get_server, start_server, stop_server  # noqa: PLC0415
+
+    existing = get_server()
+    if existing is not None and getattr(existing, "is_running", False):
+        if _server_host is not None:
+            return existing
+        stop_server()
+
+    dispatcher = BlenderCallableDispatcher()
+    host = BlenderHost(dispatcher)
+    try:
+        server = start_server(dispatcher=dispatcher)
+        host.start()
+    except Exception:
+        with suppress(Exception):
+            stop_server()
+        with suppress(Exception):
+            host.stop()
+        raise
+
+    _server_dispatcher = dispatcher
+    _server_host = host
+    return server
+
+
+def _stop_server_with_host() -> None:
+    """Stop the MCP server and detach the Blender timer/dispatcher."""
+    global _server_dispatcher, _server_host  # noqa: PLW0603
+
+    host = _server_host
+    try:
+        from dcc_mcp_blender.server import stop_server  # noqa: PLC0415
+
+        stop_server()
+    finally:
+        if host is not None:
+            with suppress(Exception):
+                host.stop()
+        _server_host = None
+        _server_dispatcher = None
 
 
 def _running_server():
@@ -187,10 +227,8 @@ class DCCMCP_OT_restart(bpy.types.Operator):
 
     def execute(self, context):
         try:
-            from dcc_mcp_blender.server import start_server, stop_server  # noqa: PLC0415
-
-            stop_server()
-            start_server()
+            _stop_server_with_host()
+            _start_server_with_host()
             self.report({"INFO"}, "MCP server restarted")
         except Exception as exc:  # noqa: BLE001
             logger.exception("restart failed")
@@ -271,10 +309,7 @@ def register() -> None:
         logger.warning("TOPBAR_MT_blender missing — DCC MCP top-bar menu not attached")
 
     try:
-        from dcc_mcp_blender.server import get_server, start_server  # noqa: PLC0415
-
-        start_server()
-        srv = get_server()
+        srv = _start_server_with_host()
         url = getattr(srv, "mcp_url", None) if srv is not None else None
         if url:
             print("[DCC MCP Blender] Server started —", url)
@@ -302,9 +337,7 @@ def unregister() -> None:
             logger.debug("unregister %s: %s", cls, exc)
 
     try:
-        from dcc_mcp_blender.server import stop_server  # noqa: PLC0415
-
-        stop_server()
+        _stop_server_with_host()
         print("[DCC MCP Blender] Server stopped")
     except Exception as exc:  # noqa: BLE001
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
