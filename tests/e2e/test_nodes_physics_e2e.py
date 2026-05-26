@@ -83,3 +83,59 @@ class TestPhysicsE2E:
         remove_mod = load_skill("blender-physics", "remove_rigid_body")
         remove_result = remove_mod.remove_rigid_body(object_name=cube_name)
         assert remove_result["success"] is True
+
+    def test_cloth_collision_status_and_dry_run_cache(self):
+        bpy.ops.mesh.primitive_plane_add(size=2.0)
+        cloth_name = bpy.context.active_object.name
+        cloth_obj = bpy.data.objects[cloth_name]
+
+        add_cloth_mod = load_skill("blender-physics", "add_cloth_modifier")
+        cloth_result = add_cloth_mod.add_cloth_modifier(
+            object_name=cloth_name,
+            name="E2E Cloth",
+            settings={"quality": 3, "mass": 0.25},
+        )
+        assert cloth_result["success"] is True
+        assert cloth_obj.modifiers["E2E Cloth"].type == "CLOTH"
+
+        bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, -1.0))
+        collision_name = bpy.context.active_object.name
+        collision_obj = bpy.data.objects[collision_name]
+
+        add_collision_mod = load_skill("blender-physics", "add_collision_modifier")
+        collision_result = add_collision_mod.add_collision_modifier(
+            object_name=collision_name,
+            settings={"thickness_outer": 0.08},
+        )
+        assert collision_result["success"] is True
+        assert collision_obj.modifiers["Collision"].type == "COLLISION"
+
+        list_mod = load_skill("blender-physics", "list_simulation_modifiers")
+        list_result = list_mod.list_simulation_modifiers()
+        assert list_result["success"] is True
+        assert list_result["context"]["count"] >= 2
+
+        status_mod = load_skill("blender-physics", "get_simulation_status")
+        status_result = status_mod.get_simulation_status(object_name=cloth_name)
+        assert status_result["success"] is True
+        assert status_result["context"]["modifier_count"] == 1
+
+        bake_mod = load_skill("blender-physics", "bake_simulation")
+        bake_result = bake_mod.bake_simulation(
+            object_name=cloth_name,
+            modifier_name="E2E Cloth",
+            frame_start=1,
+            frame_end=2,
+            dry_run=True,
+        )
+        assert bake_result["success"] is True
+        assert bake_result["context"]["dry_run"] is True
+
+        clear_mod = load_skill("blender-physics", "clear_simulation_cache")
+        clear_result = clear_mod.clear_simulation_cache(
+            object_name=cloth_name,
+            modifier_name="E2E Cloth",
+            dry_run=True,
+        )
+        assert clear_result["success"] is True
+        assert clear_result["context"]["dry_run"] is True

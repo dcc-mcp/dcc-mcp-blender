@@ -1,25 +1,583 @@
 tools:
   - name: add_rigid_body
-    description: "Add a rigid body physics component to an object"
+    description: "Add a rigid body physics component to an object."
     source_file: scripts/add_rigid_body.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        body_type:
+          type: string
+          enum: [ACTIVE, PASSIVE]
+          default: ACTIVE
+        mass:
+          type: number
+          default: 1.0
+        friction:
+          type: number
+          default: 0.5
+        restitution:
+          type: number
+          default: 0.0
+        collision_shape:
+          type: string
+          default: CONVEX_HULL
+        properties:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
     read_only: false
     destructive: false
     idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
   - name: set_rigid_body_properties
-    description: "Update rigid body physics properties on an object"
+    description: "Update rigid body physics properties on an object."
     source_file: scripts/set_rigid_body_properties.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        mass:
+          type: number
+        friction:
+          type: number
+        restitution:
+          type: number
+        collision_shape:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
     read_only: false
     destructive: false
     idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: remove_rigid_body
-    description: "Remove rigid body physics from an object"
+    description: "Remove rigid body physics from an object."
     source_file: scripts/remove_rigid_body.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
     read_only: false
     destructive: true
     idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_rigid_bodies
+    description: "List rigid bodies in the scene or on a single object."
+    source_file: scripts/list_rigid_bodies.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_rigid_body_world_settings
+    description: "Create or update scene-level rigid body world and cache settings."
+    source_file: scripts/set_rigid_body_world_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        settings:
+          type: object
+          additionalProperties: true
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        time_scale:
+          type: number
+        substeps_per_frame:
+          type: integer
+        solver_iterations:
+          type: integer
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: bake_rigid_body_simulation
+    description: "Bake the scene rigid body simulation cache."
+    source_file: scripts/bake_rigid_body_simulation.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 120
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        dry_run:
+          type: boolean
+          default: false
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: clear_rigid_body_bake
+    description: "Clear rigid body and point-cache bakes in the current scene."
+    source_file: scripts/clear_rigid_body_bake.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 60
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: add_cloth_modifier
+    description: "Add or update a cloth modifier on a mesh object."
+    source_file: scripts/add_cloth_modifier.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          default: Cloth
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_cloth_settings
+    description: "Update settings on an existing cloth modifier."
+    source_file: scripts/set_cloth_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: add_collision_modifier
+    description: "Add or update a collision modifier on a mesh object."
+    source_file: scripts/add_collision_modifier.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          default: Collision
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_collision_settings
+    description: "Update settings on an existing collision modifier."
+    source_file: scripts/set_collision_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_simulation_modifiers
+    description: "List cloth, collision, soft-body, fluid, dynamic-paint, and particle simulation modifiers."
+    source_file: scripts/list_simulation_modifiers.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: bake_simulation
+    description: "Bake simulation caches for matching modifiers."
+    source_file: scripts/bake_simulation.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 120
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        dry_run:
+          type: boolean
+          default: false
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: clear_simulation_cache
+    description: "Clear simulation caches for matching modifiers."
+    source_file: scripts/clear_simulation_cache.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 60
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          default: false
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: get_simulation_status
+    description: "Return rigid-body world and simulation modifier cache status."
+    source_file: scripts/get_simulation_status.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false

@@ -81,7 +81,7 @@
 | **blender-collection** | `create_collection`, `link_to_collection`, `list_collections` |
 | **blender-geometry** | `create_sphere`, `save_blend`, `file_exists`, `export_fbx`, `export_obj` |
 | **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers`, `create_geometry_node_group`, `assign_geometry_node_group`, `set_geometry_node_modifier_input`, `evaluate_geometry_nodes_info` |
-| **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body` |
+| **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body`, `list_rigid_bodies`, `set_rigid_body_world_settings`, `bake_rigid_body_simulation`, `clear_rigid_body_bake`, `add_cloth_modifier`, `set_cloth_settings`, `add_collision_modifier`, `set_collision_settings`, `list_simulation_modifiers`, `bake_simulation`, `clear_simulation_cache`, `get_simulation_status` |
 
 See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.
 
