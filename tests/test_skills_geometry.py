@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -69,18 +70,23 @@ def test_export_fbx_calls_export_scene():
     result = load_and_call("blender-geometry/scripts/export_fbx.py", mock_bpy, path="/tmp/out.fbx")
 
     assert result["success"] is True
-    mock_bpy.ops.export_scene.fbx.assert_called_once_with(filepath="/tmp/out.fbx")
+    mock_bpy.ops.export_scene.fbx.assert_called_once()
+    _, kwargs = mock_bpy.ops.export_scene.fbx.call_args
+    assert Path(kwargs["filepath"]).name == "out.fbx"
+    assert kwargs["use_selection"] is False
 
 
 def test_export_obj_prefers_blender_3_plus_operator(tmp_path):
     mock_bpy = make_mock_bpy()
-    mock_bpy.ops.wm.obj_export.side_effect = lambda filepath: open(filepath, "w", encoding="utf-8").write("obj")
+    mock_bpy.ops.wm.obj_export.side_effect = lambda filepath, **_kwargs: open(filepath, "w", encoding="utf-8").write(
+        "obj"
+    )
     out_path = tmp_path / "out.obj"
 
     result = load_and_call("blender-geometry/scripts/export_obj.py", mock_bpy, path=str(out_path))
 
     assert result["success"] is True
-    mock_bpy.ops.wm.obj_export.assert_called_once_with(filepath=str(out_path))
+    mock_bpy.ops.wm.obj_export.assert_called_once_with(filepath=str(out_path), export_selected_objects=False)
 
 
 def test_export_obj_writes_basic_obj_when_operator_context_fails(tmp_path):

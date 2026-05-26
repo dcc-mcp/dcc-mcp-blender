@@ -1,21 +1,10 @@
-"""Export the current Blender scene to FBX."""
+"""Export the current Blender scene or selected objects to FBX."""
 
 from __future__ import annotations
 
-from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
+from dcc_mcp_core.skill import skill_entry
 
-
-def export_fbx(path: str) -> dict:
-    """Export the current scene using ``bpy.ops.export_scene.fbx``."""
-    try:
-        import bpy
-
-        bpy.ops.export_scene.fbx(filepath=path)
-        return skill_success(f"Exported FBX: {path}", filepath=path, prompt="FBX exported.")
-    except ImportError:
-        return skill_error("Blender not available", "bpy could not be imported")
-    except Exception as exc:
-        return skill_exception(exc, message=f"Failed to export FBX: {path}")
+from dcc_mcp_blender._interchange_ops import export_fbx
 
 
 @skill_entry

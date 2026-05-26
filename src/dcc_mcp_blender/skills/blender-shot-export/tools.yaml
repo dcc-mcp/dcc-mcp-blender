@@ -1,0 +1,82 @@
+tools:
+  - name: get_shot_info
+    description: "Return active or named camera metadata, frame range, FPS, and resolution."
+    source_file: scripts/get_shot_info.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        camera_name:
+          type: string
+          minLength: 1
+          description: Optional camera object name; defaults to active scene camera.
+        frame_range:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: integer
+          description: Optional [start, end] override.
+    output_schema: &shot_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: export_camera
+    description: "Write camera and shot metadata to a JSON file."
+    source_file: scripts/export_camera.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [camera_name, path]
+      properties:
+        camera_name:
+          type: string
+          minLength: 1
+          description: Camera object name.
+        path:
+          type: string
+          minLength: 1
+          description: Output JSON file path.
+        format:
+          type: string
+          enum: [json]
+          default: json
+          description: Camera export format.
+        frame_range:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: integer
+          description: Optional [start, end] frame range.
+    output_schema: *shot_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true

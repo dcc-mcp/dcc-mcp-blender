@@ -13,6 +13,9 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-mesh-ops` | authoring, modeling | Inspect, clean, triangulate, combine, separate, mirror, extract, and select polygon mesh data. | Load when topology or face-level mesh editing is requested. | Mutating except polygon count. | polygon count, cleanup mesh, triangulate, combine meshes, merge vertices, extract faces |
 | `blender-uv-ops` | authoring, texture prep | Create, copy, inspect, project, unwrap, pack, and normalize UV maps. | Load when texture coordinates or UV islands are requested. | Mutating except UV-map and island inspection. | uv map, unwrap, texture coordinates, projection, pack islands |
 | `blender-geometry` | authoring, interchange, pipeline | Create simple geometry and save/export blend, FBX, or OBJ files. | Load when file output or basic geometry helpers are needed. | Disk-writing and mutating except file existence checks. | sphere, export fbx, export obj, save blend, file exists |
+| `blender-interchange` | interchange, pipeline | Import FBX/OBJ files and export GLTF, USD, Alembic, or batch export jobs. | Load when assets move between DCC/game/pipeline formats. | Disk-writing and scene mutation for imports. | import file, import fbx, import obj, export gltf, export usd, export alembic |
+| `blender-export-preset` | interchange, pipeline | Save, list, load, and delete reusable scene-stored export option presets. | Load when export settings need repeatable named presets. | Mutating except preset listing/loading. | export preset, batch export, reusable export options |
+| `blender-shot-export` | interchange, shot | Inspect shot metadata and export camera metadata JSON. | Load for camera, shot, and animation delivery metadata. | Disk-writing except shot info. | shot export, camera metadata, frame range, camera json |
 | `blender-materials` | authoring, lookdev | Create, assign, edit, list, and delete materials. | Load before shader nodes when material slots or colors are enough. | Mutating except material listing. | material, assign, color, shader base, delete material |
 | `blender-shader-nodes` | authoring, node graph, lookdev | Inspect material nodes and edit Principled BSDF inputs. | Load after materials when node-level shader edits are requested. | Mixed: read-only node listing plus shader mutations. | shader nodes, principled, metallic, roughness, sockets |
 | `blender-geometry-nodes` | authoring, node graph, procedural | Add and list Geometry Nodes modifiers and node groups. | Load for procedural geometry setup or node modifier inspection. | Mixed: modifier creation plus read-only listing. | geometry nodes, procedural, node group, modifier input |
@@ -39,7 +42,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
 | Shot and render delivery | `blender-camera` -> `blender-lighting` -> `blender-render` |
-| File interchange | `blender-scene` -> `blender-geometry` |
+| File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
+| Shot delivery | `blender-camera` -> `blender-animation` -> `blender-shot-export` -> `blender-interchange` |
 | Custom fallback | Typed domain skill -> `blender-scripting` only for the missing operation |
 
 ## Loading Guidance
@@ -47,5 +51,6 @@ This index helps agents choose typed Blender skills before falling back to raw P
 - Prefer typed skills for repeatable operations, structured errors, and MCP annotations.
 - Use `blender-scene` for initial session and scene discovery.
 - Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
+- Use `blender-interchange` and `blender-shot-export` for import/export and delivery before writing custom Python exporters.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.
