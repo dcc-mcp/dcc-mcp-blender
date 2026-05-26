@@ -29,6 +29,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-animation` | animation, shot | Set, inspect, delete, and bake keyframes plus frame ranges and current frame. | Load when timing, frame range, keyframe, curve inspection, deletion, or baking work starts. | Mutating except frame-range and keyframe reads. | keyframe, timeline, frame range, current frame, bake animation |
 | `blender-camera` | shot, layout, render | Create cameras, set the active camera, edit camera properties, and list cameras. | Load when view, shot, or render framing is requested. | Mutating except camera listing. | camera, lens, active camera, shot, framing |
 | `blender-lighting` | lookdev, render | Create lights, edit light properties, list lights, and set world background. | Load when visibility or render quality depends on lighting. | Mutating except light listing. | light, world background, sun, area light, exposure |
+| `blender-light-rig` | lookdev, render, environment | Create reusable light rigs, softboxes, HDRI worlds, grouped light collections, and view-transform settings. | Load after basic lighting when scenes need repeatable studio or environment lighting. | Mutating except rig listing and summary. | three point light, softbox, hdri world, light rig, view transform, lighting summary |
 | `blender-render` | render, diagnostics, delivery | Configure renders, render scenes, inspect render settings, and capture viewport images. | Load after scene/camera/lighting setup when output is needed. | Disk/output producing; read-only for render info. | render, viewport capture, image output, resolution |
 | `blender-dev` | diagnostics, development | Inspect add-ons, Python environment, structured UI metadata, module reloads, debug listeners, and development entrypoints. | Load for adapter/add-on debugging before falling back to arbitrary scripting; avoid for normal scene authoring. | Mixed: read-only diagnostics plus explicit development code execution, path mutation, module reload, and add-on enable/disable. | addon diagnostics, reload modules, run check, debug server, UI snapshot, Python environment |
 | `blender-scripting` | diagnostics, escape hatch | Execute Python snippets or script files and inspect Blender runtime info. | Load last, after checking typed skills and only when custom logic is required. | Potentially arbitrary; use with explicit user intent. | python, script, custom, escape hatch, blender info |
@@ -49,7 +50,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Shader node graph edit | `blender-materials` -> `blender-shader-nodes` (`list_node_sockets` before `connect_nodes`/`set_node_input`) |
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-shader-nodes` for low-level graph edits -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
-| Shot and render delivery | `blender-camera` -> `blender-lighting` -> `blender-render` |
+| Shot and render delivery | `blender-camera` -> `blender-lighting` or `blender-light-rig` -> `blender-render` |
+| Studio lookdev setup | `blender-materials` -> `blender-material-library` -> `blender-light-rig` -> `blender-render` |
 | File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
 | Export validation | `blender-validation` -> `blender-interchange` -> `blender-export-preset` |
 | Local publish prep | `blender-validation` -> `blender-pipeline` -> `blender-interchange` when files need export |
@@ -64,6 +66,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 - Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
 - Use `blender-shader-nodes` for graph-level socket/link edits; use `blender-materials` when material slots or simple colors are enough, `blender-material-library` for reusable looks, texture files, and color management, and `blender-geometry-nodes` when the workflow is about modifier assignment or exposed procedural inputs.
 - Use `blender-texture-bake` only after mesh, UV, and material setup are explicit; prefer `dry_run` before writing bake outputs in automation.
+- Use `blender-lighting` for individual lights and quick world color edits; use `blender-light-rig` for grouped three-point rigs, softboxes, HDRI worlds, and render view-transform coordination.
 - Use `blender-interchange` and `blender-shot-export` for import/export and delivery before writing custom Python exporters.
 - Use `blender-validation` before interchange/export or publish prep, and use `blender-pipeline` for Blender-native metadata and local manifests/packages.
 - Use `blender-dev` for add-on/runtime diagnostics, structured UI metadata, module reloads, and reproducible development entrypoints before reaching for arbitrary Python.

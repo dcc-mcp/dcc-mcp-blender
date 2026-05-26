@@ -1,0 +1,260 @@
+tools:
+  - name: create_three_point_light_rig
+    description: "Create a grouped three-point light rig with key, fill, and rim lights."
+    source_file: scripts/create_three_point_light_rig.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        target_object:
+          type: string
+          minLength: 1
+        key:
+          type: object
+          additionalProperties: true
+        fill:
+          type: object
+          additionalProperties: true
+        rim:
+          type: object
+          additionalProperties: true
+    output_schema: &result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: &mutating
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: create_area_softbox
+    description: "Create a large area-light softbox."
+    source_file: scripts/create_area_softbox.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        location:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+        rotation:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+        size:
+          type: number
+          default: 5.0
+        energy:
+          type: number
+          default: 500.0
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating
+
+  - name: create_hdri_world
+    description: "Create a node-based HDRI/world environment from a local image path."
+    source_file: scripts/create_hdri_world.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_path]
+      properties:
+        image_path:
+          type: string
+          minLength: 1
+        strength:
+          type: number
+          default: 1.0
+        rotation:
+          type: number
+          default: 0.0
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: list_light_rigs
+    description: "List grouped light rigs created by this skill."
+    source_file: scripts/list_light_rigs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_light_rig_intensity
+    description: "Scale all lights in a rig from their original energies."
+    source_file: scripts/set_light_rig_intensity.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [rig_name, multiplier]
+      properties:
+        rig_name:
+          type: string
+          minLength: 1
+        multiplier:
+          type: number
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: aim_light_at_object
+    description: "Aim one light object at a target object."
+    source_file: scripts/aim_light_at_object.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [light_name, target_object]
+      properties:
+        light_name:
+          type: string
+          minLength: 1
+        target_object:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: group_lights
+    description: "Group existing light objects into a rig collection."
+    source_file: scripts/group_lights.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [light_names, collection_name]
+      properties:
+        light_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        collection_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_render_view_transform
+    description: "Set scene view transform, look, exposure, and gamma."
+    source_file: scripts/set_render_view_transform.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        view_transform:
+          type: string
+        look:
+          type: string
+        exposure:
+          type: number
+        gamma:
+          type: number
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: get_lighting_summary
+    description: "Return lights, rigs, world, and view-transform settings."
+    source_file: scripts/get_lighting_summary.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only

@@ -82,6 +82,7 @@
 | **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `enable_addon`, `disable_addon`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |
 | **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation` |
 | **blender-lighting** | `create_light`, `set_light_properties`, `list_lights`, `set_world_background` |
+| **blender-light-rig** | `create_three_point_light_rig`, `create_area_softbox`, `create_hdri_world`, `list_light_rigs`, `set_light_rig_intensity`, `aim_light_at_object`, `group_lights`, `set_render_view_transform`, `get_lighting_summary` |
 | **blender-camera** | `create_camera`, `set_active_camera`, `set_camera_properties`, `list_cameras` |
 | **blender-collection** | `create_collection`, `link_to_collection`, `list_collections` |
 | **blender-geometry** | `create_sphere`, `save_blend`, `file_exists`, `export_fbx`, `export_obj` |
