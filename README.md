@@ -51,7 +51,7 @@
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
 - **150+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
-- **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
+- **Main-thread host adapter** — GUI mode uses core `HostUiDispatcherBase` semantics through `BlenderUiDispatcher`; headless mode uses `BlenderHost` with a core `BlockingDispatcher`
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
 - **Claude Desktop ready** — ship a one-line `mcpServers` config and you're done
 
@@ -124,6 +124,10 @@ blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
 ```
 
 The bootstrap prints `MCP_URL=...`, discovers bundled skills, and drives `BlenderHost` in headless mode until the process is stopped.
+
+In interactive add-on mode, `BlenderUiDispatcher` subclasses the shared core UI dispatcher and `BlenderTimerPump`
+contains the Blender-specific `bpy.app.timers` wiring. In background mode, `BlenderHost` keeps using core
+`BlockingDispatcher` with an explicit headless loop so automation does not depend on Blender UI timers.
 
 ---
 

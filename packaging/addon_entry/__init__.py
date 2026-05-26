@@ -47,7 +47,7 @@ def _start_server_with_host():
     """Start the MCP server with a Blender main-thread dispatcher attached."""
     global _server_dispatcher, _server_host  # noqa: PLW0603
 
-    from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost  # noqa: PLC0415
+    from dcc_mcp_blender.host import BlenderUiDispatcher  # noqa: PLC0415
     from dcc_mcp_blender.server import get_server, start_server, stop_server  # noqa: PLC0415
 
     existing = get_server()
@@ -56,20 +56,19 @@ def _start_server_with_host():
             return existing
         stop_server()
 
-    dispatcher = BlenderCallableDispatcher()
-    host = BlenderHost(dispatcher)
+    dispatcher = BlenderUiDispatcher()
     try:
         server = start_server(dispatcher=dispatcher)
-        host.start()
+        dispatcher.start()
     except Exception:
         with suppress(Exception):
             stop_server()
         with suppress(Exception):
-            host.stop()
+            dispatcher.stop()
         raise
 
     _server_dispatcher = dispatcher
-    _server_host = host
+    _server_host = dispatcher
     return server
 
 

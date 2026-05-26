@@ -61,8 +61,8 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
 
-def test_addon_register_starts_server_with_blender_host(monkeypatch):
-    """GUI add-on enable must wire a host dispatcher before serving main-thread tools."""
+def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(monkeypatch):
+    """GUI add-on enable must wire the core-backed UI dispatcher before serving tools."""
     registered_classes = []
     menu_callbacks = []
 
@@ -94,17 +94,11 @@ def test_addon_register_starts_server_with_blender_host(monkeypatch):
     calls = []
 
     class _Dispatcher:
-        pass
-
-    class _Host:
-        def __init__(self, dispatcher):
-            self.dispatcher = dispatcher
-
         def start(self):
-            calls.append(("host.start", self.dispatcher))
+            calls.append(("dispatcher.start", self))
 
         def stop(self):
-            calls.append(("host.stop", self.dispatcher))
+            calls.append(("dispatcher.stop", self))
 
     server = SimpleNamespace(is_running=True, mcp_url="http://127.0.0.1:8765/mcp")
 
@@ -112,8 +106,7 @@ def test_addon_register_starts_server_with_blender_host(monkeypatch):
         calls.append(("start_server", dispatcher))
         return server
 
-    monkeypatch.setattr(host_mod, "BlenderCallableDispatcher", _Dispatcher)
-    monkeypatch.setattr(host_mod, "BlenderHost", _Host)
+    monkeypatch.setattr(host_mod, "BlenderUiDispatcher", _Dispatcher)
     monkeypatch.setattr(server_mod, "get_server", lambda: None)
     monkeypatch.setattr(server_mod, "start_server", _start_server)
     monkeypatch.setattr(server_mod, "stop_server", lambda: calls.append(("stop_server", None)))
@@ -122,11 +115,16 @@ def test_addon_register_starts_server_with_blender_host(monkeypatch):
 
     assert registered_classes == list(mod._CLASSES)
     assert len(menu_callbacks) == 1
-    assert [call[0] for call in calls] == ["start_server", "host.start"]
+    assert [call[0] for call in calls] == ["start_server", "dispatcher.start"]
     assert calls[0][1] is calls[1][1]
 
     mod.unregister()
 
     assert menu_callbacks == []
     assert registered_classes == []
-    assert [call[0] for call in calls] == ["start_server", "host.start", "stop_server", "host.stop"]
+    assert [call[0] for call in calls] == [
+        "start_server",
+        "dispatcher.start",
+        "stop_server",
+        "dispatcher.stop",
+    ]

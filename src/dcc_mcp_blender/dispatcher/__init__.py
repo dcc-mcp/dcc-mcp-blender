@@ -10,20 +10,18 @@ Module            Purpose
 ================  ====================================================
 ``job``           ``_JobEntry`` + ``_current_job`` ContextVar
 ``cancel``        ``check_blender_cancelled`` cooperative checkpoint
-``ui``            ``BlenderUiDispatcher`` (interactive)
+``ui``            ``BlenderUiDispatcher`` (core-backed interactive)
 ``standalone``    ``BlenderStandaloneDispatcher`` (background)
-``pump``          ``BlenderUiPump`` / ``_CorePump`` + factory helpers
+``pump``          ``BlenderTimerPump`` + factory helpers
 ================  ====================================================
 
 This re-export layer is **zero-overhead**: every name binds to the same
 object as the originating submodule.  External callers do not need to
 update their imports.
 
-See: https://github.com/loonghao/dcc-mcp-blender/issues/XX
+See: https://github.com/loonghao/dcc-mcp-blender/issues/49
 """
 
-# Import future modules
-# Import future modules
 from __future__ import annotations
 
 # Import local modules
@@ -32,6 +30,7 @@ from dcc_mcp_blender.dispatcher.job import DEFAULT_JOB_TIMEOUT_MS, _current_job,
 from dcc_mcp_blender.dispatcher.pump import (
     DEFAULT_BUDGET_MS,
     OVERRUN_MULTIPLIER,
+    BlenderTimerPump,
     BlenderUiPump,
     PyPumpedDispatcher,
     _CorePump,
@@ -52,6 +51,7 @@ __all__ = [
     "BlenderUiDispatcher",
     "BlenderStandaloneDispatcher",
     # Pumps
+    "BlenderTimerPump",
     "BlenderUiPump",
     # Factories
     "create_dispatcher",

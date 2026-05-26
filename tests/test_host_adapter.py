@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -98,3 +99,74 @@ def test_blender_callable_dispatcher_posts_work_to_tick_loop():
 
     thread.join(timeout=1)
     assert result == ["done"]
+
+
+def test_blender_ui_dispatcher_uses_core_queue_and_timer_pump():
+    from dcc_mcp_core._server.host_ui_dispatcher import HostUiDispatcherBase
+
+    from dcc_mcp_blender.host import BlenderUiDispatcher
+
+    bpy, registered = _mock_bpy(background=False)
+    with patch.dict(sys.modules, {"bpy": bpy}):
+        dispatcher = BlenderUiDispatcher(timeout_ms=1000, idle_interval_secs=0.25)
+        assert isinstance(dispatcher, HostUiDispatcherBase)
+
+        result = []
+
+        def worker():
+            result.append(dispatcher.dispatch_callable(lambda: "done", action_name="test"))
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+
+        for _ in range(50):
+            if registered:
+                break
+            time.sleep(0.01)
+
+        assert len(registered) == 1
+        tick_fn, kwargs = registered[0]
+        assert kwargs == {"first_interval": 0.0, "persistent": True}
+
+        interval = tick_fn()
+        thread.join(timeout=1)
+
+        assert result == ["done"]
+        assert interval == 0.25
+        assert dispatcher.pending_count() == 0
+        assert dispatcher.active_count() == 0
+        assert dispatcher.pump.tick_thread_ident == threading.get_ident()
+
+        dispatcher.stop()
+        assert registered == []
+
+
+def test_blender_ui_dispatcher_shutdown_unblocks_pending_main_thread_work():
+    from dcc_mcp_blender.host import BlenderUiDispatcher
+
+    bpy, registered = _mock_bpy(background=False)
+    with patch.dict(sys.modules, {"bpy": bpy}):
+        dispatcher = BlenderUiDispatcher(timeout_ms=5000)
+        errors = []
+
+        def worker():
+            try:
+                dispatcher.dispatch_callable(lambda: "never", action_name="blocked")
+            except RuntimeError as exc:
+                errors.append(str(exc))
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+
+        for _ in range(50):
+            if registered and dispatcher.pending_count() == 1:
+                break
+            time.sleep(0.01)
+
+        assert dispatcher.pending_count() == 1
+        assert dispatcher.shutdown() == 1
+        thread.join(timeout=1)
+
+        assert errors == ["Interrupted"]
+        dispatcher.stop_pump()
+        assert registered == []
