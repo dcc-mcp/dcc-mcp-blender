@@ -29,7 +29,7 @@
 ├─────────────────────────────────┤
 │  dcc_mcp_blender                │
 │  ├─ BlenderMcpServer            │
-│  ├─ SkillCatalog (110+ tools)   │
+│  ├─ SkillCatalog (150+ tools)   │
 │  ├─ ActionRegistry              │
 │  └─ HTTP Handlers               │
 ├─────────────────────────────────┤
@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **110+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, rendering, nodes, physics, scripting and more
+- **150+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -72,7 +72,7 @@
 | **blender-export-preset** | `list_export_presets`, `save_export_preset`, `load_export_preset`, `delete_export_preset` |
 | **blender-shot-export** | `get_shot_info`, `export_camera` |
 | **blender-materials** | `create_material`, `assign_material`, `set_material_color`, `list_materials`, `delete_material` |
-| **blender-shader-nodes** | `list_material_nodes`, `set_principled_input` |
+| **blender-shader-nodes** | `list_material_nodes`, `set_principled_input`, `list_node_trees`, `list_nodes`, `create_node`, `delete_node`, `list_node_sockets`, `connect_nodes`, `disconnect_nodes`, `list_node_links`, `set_node_input`, `get_node_value`, `create_material_with_nodes`, `assign_texture_node`, `set_principled_inputs` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
 | **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation` |
@@ -80,7 +80,7 @@
 | **blender-camera** | `create_camera`, `set_active_camera`, `set_camera_properties`, `list_cameras` |
 | **blender-collection** | `create_collection`, `link_to_collection`, `list_collections` |
 | **blender-geometry** | `create_sphere`, `save_blend`, `file_exists`, `export_fbx`, `export_obj` |
-| **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers` |
+| **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers`, `create_geometry_node_group`, `assign_geometry_node_group`, `set_geometry_node_modifier_input`, `evaluate_geometry_nodes_info` |
 | **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body` |
 
 See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.

@@ -1,17 +1,172 @@
 tools:
   - name: add_geometry_nodes_modifier
-    description: "Add a Geometry Nodes modifier to a mesh object"
+    description: "Add a Geometry Nodes modifier to a mesh object."
     source_file: scripts/add_geometry_nodes_modifier.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          default: "Geometry Nodes"
+        group_name:
+          type: string
+          minLength: 1
+        create_node_group:
+          type: boolean
+          default: true
+    output_schema: &geometry_nodes_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
     read_only: false
     destructive: false
     idempotent: false
+    annotations: &mutating_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
   - name: list_geometry_nodes_modifiers
-    description: "List Geometry Nodes modifiers on an object"
+    description: "List Geometry Nodes modifiers on an object."
     source_file: scripts/list_geometry_nodes_modifiers.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema: *geometry_nodes_result_schema
     read_only: true
     destructive: false
     idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: create_geometry_node_group
+    description: "Create or return a Geometry Nodes node group."
+    source_file: scripts/create_geometry_node_group.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        template:
+          type: string
+          enum: [empty, default, pass_through]
+          default: empty
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: assign_geometry_node_group
+    description: "Assign a Geometry Nodes group to a mesh object's modifier."
+    source_file: scripts/assign_geometry_node_group.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, group_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        group_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          default: "Geometry Nodes"
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: set_geometry_node_modifier_input
+    description: "Set an exposed Geometry Nodes modifier input."
+    source_file: scripts/set_geometry_node_modifier_input.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, modifier_name, input_name, value]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        input_name:
+          type: string
+          minLength: 1
+        value:
+          description: JSON value to assign to the exposed modifier input.
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: evaluate_geometry_nodes_info
+    description: "Return node, link, and exposed input info for a Geometry Nodes modifier."
+    source_file: scripts/evaluate_geometry_nodes_info.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, modifier_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+    output_schema: *geometry_nodes_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations

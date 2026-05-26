@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._node_graph_ops import evaluate_geometry_nodes_info
+
 
 def list_geometry_nodes_modifiers(object_name: str) -> dict:
     """Return Geometry Nodes modifiers attached to an object."""
@@ -18,14 +20,19 @@ def list_geometry_nodes_modifiers(object_name: str) -> dict:
         for modifier in obj.modifiers:
             if modifier.type != "NODES":
                 continue
-            node_group = getattr(modifier, "node_group", None)
+            info = evaluate_geometry_nodes_info(object_name=object_name, modifier_name=modifier.name)
+            context = info.get("context", {}) if info.get("success") else {}
             modifiers.append(
                 {
                     "name": modifier.name,
                     "type": modifier.type,
-                    "node_group": getattr(node_group, "name", None),
+                    "node_group": context.get("group_name")
+                    or getattr(getattr(modifier, "node_group", None), "name", None),
                     "show_viewport": modifier.show_viewport,
                     "show_render": modifier.show_render,
+                    "node_count": context.get("node_count"),
+                    "link_count": context.get("link_count"),
+                    "inputs": context.get("inputs", []),
                 }
             )
 

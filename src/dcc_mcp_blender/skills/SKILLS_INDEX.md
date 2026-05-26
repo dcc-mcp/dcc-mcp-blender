@@ -17,8 +17,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-export-preset` | interchange, pipeline | Save, list, load, and delete reusable scene-stored export option presets. | Load when export settings need repeatable named presets. | Mutating except preset listing/loading. | export preset, batch export, reusable export options |
 | `blender-shot-export` | interchange, shot | Inspect shot metadata and export camera metadata JSON. | Load for camera, shot, and animation delivery metadata. | Disk-writing except shot info. | shot export, camera metadata, frame range, camera json |
 | `blender-materials` | authoring, lookdev | Create, assign, edit, list, and delete materials. | Load before shader nodes when material slots or colors are enough. | Mutating except material listing. | material, assign, color, shader base, delete material |
-| `blender-shader-nodes` | authoring, node graph, lookdev | Inspect material nodes and edit Principled BSDF inputs. | Load after materials when node-level shader edits are requested. | Mixed: read-only node listing plus shader mutations. | shader nodes, principled, metallic, roughness, sockets |
-| `blender-geometry-nodes` | authoring, node graph, procedural | Add and list Geometry Nodes modifiers and node groups. | Load for procedural geometry setup or node modifier inspection. | Mixed: modifier creation plus read-only listing. | geometry nodes, procedural, node group, modifier input |
+| `blender-shader-nodes` | authoring, node graph, lookdev | Inspect and edit shader/material node graphs plus shared node tree sockets, links, and values. | Load after materials when node-level shader edits or generic node graph operations are requested. | Mixed: read-only graph inspection plus node/link/socket mutations. | shader nodes, node graph, sockets, links, principled, texture node |
+| `blender-geometry-nodes` | authoring, node graph, procedural | Create Geometry Nodes groups, assign them to modifiers, set exposed inputs, and inspect procedural graph state. | Load for procedural geometry setup, modifier input updates, or geometry node group assignment. | Mixed: modifier/group creation plus read-only graph summaries. | geometry nodes, procedural, node group, modifier input, exposed socket |
 | `blender-physics` | simulation, authoring | Add, edit, and remove rigid-body physics settings. | Load for rigid-body setup after objects or mesh creation. | Mutating. | rigid body, collision, mass, friction, physics |
 | `blender-rigging` | authoring, animation | Create armatures and bones, add constraints, bind meshes, create shape keys, set drivers, and retarget compatible rigs. | Load for character setup, deformation rigs, constraints, drivers, shape keys, or retargeting. | Mutating. | rigging, armature, bones, constraints, drivers, shape keys, retargeting |
 | `blender-pose-library` | authoring, animation | List, save, load, and mirror reusable armature poses stored on armature objects. | Load after rigging when pose capture or animation handoff needs reusable poses. | Mutating except pose listing. | pose library, save pose, load pose, mirror pose, armature pose |
@@ -39,7 +39,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Character rig setup | `blender-objects` -> `blender-rigging` -> `blender-pose-library` -> `blender-animation` |
 | Animation handoff | `blender-rigging` -> `blender-pose-library` -> `blender-animation` |
 | Material setup | `blender-materials` -> `blender-shader-nodes` -> `blender-render` |
-| Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-render` |
+| Shader node graph edit | `blender-materials` -> `blender-shader-nodes` (`list_node_sockets` before `connect_nodes`/`set_node_input`) |
+| Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-shader-nodes` for low-level graph edits -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
 | Shot and render delivery | `blender-camera` -> `blender-lighting` -> `blender-render` |
 | File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
@@ -51,6 +52,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 - Prefer typed skills for repeatable operations, structured errors, and MCP annotations.
 - Use `blender-scene` for initial session and scene discovery.
 - Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
+- Use `blender-shader-nodes` for graph-level socket/link edits; use `blender-materials` when material slots or simple colors are enough, and `blender-geometry-nodes` when the workflow is about modifier assignment or exposed procedural inputs.
 - Use `blender-interchange` and `blender-shot-export` for import/export and delivery before writing custom Python exporters.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.

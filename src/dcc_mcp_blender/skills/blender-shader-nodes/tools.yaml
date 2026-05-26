@@ -1,17 +1,421 @@
 tools:
   - name: list_material_nodes
-    description: "List shader nodes and sockets for a material"
+    description: "List shader nodes and sockets for a material."
     source_file: scripts/list_material_nodes.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        include_sockets:
+          type: boolean
+          default: true
+    output_schema: &node_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
     read_only: true
     destructive: false
     idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: set_principled_input
-    description: "Set a value on a material's Principled BSDF shader"
+    description: "Set a value on a material's Principled BSDF shader."
     source_file: scripts/set_principled_input.py
     execution: sync
     affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, input_name, value]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        input_name:
+          type: string
+          minLength: 1
+        value:
+          description: JSON value to assign to the socket.
+        node_name:
+          type: string
+          default: "Principled BSDF"
+    output_schema: *node_result_schema
     read_only: false
     destructive: false
     idempotent: true
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_node_trees
+    description: "List material and Geometry Nodes node trees."
+    source_file: scripts/list_node_trees.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [all, shader, material, geometry, geometry_nodes, node_group]
+        owner_name:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: list_nodes
+    description: "List nodes in a material, node group, or Geometry Nodes modifier tree."
+    source_file: scripts/list_nodes.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema: &node_tree_schema
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+          description: "Reference such as {kind: shader, material_name: Mat} or {kind: geometry, group_name: Group}."
+        type_filter:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: create_node
+    description: "Create a node in a material or Geometry Nodes graph."
+    source_file: scripts/create_node.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, node_type]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        node_type:
+          type: string
+          minLength: 1
+          description: Blender node type id, for example ShaderNodeTexImage.
+        name:
+          type: string
+          minLength: 1
+        location:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: &mutating_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: delete_node
+    description: "Delete a node from a material or Geometry Nodes graph."
+    source_file: scripts/delete_node.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, node_name]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        node_name:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_node_sockets
+    description: "List input and output sockets for a node."
+    source_file: scripts/list_node_sockets.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, node_name]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        node_name:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: connect_nodes
+    description: "Connect an output socket to an input socket."
+    source_file: scripts/connect_nodes.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, from_node, from_socket, to_node, to_socket]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        from_node:
+          type: string
+          minLength: 1
+        from_socket:
+          type: string
+          minLength: 1
+        to_node:
+          type: string
+          minLength: 1
+        to_socket:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: disconnect_nodes
+    description: "Disconnect node links by id or endpoint fields."
+    source_file: scripts/disconnect_nodes.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        link_id:
+          type: string
+          minLength: 1
+        from_node:
+          type: string
+          minLength: 1
+        from_socket:
+          type: string
+          minLength: 1
+        to_node:
+          type: string
+          minLength: 1
+        to_socket:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_node_links
+    description: "List links in a material or Geometry Nodes graph."
+    source_file: scripts/list_node_links.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema: *node_tree_schema
+    output_schema: *node_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: set_node_input
+    description: "Set an input socket value on a node."
+    source_file: scripts/set_node_input.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, node_name, socket, value]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        node_name:
+          type: string
+          minLength: 1
+        socket:
+          type: string
+          minLength: 1
+        value:
+          description: JSON value to assign to the socket.
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: get_node_value
+    description: "Read one socket value or all socket values for a node."
+    source_file: scripts/get_node_value.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [node_tree_ref, node_name]
+      properties:
+        node_tree_ref:
+          type: object
+          additionalProperties: true
+        node_name:
+          type: string
+          minLength: 1
+        socket:
+          type: string
+          minLength: 1
+    output_schema: *node_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: create_material_with_nodes
+    description: "Create or initialize a material with a node graph."
+    source_file: scripts/create_material_with_nodes.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        template:
+          type: string
+          enum: [principled, default, emission]
+          default: principled
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: assign_texture_node
+    description: "Create an image texture node and connect it to a material socket."
+    source_file: scripts/assign_texture_node.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, image_path]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        image_path:
+          type: string
+          minLength: 1
+        target_socket:
+          type: string
+          default: "Base Color"
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+
+  - name: set_principled_inputs
+    description: "Set multiple values on a material's Principled BSDF shader."
+    source_file: scripts/set_principled_inputs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, inputs]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        inputs:
+          type: object
+          additionalProperties: true
+        node_name:
+          type: string
+          default: "Principled BSDF"
+    output_schema: *node_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
