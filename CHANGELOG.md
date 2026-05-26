@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.5](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.4...v0.1.5) (2026-05-26)
+
+
+### Features
+
+* add blender asset validation pipeline tools ([#55](https://github.com/loonghao/dcc-mcp-blender/issues/55)) ([8ccce34](https://github.com/loonghao/dcc-mcp-blender/commit/8ccce34f1ca0c20a343a2d3094d46ea2324d2f08))
+* add blender dev diagnostic tools ([883d932](https://github.com/loonghao/dcc-mcp-blender/commit/883d93262cf44730f88e58efc67f314a56acc935))
+* add blender interchange export tools ([ed7e43c](https://github.com/loonghao/dcc-mcp-blender/commit/ed7e43cf05413280fa0eb670cc4209b7c6d3fda6))
+* add blender light rig environment tools ([c7ed744](https://github.com/loonghao/dcc-mcp-blender/commit/c7ed7449b1d1b52bc72b0b646d60a133e59e53f6))
+* add blender material library bake tools ([#56](https://github.com/loonghao/dcc-mcp-blender/issues/56)) ([340f09a](https://github.com/loonghao/dcc-mcp-blender/commit/340f09a6ad4a90f06d3c53daf9e26fecc712afef))
+* add blender mesh and scene operations ([ea48a18](https://github.com/loonghao/dcc-mcp-blender/commit/ea48a184bd5a9c40c7d2619047b88b2cf5ff16b8))
+* add blender rigging and pose operations ([a8bb237](https://github.com/loonghao/dcc-mcp-blender/commit/a8bb237685b72a044693bf1b23c0d0bf92c5f854))
+* add blender uv operations skill ([1481eb7](https://github.com/loonghao/dcc-mcp-blender/commit/1481eb75f4835eb8dfcf31eab047140e69eef03e))
+* expand blender node graph tools ([d463d28](https://github.com/loonghao/dcc-mcp-blender/commit/d463d2810cc5dc68f3e04930ac69ef005ee1febe))
+* expand blender simulation physics tools ([56994e8](https://github.com/loonghao/dcc-mcp-blender/commit/56994e8f84b0ea19315e03acd823fa46c71d648b))
+
+
+### Bug Fixes
+
+* align blender dispatcher with core pump ([81b382a](https://github.com/loonghao/dcc-mcp-blender/commit/81b382aaedf343f65829c2b73843e14a2dcdd26b))
+* repair blender addon startup ([008c078](https://github.com/loonghao/dcc-mcp-blender/commit/008c078edaff1dd7d39de9022673ecd2dc66629b))
+
+
+### Code Refactoring
+
+* simplify blender dispatcher with core interfaces ([f86d663](https://github.com/loonghao/dcc-mcp-blender/commit/f86d663b689163332a30039a2662419194c6aadb))
+
+
+### Documentation
+
+* add blender skills index ([812aac4](https://github.com/loonghao/dcc-mcp-blender/commit/812aac4fe597f60ba9ada187f30fe2034d812815))
+
 ## [0.1.4](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.3...v0.1.4) (2026-05-24)
 
 
