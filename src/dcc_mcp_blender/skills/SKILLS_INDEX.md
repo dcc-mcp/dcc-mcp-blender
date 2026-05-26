@@ -10,6 +10,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-objects` | scene, authoring | Create, delete, duplicate, transform, and inspect objects. | Load when object-level edits or transforms are requested. | Mutating except object info. | cube, object transform, duplicate, move, rotate, scale |
 | `blender-collection` | scene, organization | Create collections, link objects, and inspect collection structure. | Load when grouping or collection membership matters. | Mutating except collection listing. | collection, group, hierarchy, link object |
 | `blender-mesh` | authoring, modeling | Add/apply/list modifiers and inspect mesh details. | Load when an existing mesh needs modifiers or mesh info. | Mutating except modifier and mesh inspection. | modifier, mesh info, apply, bevel, subdivision |
+| `blender-uv-ops` | authoring, texture prep | Create, copy, inspect, project, unwrap, pack, and normalize UV maps. | Load when texture coordinates or UV islands are requested. | Mutating except UV-map and island inspection. | uv map, unwrap, texture coordinates, projection, pack islands |
 | `blender-geometry` | authoring, interchange, pipeline | Create simple geometry and save/export blend, FBX, or OBJ files. | Load when file output or basic geometry helpers are needed. | Disk-writing and mutating except file existence checks. | sphere, export fbx, export obj, save blend, file exists |
 | `blender-materials` | authoring, lookdev | Create, assign, edit, list, and delete materials. | Load before shader nodes when material slots or colors are enough. | Mutating except material listing. | material, assign, color, shader base, delete material |
 | `blender-shader-nodes` | authoring, node graph, lookdev | Inspect material nodes and edit Principled BSDF inputs. | Load after materials when node-level shader edits are requested. | Mixed: read-only node listing plus shader mutations. | shader nodes, principled, metallic, roughness, sockets |
@@ -27,6 +28,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 |---|---|
 | Inspect a new session | `blender-scene` -> `blender-objects` -> `blender-mesh` |
 | Build simple geometry | `blender-scene` -> `blender-objects` -> `blender-mesh` or `blender-geometry` |
+| Prepare textured mesh UVs | `blender-mesh` -> `blender-uv-ops` -> `blender-materials` |
 | Material setup | `blender-materials` -> `blender-shader-nodes` -> `blender-render` |
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |

@@ -29,7 +29,7 @@
 ├─────────────────────────────────┤
 │  dcc_mcp_blender                │
 │  ├─ BlenderMcpServer            │
-│  ├─ SkillCatalog (55+ tools)    │
+│  ├─ SkillCatalog (65+ tools)    │
 │  ├─ ActionRegistry              │
 │  └─ HTTP Handlers               │
 ├─────────────────────────────────┤
@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **55+ pre-built tools** — scene management, object manipulation, materials, rendering, nodes, physics, scripting and more
+- **65+ pre-built tools** — scene management, object manipulation, UVs, materials, rendering, nodes, physics, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -64,6 +64,7 @@
 | **blender-scene** | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info`, `get_session_info` |
 | **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `get_object_info` |
 | **blender-mesh** | `add_modifier`, `apply_modifier`, `list_modifiers`, `get_mesh_info` |
+| **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
 | **blender-materials** | `create_material`, `assign_material`, `set_material_color`, `list_materials`, `delete_material` |
 | **blender-shader-nodes** | `list_material_nodes`, `set_principled_input` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |

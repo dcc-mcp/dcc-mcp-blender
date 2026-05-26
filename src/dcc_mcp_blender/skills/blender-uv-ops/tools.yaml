@@ -1,0 +1,329 @@
+tools:
+  - name: list_uv_maps
+    description: "List UV maps on a mesh object, including active map and coordinate counts."
+    source_file: scripts/list_uv_maps.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+    output_schema: &uv_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: create_uv_map
+    description: "Create a UV map on a mesh object and optionally make it active."
+    source_file: scripts/create_uv_map.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        name:
+          type: string
+          minLength: 1
+          description: New UV map name.
+        set_active:
+          type: boolean
+          default: true
+          description: Make the created UV map active.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: delete_uv_map
+    description: "Delete a named UV map from a mesh object."
+    source_file: scripts/delete_uv_map.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        name:
+          type: string
+          minLength: 1
+          description: UV map to delete.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: copy_uv_map
+    description: "Copy UV coordinates from one UV map into a newly-created target map."
+    source_file: scripts/copy_uv_map.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, source, target]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        source:
+          type: string
+          minLength: 1
+          description: Existing UV map name to copy from.
+        target:
+          type: string
+          minLength: 1
+          description: New UV map name to create.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: get_uv_info
+    description: "Return UV map, coordinate, loop, polygon, and island statistics for a mesh object."
+    source_file: scripts/get_uv_info.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+    output_schema: *uv_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: get_uv_islands
+    description: "Summarize UV islands and their face membership and 2D bounds."
+    source_file: scripts/get_uv_islands.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        uv_map:
+          type: string
+          minLength: 1
+          description: Optional UV map name. Defaults to the active UV map.
+    output_schema: *uv_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: project_uvs
+    description: "Generate UV coordinates using planar, cube, bounds, smart, sphere, cylinder, or view projection."
+    source_file: scripts/project_uvs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        method:
+          type: string
+          enum: [planar, cube, bounds, smart, sphere, cylinder, view]
+          default: planar
+          description: Projection method.
+        axis:
+          type: string
+          enum: [x, y, z]
+          default: z
+          description: Projection axis for planar and bounds projection.
+        margin:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 0.5
+          default: 0
+          description: Margin reserved inside 0-1 UV space.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: unwrap_uvs
+    description: "Unwrap selected mesh faces through Blender's smart, angle-based, or conformal UV operators."
+    source_file: scripts/unwrap_uvs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        method:
+          type: string
+          enum: [angle_based, conformal, smart]
+          default: angle_based
+          description: Blender unwrap method.
+        margin:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 0.5
+          default: 0.001
+          description: Island margin.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: pack_uvs
+    description: "Pack UV islands through Blender's UV packing operator and optionally normalize the result."
+    source_file: scripts/pack_uvs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        margin:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 0.5
+          default: 0.001
+          description: Island margin.
+        rotate:
+          type: boolean
+          default: true
+          description: Allow island rotation while packing.
+        normalize:
+          type: boolean
+          default: true
+          description: Fit packed coordinates back into 0-1 space.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: normalize_uvs
+    description: "Normalize an active or named UV map into 0-1 UV space."
+    source_file: scripts/normalize_uvs.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        uv_map:
+          type: string
+          minLength: 1
+          description: Optional UV map name. Defaults to the active UV map.
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
