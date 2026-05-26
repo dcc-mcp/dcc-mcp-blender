@@ -1,0 +1,278 @@
+tools:
+  - name: save_material_preset
+    description: "Save one material into a portable scene-local preset."
+    source_file: scripts/save_material_preset.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, preset_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        preset_name:
+          type: string
+          minLength: 1
+        include_nodes:
+          type: boolean
+          default: true
+    output_schema: &result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: &mutating_idempotent
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_material_presets
+    description: "List material presets stored on the current scene."
+    source_file: scripts/list_material_presets.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: load_material_preset
+    description: "Load a material preset and optionally assign it to a mesh object."
+    source_file: scripts/load_material_preset.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [preset_name]
+      properties:
+        preset_name:
+          type: string
+          minLength: 1
+        target_object:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
+
+  - name: delete_material_preset
+    description: "Delete a material preset from the current scene."
+    source_file: scripts/delete_material_preset.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [preset_name]
+      properties:
+        preset_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: get_shader_assignment
+    description: "Return material slot assignments for one object."
+    source_file: scripts/get_shader_assignment.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
+
+  - name: get_material_connections
+    description: "Return shader node and link connectivity for one material."
+    source_file: scripts/get_material_connections.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
+
+  - name: set_material_attribute
+    description: "Set a material attribute or Principled BSDF input."
+    source_file: scripts/set_material_attribute.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, attribute, value]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        attribute:
+          type: string
+          minLength: 1
+        value:
+          description: JSON value to assign.
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
+
+  - name: assign_texture
+    description: "Assign a local image texture file to a material socket."
+    source_file: scripts/assign_texture.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name, image_path]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        image_path:
+          type: string
+          minLength: 1
+        target_socket:
+          type: string
+          default: "Base Color"
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+
+  - name: list_images
+    description: "List images currently loaded in Blender."
+    source_file: scripts/list_images.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
+
+  - name: reload_image
+    description: "Reload one loaded image from disk."
+    source_file: scripts/reload_image.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
+
+  - name: list_color_spaces
+    description: "List common color-management options and current scene settings."
+    source_file: scripts/list_color_spaces.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
+
+  - name: set_color_management
+    description: "Set current scene color-management view settings."
+    source_file: scripts/set_color_management.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        view_transform:
+          type: string
+        look:
+          type: string
+        exposure:
+          type: number
+        gamma:
+          type: number
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
