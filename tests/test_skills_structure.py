@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pathlib
+import re
 
 SKILLS_DIR = pathlib.Path(__file__).parent.parent / "src" / "dcc_mcp_blender" / "skills"
+SKILLS_INDEX = SKILLS_DIR / "SKILLS_INDEX.md"
 
 EXPECTED_SKILLS = [
     "blender-scene",
@@ -62,3 +64,34 @@ def test_scripts_have_main_entry():
 
     if errors:
         assert False, "Script structure errors:\n" + "\n".join(f"  - {e}" for e in errors)
+
+
+def test_skills_index_mentions_every_bundled_skill():
+    """The bundled skill index should stay in sync with skill directories."""
+    text = SKILLS_INDEX.read_text(encoding="utf-8")
+    indexed = set(re.findall(r"\| `(?P<name>blender-[a-z0-9-]+)` \|", text))
+    actual = {path.name for path in SKILLS_DIR.iterdir() if path.is_dir()}
+
+    assert indexed == actual
+
+
+def test_skills_index_documents_stage_policy_and_task_chains():
+    """The index should include the operational guidance requested by issue #28."""
+    text = SKILLS_INDEX.read_text(encoding="utf-8")
+
+    for heading in ("## Stage Map", "## Common Task Chains", "## Loading Guidance"):
+        assert heading in text
+
+    for required in (
+        "Default-load policy",
+        "Side-effect profile",
+        "Discovery terms",
+        "bootstrap",
+        "scene",
+        "authoring",
+        "interchange",
+        "pipeline",
+        "diagnostics",
+        "escape hatch",
+    ):
+        assert required in text

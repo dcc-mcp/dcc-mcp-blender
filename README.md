@@ -76,6 +76,8 @@
 | **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers` |
 | **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body` |
 
+See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.
+
 ---
 
 ## Installation
