@@ -1,0 +1,330 @@
+tools:
+  - name: create_armature
+    description: "Create a Blender armature object."
+    source_file: scripts/create_armature.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Armature object name.
+        location:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+          description: Optional world location.
+    output_schema: &rig_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: create_bone
+    description: "Create an edit bone in an armature with optional parent bone."
+    source_file: scripts/create_bone.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [armature_name, bone_name, head, tail]
+      properties:
+        armature_name:
+          type: string
+          minLength: 1
+          description: Armature object name.
+        bone_name:
+          type: string
+          minLength: 1
+          description: New bone name.
+        head:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+          description: Bone head coordinates.
+        tail:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+          description: Bone tail coordinates.
+        parent:
+          type: string
+          minLength: 1
+          description: Optional parent bone name.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: mirror_bones
+    description: "Mirror armature edit bones across an axis using common left/right naming conventions."
+    source_file: scripts/mirror_bones.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [armature_name]
+      properties:
+        armature_name:
+          type: string
+          minLength: 1
+          description: Armature object name.
+        axis:
+          type: string
+          enum: [x, y, z]
+          default: x
+          description: Mirror axis.
+        naming_rule:
+          type: string
+          enum: [suffix, prefix, auto]
+          default: suffix
+          description: Naming convention hint.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: add_constraint
+    description: "Add a Blender object constraint and optionally assign a target object."
+    source_file: scripts/add_constraint.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, constraint_type]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object receiving the constraint.
+        constraint_type:
+          type: string
+          minLength: 1
+          description: Blender constraint type, such as COPY_LOCATION or TRACK_TO.
+        target:
+          type: string
+          minLength: 1
+          description: Optional target object name.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_constraint_properties
+    description: "Set supported RNA properties on an existing object constraint."
+    source_file: scripts/set_constraint_properties.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, constraint_name, properties]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Constrained object name.
+        constraint_name:
+          type: string
+          minLength: 1
+          description: Constraint name.
+        properties:
+          type: object
+          additionalProperties: true
+          description: Properties to apply to the constraint.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: bind_mesh_to_armature
+    description: "Bind a mesh to an armature with an Armature modifier or Blender automatic weights."
+    source_file: scripts/bind_mesh_to_armature.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [mesh_name, armature_name]
+      properties:
+        mesh_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        armature_name:
+          type: string
+          minLength: 1
+          description: Armature object name.
+        method:
+          type: string
+          enum: [modifier, automatic_weights]
+          default: modifier
+          description: Binding method.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: add_shape_key
+    description: "Add a shape key to a mesh object."
+    source_file: scripts/add_shape_key.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        name:
+          type: string
+          minLength: 1
+          description: Shape key name.
+        from_mix:
+          type: boolean
+          default: false
+          description: Create from current mix.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_driver
+    description: "Create or update a driver on an object data path."
+    source_file: scripts/set_driver.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, data_path, expression]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object receiving the driver.
+        data_path:
+          type: string
+          minLength: 1
+          description: RNA data path to drive, such as location.x or scale.
+        expression:
+          type: string
+          minLength: 1
+          description: Driver expression.
+        variables:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Optional driver variable specs.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: retarget_animation
+    description: "Copy current pose values and action data from one armature to another by bone mapping."
+    source_file: scripts/retarget_animation.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [source_armature, target_armature]
+      properties:
+        source_armature:
+          type: string
+          minLength: 1
+          description: Source armature object name.
+        target_armature:
+          type: string
+          minLength: 1
+          description: Target armature object name.
+        mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional source-bone to target-bone mapping.
+    output_schema: *rig_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false

@@ -17,7 +17,9 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-shader-nodes` | authoring, node graph, lookdev | Inspect material nodes and edit Principled BSDF inputs. | Load after materials when node-level shader edits are requested. | Mixed: read-only node listing plus shader mutations. | shader nodes, principled, metallic, roughness, sockets |
 | `blender-geometry-nodes` | authoring, node graph, procedural | Add and list Geometry Nodes modifiers and node groups. | Load for procedural geometry setup or node modifier inspection. | Mixed: modifier creation plus read-only listing. | geometry nodes, procedural, node group, modifier input |
 | `blender-physics` | simulation, authoring | Add, edit, and remove rigid-body physics settings. | Load for rigid-body setup after objects or mesh creation. | Mutating. | rigid body, collision, mass, friction, physics |
-| `blender-animation` | animation, shot | Set keyframes, frame ranges, and the current frame. | Load when timing, frame range, or keyframe work starts. | Mutating except frame-range reads. | keyframe, timeline, frame range, current frame |
+| `blender-rigging` | authoring, animation | Create armatures and bones, add constraints, bind meshes, create shape keys, set drivers, and retarget compatible rigs. | Load for character setup, deformation rigs, constraints, drivers, shape keys, or retargeting. | Mutating. | rigging, armature, bones, constraints, drivers, shape keys, retargeting |
+| `blender-pose-library` | authoring, animation | List, save, load, and mirror reusable armature poses stored on armature objects. | Load after rigging when pose capture or animation handoff needs reusable poses. | Mutating except pose listing. | pose library, save pose, load pose, mirror pose, armature pose |
+| `blender-animation` | animation, shot | Set, inspect, delete, and bake keyframes plus frame ranges and current frame. | Load when timing, frame range, keyframe, curve inspection, deletion, or baking work starts. | Mutating except frame-range and keyframe reads. | keyframe, timeline, frame range, current frame, bake animation |
 | `blender-camera` | shot, layout, render | Create cameras, set the active camera, edit camera properties, and list cameras. | Load when view, shot, or render framing is requested. | Mutating except camera listing. | camera, lens, active camera, shot, framing |
 | `blender-lighting` | lookdev, render | Create lights, edit light properties, list lights, and set world background. | Load when visibility or render quality depends on lighting. | Mutating except light listing. | light, world background, sun, area light, exposure |
 | `blender-render` | render, diagnostics, delivery | Configure renders, render scenes, inspect render settings, and capture viewport images. | Load after scene/camera/lighting setup when output is needed. | Disk/output producing; read-only for render info. | render, viewport capture, image output, resolution |
@@ -31,6 +33,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Build simple geometry | `blender-scene` -> `blender-objects` -> `blender-mesh` or `blender-geometry` |
 | Edit polygon topology | `blender-objects` -> `blender-mesh-ops` -> `blender-mesh` if modifiers are needed |
 | Prepare textured mesh UVs | `blender-mesh-ops` -> `blender-uv-ops` -> `blender-materials` |
+| Character rig setup | `blender-objects` -> `blender-rigging` -> `blender-pose-library` -> `blender-animation` |
+| Animation handoff | `blender-rigging` -> `blender-pose-library` -> `blender-animation` |
 | Material setup | `blender-materials` -> `blender-shader-nodes` -> `blender-render` |
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
@@ -42,6 +46,6 @@ This index helps agents choose typed Blender skills before falling back to raw P
 
 - Prefer typed skills for repeatable operations, structured errors, and MCP annotations.
 - Use `blender-scene` for initial session and scene discovery.
-- Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology and `blender-mesh` for modifiers.
+- Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.
