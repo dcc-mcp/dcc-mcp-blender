@@ -55,3 +55,342 @@ tools:
     read_only: true
     destructive: false
     idempotent: true
+
+  - name: get_selection
+    description: "Return the current Blender object selection and active object."
+    source_file: scripts/get_selection.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema: &object_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_selection
+    description: "Replace, add, remove, or toggle Blender object selection by object name."
+    source_file: scripts/set_selection.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_names]
+      properties:
+        object_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          description: Object names to select or adjust.
+        mode:
+          type: string
+          enum: [replace, add, remove, toggle]
+          default: replace
+          description: Selection update mode.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: select_by_type
+    description: "Select all objects whose Blender object type matches the requested type."
+    source_file: scripts/select_by_type.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          minLength: 1
+          description: Blender object type, such as MESH, LIGHT, CAMERA, or EMPTY.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: find_by_pattern
+    description: "Find objects by shell-style name pattern and optional Blender object type."
+    source_file: scripts/find_by_pattern.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [pattern]
+      properties:
+        pattern:
+          type: string
+          minLength: 1
+          description: Shell-style pattern, such as mcp_* or Cube.???.
+        type:
+          type: string
+          minLength: 1
+          description: Optional Blender object type filter.
+    output_schema: *object_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: rename_object
+    description: "Rename a Blender object and matching object-data block when appropriate."
+    source_file: scripts/rename_object.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, new_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Existing object name.
+        new_name:
+          type: string
+          minLength: 1
+          description: New object name.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: parent_object
+    description: "Parent or unparent an object while preserving its world transform when possible."
+    source_file: scripts/parent_object.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [child_name]
+      properties:
+        child_name:
+          type: string
+          minLength: 1
+          description: Child object name.
+        parent_name:
+          type: string
+          minLength: 1
+          description: Optional parent object name; omit to unparent.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: group_objects
+    description: "Link objects into a named collection, creating the collection if needed."
+    source_file: scripts/group_objects.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_names]
+      properties:
+        object_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          description: Object names to link into the collection.
+        collection_name:
+          type: string
+          minLength: 1
+          description: Optional target collection name.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_visibility
+    description: "Set viewport and/or render visibility for a Blender object."
+    source_file: scripts/set_visibility.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, visible]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object name.
+        visible:
+          type: boolean
+          description: Desired visible state.
+        viewport:
+          type: boolean
+          default: true
+          description: Update viewport visibility.
+        render:
+          type: boolean
+          default: true
+          description: Update render visibility.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: get_bounding_box
+    description: "Return local or world-space object bounding-box corners, min/max, center, and size."
+    source_file: scripts/get_bounding_box.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object name.
+        world_space:
+          type: boolean
+          default: true
+          description: Return world-space bounds when true.
+    output_schema: *object_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: center_origin
+    description: "Move an object's origin using Blender's origin-set operator."
+    source_file: scripts/center_origin.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object name.
+        mode:
+          type: string
+          enum: [geometry, bounds, cursor, center_of_mass, volume]
+          default: geometry
+          description: Origin mode.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: freeze_transforms
+    description: "Apply location, rotation, and/or scale into object data."
+    source_file: scripts/freeze_transforms.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Object name.
+        location:
+          type: boolean
+          default: false
+          description: Apply location transforms.
+        rotation:
+          type: boolean
+          default: true
+          description: Apply rotation transforms.
+        scale:
+          type: boolean
+          default: true
+          description: Apply scale transforms.
+    output_schema: *object_result_schema
+    read_only: false
+    destructive: true
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
+      open_world_hint: false

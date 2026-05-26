@@ -7,9 +7,10 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Skill | Stage | Purpose | Default-load policy | Side-effect profile | Discovery terms |
 |---|---|---|---|---|---|
 | `blender-scene` | bootstrap, scene, diagnostics | Start, open, save, list, and inspect scenes. | Load first for scene discovery or session checks. | Mixed: read-only inspection plus scene/file mutations. | session, scene info, open blend, save blend, list objects |
-| `blender-objects` | scene, authoring | Create, delete, duplicate, transform, and inspect objects. | Load when object-level edits or transforms are requested. | Mutating except object info. | cube, object transform, duplicate, move, rotate, scale |
+| `blender-objects` | scene, authoring | Create, delete, duplicate, transform, select, rename, group, parent, hide, bound, and inspect objects. | Load when object-level edits, selection, transforms, visibility, or bounds are requested. | Mutating except object info, selection reads, name searches, and bounds. | cube, object transform, duplicate, select, find, rename, parent, bounds |
 | `blender-collection` | scene, organization | Create collections, link objects, and inspect collection structure. | Load when grouping or collection membership matters. | Mutating except collection listing. | collection, group, hierarchy, link object |
 | `blender-mesh` | authoring, modeling | Add/apply/list modifiers and inspect mesh details. | Load when an existing mesh needs modifiers or mesh info. | Mutating except modifier and mesh inspection. | modifier, mesh info, apply, bevel, subdivision |
+| `blender-mesh-ops` | authoring, modeling | Inspect, clean, triangulate, combine, separate, mirror, extract, and select polygon mesh data. | Load when topology or face-level mesh editing is requested. | Mutating except polygon count. | polygon count, cleanup mesh, triangulate, combine meshes, merge vertices, extract faces |
 | `blender-uv-ops` | authoring, texture prep | Create, copy, inspect, project, unwrap, pack, and normalize UV maps. | Load when texture coordinates or UV islands are requested. | Mutating except UV-map and island inspection. | uv map, unwrap, texture coordinates, projection, pack islands |
 | `blender-geometry` | authoring, interchange, pipeline | Create simple geometry and save/export blend, FBX, or OBJ files. | Load when file output or basic geometry helpers are needed. | Disk-writing and mutating except file existence checks. | sphere, export fbx, export obj, save blend, file exists |
 | `blender-materials` | authoring, lookdev | Create, assign, edit, list, and delete materials. | Load before shader nodes when material slots or colors are enough. | Mutating except material listing. | material, assign, color, shader base, delete material |
@@ -28,7 +29,8 @@ This index helps agents choose typed Blender skills before falling back to raw P
 |---|---|
 | Inspect a new session | `blender-scene` -> `blender-objects` -> `blender-mesh` |
 | Build simple geometry | `blender-scene` -> `blender-objects` -> `blender-mesh` or `blender-geometry` |
-| Prepare textured mesh UVs | `blender-mesh` -> `blender-uv-ops` -> `blender-materials` |
+| Edit polygon topology | `blender-objects` -> `blender-mesh-ops` -> `blender-mesh` if modifiers are needed |
+| Prepare textured mesh UVs | `blender-mesh-ops` -> `blender-uv-ops` -> `blender-materials` |
 | Material setup | `blender-materials` -> `blender-shader-nodes` -> `blender-render` |
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
@@ -40,6 +42,6 @@ This index helps agents choose typed Blender skills before falling back to raw P
 
 - Prefer typed skills for repeatable operations, structured errors, and MCP annotations.
 - Use `blender-scene` for initial session and scene discovery.
-- Load authoring skills only when the requested task enters that domain.
+- Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology and `blender-mesh` for modifiers.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.

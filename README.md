@@ -29,7 +29,7 @@
 ├─────────────────────────────────┤
 │  dcc_mcp_blender                │
 │  ├─ BlenderMcpServer            │
-│  ├─ SkillCatalog (65+ tools)    │
+│  ├─ SkillCatalog (85+ tools)    │
 │  ├─ ActionRegistry              │
 │  └─ HTTP Handlers               │
 ├─────────────────────────────────┤
@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **65+ pre-built tools** — scene management, object manipulation, UVs, materials, rendering, nodes, physics, scripting and more
+- **85+ pre-built tools** — scene management, object manipulation, mesh/UV editing, materials, rendering, nodes, physics, scripting and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — `BlenderHost` drives dispatcher ticks through `bpy.app.timers` or a background loop
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -62,8 +62,9 @@
 | Category | Tools |
 |---|---|
 | **blender-scene** | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info`, `get_session_info` |
-| **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `get_object_info` |
+| **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `get_object_info`, `get_selection`, `set_selection`, `select_by_type`, `find_by_pattern`, `rename_object`, `parent_object`, `group_objects`, `set_visibility`, `get_bounding_box`, `center_origin`, `freeze_transforms` |
 | **blender-mesh** | `add_modifier`, `apply_modifier`, `list_modifiers`, `get_mesh_info` |
+| **blender-mesh-ops** | `get_poly_count`, `cleanup_mesh`, `triangulate_mesh`, `separate_mesh`, `combine_meshes`, `merge_vertices`, `extract_faces`, `mirror_mesh`, `select_by_material` |
 | **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
 | **blender-materials** | `create_material`, `assign_material`, `set_material_color`, `list_materials`, `delete_material` |
 | **blender-shader-nodes** | `list_material_nodes`, `set_principled_input` |

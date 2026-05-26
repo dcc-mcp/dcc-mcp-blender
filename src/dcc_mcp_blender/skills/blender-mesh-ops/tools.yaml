@@ -1,0 +1,293 @@
+tools:
+  - name: get_poly_count
+    description: "Return mesh vertex, edge, face, loop, material, UV-map, and derived triangle counts."
+    source_file: scripts/get_poly_count.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+    output_schema: &mesh_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: cleanup_mesh
+    description: "Run common Blender mesh cleanup operators: merge doubles, fix normals, and delete loose geometry."
+    source_file: scripts/cleanup_mesh.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        remove_doubles:
+          type: boolean
+          default: true
+          description: Merge coincident or near-coincident vertices.
+        fix_normals:
+          type: boolean
+          default: true
+          description: Recalculate normals consistently outside.
+        delete_loose:
+          type: boolean
+          default: true
+          description: Delete loose geometry when Blender's delete_loose operator is available.
+        merge_threshold:
+          type: number
+          minimum: 0
+          default: 0.0001
+          description: Merge distance used by remove-doubles cleanup.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: triangulate_mesh
+    description: "Convert selected or all mesh faces to triangles."
+    source_file: scripts/triangulate_mesh.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: separate_mesh
+    description: "Separate a mesh into new objects by selected faces, material, or loose parts."
+    source_file: scripts/separate_mesh.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        mode:
+          type: string
+          enum: [selected, material, loose]
+          default: loose
+          description: Blender mesh separation mode.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: combine_meshes
+    description: "Join two or more mesh objects into a single mesh object."
+    source_file: scripts/combine_meshes.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_names]
+      properties:
+        object_names:
+          type: array
+          minItems: 2
+          items:
+            type: string
+            minLength: 1
+          description: Mesh object names to join.
+        new_name:
+          type: string
+          minLength: 1
+          description: Optional name for the joined object and mesh data.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: merge_vertices
+    description: "Merge vertices within a distance threshold on a mesh object."
+    source_file: scripts/merge_vertices.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        threshold:
+          type: number
+          minimum: 0
+          default: 0.0001
+          description: Merge distance.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: extract_faces
+    description: "Extract face indices from a mesh into a newly separated object."
+    source_file: scripts/extract_faces.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, face_indices]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        face_indices:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 0
+          description: Polygon indices to extract.
+        new_name:
+          type: string
+          minLength: 1
+          description: Optional name for the extracted object and mesh data.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: mirror_mesh
+    description: "Add a Mirror modifier on an axis and optionally apply it immediately."
+    source_file: scripts/mirror_mesh.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        axis:
+          type: string
+          enum: [x, y, z]
+          default: x
+          description: Mirror axis.
+        use_modifier:
+          type: boolean
+          default: true
+          description: Keep the Mirror modifier live instead of applying it.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: select_by_material
+    description: "Select mesh faces assigned to a named material slot."
+    source_file: scripts/select_by_material.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, material_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Mesh object name.
+        material_name:
+          type: string
+          minLength: 1
+          description: Material name to match.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
