@@ -26,6 +26,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-camera` | shot, layout, render | Create cameras, set the active camera, edit camera properties, and list cameras. | Load when view, shot, or render framing is requested. | Mutating except camera listing. | camera, lens, active camera, shot, framing |
 | `blender-lighting` | lookdev, render | Create lights, edit light properties, list lights, and set world background. | Load when visibility or render quality depends on lighting. | Mutating except light listing. | light, world background, sun, area light, exposure |
 | `blender-render` | render, diagnostics, delivery | Configure renders, render scenes, inspect render settings, and capture viewport images. | Load after scene/camera/lighting setup when output is needed. | Disk/output producing; read-only for render info. | render, viewport capture, image output, resolution |
+| `blender-dev` | diagnostics, development | Inspect add-ons, Python environment, structured UI metadata, module reloads, debug listeners, and development entrypoints. | Load for adapter/add-on debugging before falling back to arbitrary scripting; avoid for normal scene authoring. | Mixed: read-only diagnostics plus explicit development code execution, path mutation, module reload, and add-on enable/disable. | addon diagnostics, reload modules, run check, debug server, UI snapshot, Python environment |
 | `blender-scripting` | diagnostics, escape hatch | Execute Python snippets or script files and inspect Blender runtime info. | Load last, after checking typed skills and only when custom logic is required. | Potentially arbitrary; use with explicit user intent. | python, script, custom, escape hatch, blender info |
 
 ## Common Task Chains
@@ -45,6 +46,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Shot and render delivery | `blender-camera` -> `blender-lighting` -> `blender-render` |
 | File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
 | Shot delivery | `blender-camera` -> `blender-animation` -> `blender-shot-export` -> `blender-interchange` |
+| Add-on diagnostics | `blender-dev` -> `blender-scripting` only when no diagnostic helper fits |
 | Custom fallback | Typed domain skill -> `blender-scripting` only for the missing operation |
 
 ## Loading Guidance
@@ -54,5 +56,6 @@ This index helps agents choose typed Blender skills before falling back to raw P
 - Load authoring skills only when the requested task enters that domain; prefer `blender-mesh-ops` for topology, `blender-mesh` for modifiers, and `blender-rigging`/`blender-pose-library` for character setup.
 - Use `blender-shader-nodes` for graph-level socket/link edits; use `blender-materials` when material slots or simple colors are enough, and `blender-geometry-nodes` when the workflow is about modifier assignment or exposed procedural inputs.
 - Use `blender-interchange` and `blender-shot-export` for import/export and delivery before writing custom Python exporters.
+- Use `blender-dev` for add-on/runtime diagnostics, structured UI metadata, module reloads, and reproducible development entrypoints before reaching for arbitrary Python.
 - Keep `blender-scripting` as the final escape hatch; mention which typed skills were checked first.
 - Treat disk-writing, render, and scripting tools as higher-risk operations and ask for explicit paths or intent when needed.
