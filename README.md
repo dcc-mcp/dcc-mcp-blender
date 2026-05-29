@@ -95,6 +95,19 @@ See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SK
 
 ## Installation
 
+### Agent install (recommended)
+
+Want an AI agent to install the Blender-side dependencies, write the MCP host
+config, and walk you through enabling the add-on? Just ask your agent:
+
+```text
+帮我参考 loonghao/dcc-mcp-blender/install.md 去安装
+```
+
+The agent follows [`install.md`](install.md), which delegates the setup workflow
+to [`skills/dcc-mcp-blender-setup`](skills/dcc-mcp-blender-setup). The remaining
+options below are for manual installation.
+
 ### Option 1 — Install as Blender Addon (ZIP)
 
 1. Download the latest platform ZIP from the [Releases](https://github.com/loonghao/dcc-mcp-blender/releases) page:

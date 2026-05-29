@@ -30,8 +30,16 @@ from typing import Any, Dict, List, Optional
 from dcc_mcp_core import DccServerOptions, HostExecutionBridge
 from dcc_mcp_core.server_base import DccServerBase
 
-from dcc_mcp_blender import _env
+from dcc_mcp_blender import (
+    _capability_manifest,
+    _env,
+    _project_tools,
+    _readiness,
+    _resources,
+    _semantic_index,
+)
 from dcc_mcp_blender.__version__ import __version__
+from dcc_mcp_blender.context_snapshot import BlenderContextSnapshotProvider
 from dcc_mcp_blender.host import BlenderInlineCallableDispatcher
 
 logger = logging.getLogger(__name__)
@@ -242,6 +250,44 @@ class BlenderMcpServer(DccServerBase):
         if gateway_port_arg == 0 or (gateway_port_arg is None and not enable_gw):
             self._config.gateway_port = 0
 
+        # Host dispatcher (if any) is owned by core's execution bridge; expose
+        # it under a stable attribute so the readiness binder can schedule its
+        # main-thread probe.  ``None`` in background / standalone mode.
+        self._blender_dispatcher: Any = getattr(self, "_dcc_dispatcher", None)
+
+        # ── Context snapshot + capability manifest ──────────────────────────
+        self._snapshot_provider_impl: BlenderContextSnapshotProvider = BlenderContextSnapshotProvider()
+        try:
+            self.set_context_snapshot_provider(self._snapshot_provider_impl)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] set_context_snapshot_provider failed: %s", _DCC_NAME, exc)
+
+        self._capability_builder = _capability_manifest.BlenderCapabilityManifestBuilder(
+            dcc_name=_DCC_NAME,
+            skill_lister=self.list_skills,
+            action_lister=getattr(self, "list_actions", None),
+            is_loaded=self.is_skill_loaded,
+            skill_info_lister=getattr(self, "get_skill_info", None),
+        )
+
+        # Populated by :meth:`register_builtin_actions`; ``None`` means the
+        # surface was disabled by env var or the core call failed.
+        self._project_tools: Optional[_project_tools.ProjectToolsIntegration] = None
+        self._resources: Optional[_resources.BlenderResourceBinder] = None
+
+        # ── Runtime readiness probe (three-state) ───────────────────────────
+        self._readiness_timeout_secs: Optional[int] = _readiness.resolve_readiness_timeout_secs(None)
+        self.readiness: Optional[_readiness.ReadinessBinder] = _readiness.install_readiness(self)
+
+        # ── Morphology-aware semantic recall (opt-in) ───────────────────────
+        try:
+            self._semantic: Optional[_semantic_index.BlenderSemanticIndex] = _semantic_index.build_semantic_index()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] semantic index init failed: %s", _DCC_NAME, exc)
+            self._semantic = None
+        if self._semantic is not None:
+            logger.info("[%s] semantic skill recall enabled (embedder=%s)", _DCC_NAME, self._semantic.embedder_kind)
+
     # ── Blender version detection ──────────────────────────────────────────────
 
     def _version_string(self) -> str:
@@ -286,6 +332,168 @@ class BlenderMcpServer(DccServerBase):
         """Start the MCP HTTP server.  Returns *self* for chaining."""
         super().start(install_atexit_hook=install_atexit_hook)
         return self
+
+    def stop(self) -> None:
+        """Detach MCP resource handlers, then stop the HTTP server."""
+        if self._resources is not None:
+            try:
+                self._resources.unbind()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[%s] resources.unbind failed: %s", _DCC_NAME, exc)
+        super().stop()
+
+    # ── Builtin action registration + core integrations ────────────────────────
+
+    def register_builtin_actions(
+        self,
+        extra_skill_paths: Optional[List[str]] = None,
+        include_bundled: bool = True,
+        minimal_mode: Any = None,
+    ) -> "BlenderMcpServer":
+        """Discover skills and attach Blender-specific core integrations.
+
+        Runs core's discovery first, then wires the optional adapter
+        integrations (recipes/docs/introspect/feedback/capability manifest/
+        project tools/resources).  Every integration degrades gracefully so a
+        missing optional core API never breaks startup.
+        """
+        super().register_builtin_actions(
+            extra_skill_paths=extra_skill_paths,
+            include_bundled=include_bundled,
+            minimal_mode=minimal_mode,
+        )
+        self._register_recipes_tools(extra_skill_paths, include_bundled)
+        self._register_skill_reference_docs_tools(extra_skill_paths, include_bundled)
+        self._register_introspect_tools()
+        self._register_feedback_tool()
+        self._register_capability_manifest_tool()
+        self._attach_project_tools()
+        self._attach_resources()
+        return self
+
+    def _register_recipes_tools(
+        self,
+        extra_skill_paths: Optional[List[str]] = None,
+        include_bundled: bool = True,
+    ) -> None:
+        """Expose ``recipes__*`` tools for skills declaring ``metadata.dcc-mcp.recipes``."""
+        try:
+            from dcc_mcp_core.recipes import register_recipes_tools  # noqa: PLC0415
+        except ImportError as exc:
+            logger.debug("[%s] recipes tools skipped (import): %s", _DCC_NAME, exc)
+            return
+        self._register_skill_metadata_tools(register_recipes_tools, "recipes", extra_skill_paths, include_bundled)
+
+    def _register_skill_reference_docs_tools(
+        self,
+        extra_skill_paths: Optional[List[str]] = None,
+        include_bundled: bool = True,
+    ) -> None:
+        """Expose ``skill_refs__*`` for sibling reference docs."""
+        try:
+            from dcc_mcp_core.skill_reference_docs import register_skill_reference_docs_tools  # noqa: PLC0415
+        except ImportError as exc:
+            logger.debug("[%s] skill_refs tools skipped (import): %s", _DCC_NAME, exc)
+            return
+        self._register_skill_metadata_tools(
+            register_skill_reference_docs_tools,
+            "skill_refs",
+            extra_skill_paths,
+            include_bundled,
+        )
+
+    def _register_skill_metadata_tools(
+        self,
+        register_fn: Any,
+        kind: str,
+        extra_skill_paths: Optional[List[str]],
+        include_bundled: bool,
+    ) -> None:
+        try:
+            skills = self._scan_skill_metadata_for_sidecars(extra_skill_paths, include_bundled)
+            register_fn(self._server, skills=skills, dcc_name=_DCC_NAME)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] %s tools failed: %s", _DCC_NAME, kind, exc)
+
+    def _scan_skill_metadata_for_sidecars(
+        self,
+        extra_skill_paths: Optional[List[str]],
+        include_bundled: bool,
+    ) -> List[Any]:
+        """Return ``SkillMetadata`` list aligned with discovery (read-only scan)."""
+        from dcc_mcp_core import scan_and_load_lenient  # noqa: PLC0415
+
+        extra = list(extra_skill_paths) if extra_skill_paths else []
+        paths = self.collect_skill_search_paths(
+            extra_paths=extra + self._extra_skill_paths,
+            include_bundled=include_bundled,
+            filter_existing=True,
+        )
+        skills, _skipped = scan_and_load_lenient(extra_paths=paths or None, dcc_name=_DCC_NAME)
+        return skills
+
+    def _register_introspect_tools(self) -> None:
+        """Register the shared core ``dcc_introspect__*`` tools."""
+        try:
+            from dcc_mcp_core import register_introspect_tools  # noqa: PLC0415
+
+            register_introspect_tools(self._server, dcc_name=_DCC_NAME)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] introspect tools registration failed: %s", _DCC_NAME, exc)
+
+    def _register_feedback_tool(self) -> None:
+        """Register the shared core ``dcc_feedback__report`` tool."""
+        try:
+            from dcc_mcp_core import register_feedback_tool  # noqa: PLC0415
+
+            register_feedback_tool(self._server, dcc_name=_DCC_NAME)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] feedback tool registration failed: %s", _DCC_NAME, exc)
+
+    def _register_capability_manifest_tool(self) -> None:
+        try:
+            _capability_manifest.register_capability_mcp_tool(self, builder=self._capability_builder)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] capability manifest MCP tool registration failed: %s", _DCC_NAME, exc)
+
+    def _attach_project_tools(self) -> None:
+        try:
+            self._project_tools = _project_tools.attach_to_server(self)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] project tools registration failed: %s", _DCC_NAME, exc)
+
+    def _attach_resources(self) -> None:
+        try:
+            self._resources = _resources.install_resources(
+                self,
+                snapshot_provider=self._snapshot_provider_impl.collect,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] resources registration failed: %s", _DCC_NAME, exc)
+
+    # ── Readiness + capability manifest (programmatic access) ──────────────────
+
+    def readiness_report(self) -> dict:
+        """Return the current three-state readiness snapshot as a dict."""
+        if self.readiness is None:
+            return {"process": True, "dispatcher": False, "dcc": False}
+        return self.readiness.report()
+
+    def build_capability_manifest(self, *, loaded_only: bool = False) -> dict:
+        """Return the compact Blender capability manifest as a dict."""
+        records = self._capability_builder.build()
+        if loaded_only:
+            records = [r for r in records if r.loaded]
+        instance_id = getattr(self, "instance_id", None)
+        scene = getattr(self._config, "scene", None)
+        version = getattr(self._config, "dcc_version", None)
+        return _capability_manifest.build_manifest_payload(
+            records,
+            dcc_name=_DCC_NAME,
+            dcc_version=version,
+            scene=scene,
+            instance_id=instance_id,
+        )
 
     # ── Progressive skill loading ──────────────────────────────────────────────
 
@@ -383,7 +591,7 @@ class BlenderMcpServer(DccServerBase):
         if self._handle is None:
             return []
         try:
-            return list(
+            base = list(
                 self._server.search_skills(
                     query=query,
                     tags=tags or [],
@@ -395,6 +603,16 @@ class BlenderMcpServer(DccServerBase):
         except Exception as exc:  # noqa: BLE001
             logger.debug("BlenderMcpServer: search_skills failed: %s", exc)
             return []
+
+        # Opt-in semantic augmentation: append morphology recalls after the
+        # canonical BM25 results. Base ordering is preserved (promote, never
+        # demote); vector-only hits are appended.
+        if self._semantic is not None and query:
+            try:
+                return self._semantic.augment(base, query, self.list_skills())
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("BlenderMcpServer: semantic augment failed: %s", exc)
+        return base
 
     def find_skills(
         self,

@@ -27,11 +27,34 @@ ENV_DISABLE_EXECUTE_PYTHON = "DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON"
 ENV_DISABLE_ARBITRARY_SCRIPT = "DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT"
 ENV_BLENDER_PATH = "DCC_MCP_BLENDER_PATH"
 ENV_BLENDER_VERSION = "BLENDER_VERSION"
+#: Advisory readiness probe timeout (positive integer seconds) — parity with
+#: Maya / Houdini ``_readiness`` wiring.
+ENV_READINESS_TIMEOUT_SECS = "DCC_MCP_BLENDER_READINESS_TIMEOUT_SECS"
+#: Opt out of the four ``project_*`` MCP tools (``"0"`` disables).
+ENV_PROJECT_TOOLS = "DCC_MCP_BLENDER_PROJECT_TOOLS"
+#: Opt out of MCP resource publishing such as ``scene://current`` (``"0"`` disables).
+ENV_RESOURCES = "DCC_MCP_BLENDER_RESOURCES"
+#: Enable the opt-in lexical+vector semantic skill recall augmentation.
+ENV_SEMANTIC_INDEX = "DCC_MCP_BLENDER_SEMANTIC_INDEX"
+#: ``hashed`` (default, zero-dep) or ``onnx`` (requires the ``[semantic]`` extra).
+ENV_SEMANTIC_EMBEDDER = "DCC_MCP_BLENDER_SEMANTIC_EMBEDDER"
 DEFAULT_JOB_DB_FILENAME = "jobs.db"
+
+_TRUTHY = ("1", "true", "yes", "on")
 
 
 def _env_truthy(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get(name, "").strip().lower() in _TRUTHY
+
+
+def _resolve_opt_out(env_name: str, flag: Optional[bool]) -> bool:
+    """Resolve an opt-out flag: explicit arg > env (``"0"`` disables) > ``True``."""
+    if flag is not None:
+        return bool(flag)
+    raw = os.environ.get(env_name)
+    if raw is None:
+        return True
+    return raw.strip() != "0"
 
 
 def resolve_execute_python_disabled() -> bool:
@@ -119,3 +142,60 @@ def resolve_blender_path() -> Optional[str]:
     """
     path = os.environ.get(ENV_BLENDER_PATH, "").strip()
     return path if path else None
+
+
+def resolve_readiness_timeout_secs(readiness_timeout_secs: Optional[int] = None) -> Optional[int]:
+    """Resolve :data:`ENV_READINESS_TIMEOUT_SECS` into a positive integer or ``None``.
+
+    Priority: explicit argument > ``DCC_MCP_BLENDER_READINESS_TIMEOUT_SECS`` > ``None``.
+    Invalid / non-positive values resolve to ``None`` (no advisory timeout).
+    """
+    if readiness_timeout_secs is not None:
+        try:
+            val = int(readiness_timeout_secs)
+        except (TypeError, ValueError):
+            return None
+        return val if val > 0 else None
+
+    raw = os.environ.get(ENV_READINESS_TIMEOUT_SECS)
+    if not raw or not raw.strip():
+        return None
+    try:
+        val = int(raw.strip())
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid %s=%r (expected positive integer seconds)",
+            ENV_READINESS_TIMEOUT_SECS,
+            raw,
+        )
+        return None
+    return val if val > 0 else None
+
+
+def resolve_project_tools_enabled(flag: Optional[bool] = None) -> bool:
+    """Resolve whether the ``project_*`` tools should be wired in.
+
+    Priority: explicit ``flag`` > ``DCC_MCP_BLENDER_PROJECT_TOOLS`` (``"0"`` disables) > ``True``.
+    """
+    return _resolve_opt_out(ENV_PROJECT_TOOLS, flag)
+
+
+def resolve_resources_enabled(flag: Optional[bool] = None) -> bool:
+    """Resolve whether MCP resource publishing should run.
+
+    Priority: explicit ``flag`` > ``DCC_MCP_BLENDER_RESOURCES`` (``"0"`` disables) > ``True``.
+    """
+    return _resolve_opt_out(ENV_RESOURCES, flag)
+
+
+def resolve_semantic_index_enabled(env: Optional[dict] = None) -> bool:
+    """Return ``True`` when ``DCC_MCP_BLENDER_SEMANTIC_INDEX`` is truthy (default off)."""
+    environ = env if env is not None else os.environ
+    return str(environ.get(ENV_SEMANTIC_INDEX, "")).strip().lower() in _TRUTHY
+
+
+def resolve_semantic_embedder_kind(env: Optional[dict] = None) -> str:
+    """Return the requested embedder kind: ``"hashed"`` (default) or ``"onnx"``."""
+    environ = env if env is not None else os.environ
+    kind = str(environ.get(ENV_SEMANTIC_EMBEDDER, "hashed")).strip().lower()
+    return "onnx" if kind == "onnx" else "hashed"
