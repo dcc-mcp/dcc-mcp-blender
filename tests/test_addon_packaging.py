@@ -32,7 +32,7 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
     )
 
     assert isinstance(version_node, ast.Tuple)
-    assert ast.literal_eval(version_node) == (0, 1, 4)
+    assert ast.literal_eval(version_node) == (0, 1, 5)
 
 
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
@@ -56,7 +56,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
-    assert '"version": (0, 1, 4)' in addon_init
+    assert '"version": (0, 1, 5)' in addon_init
     assert "./wheels/dcc_mcp_core-0.17.47-cp38-abi3-win_amd64.whl" in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
