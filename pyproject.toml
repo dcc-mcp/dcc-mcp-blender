@@ -27,9 +27,10 @@ classifiers = [
 ]
 
 dependencies = [
-    # Align with dcc-mcp-core 0.17.36 public dispatcher, cancellation,
-    # execution-bridge, diagnostics/resources, and skill-management contracts.
-    "dcc-mcp-core>=0.17.36,<1.0.0",
+    # 0.17.43+: builtin registration passes skills to recipes; 0.17.47 semantic
+    # wheel fixes; AdapterReadinessBinder (0.17.32+) and
+    # register_metadata_driven_tools (0.17.34+) for unified sidecar registration.
+    "dcc-mcp-core>=0.17.47,<1.0.0",
 ]
 
 [project.optional-dependencies]

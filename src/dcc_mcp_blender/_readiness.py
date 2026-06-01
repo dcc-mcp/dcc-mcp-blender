@@ -1,8 +1,12 @@
 """Runtime readiness wiring for :class:`BlenderMcpServer`.
 
-Ports the Houdini three-state readiness binder to Blender.  The probe itself
-(``process`` / ``dispatcher`` / ``dcc`` bits) lives in ``dcc-mcp-core`` as
-:class:`dcc_mcp_core.ReadinessProbe`; this module only owns the *wiring*:
+Delegates probe lifecycle to core :class:`dcc_mcp_core.readiness.AdapterReadinessBinder`
+(0.17.32+) while retaining the Blender-specific dispatcher-probe pattern via
+:func:`_default_probe_scheduler`.
+
+The probe itself (``process`` / ``dispatcher`` / ``dcc`` bits) lives in
+``dcc-mcp-core`` as :class:`dcc_mcp_core.ReadinessProbe`; this module only
+owns the *wiring*:
 
 * ``process``    — flipped by core the moment the server object exists.
 * ``dispatcher`` — flipped as soon as the binder runs (the execution bridge
@@ -20,6 +24,8 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Callable, Optional
+
+from dcc_mcp_core.readiness import AdapterReadinessBinder
 
 from dcc_mcp_blender import _env
 
@@ -40,11 +46,12 @@ def _default_probe_scheduler(dispatcher: Any, on_done: Callable[[], None]) -> bo
     """Schedule a dcc-ready probe on *dispatcher*.
 
     Prefers ``submit_async_callable`` (core UI dispatchers) so the no-op
-    runs on Blender's main thread; falls back to ``submit_callable`` and
-    finally to an immediate ``on_done()`` when no async path exists.
+    runs on Blender's main thread; falls back to an immediate ``on_done()``
+    when no async path exists (post/tick-style dispatchers).
     """
     submit_async = getattr(dispatcher, "submit_async_callable", None)
     if callable(submit_async):
+
         def _on_complete(_result: Any) -> None:
             on_done()
 
@@ -67,7 +74,7 @@ def _default_probe_scheduler(dispatcher: Any, on_done: Callable[[], None]) -> bo
 
 
 class ReadinessBinder:
-    """Drive a :class:`dcc_mcp_core.ReadinessProbe` across a Blender lifecycle."""
+    """Drive readiness using core :class:`AdapterReadinessBinder` with Blender lifecycle hooks."""
 
     def __init__(
         self,
@@ -78,12 +85,17 @@ class ReadinessBinder:
         from dcc_mcp_core import ReadinessProbe  # noqa: PLC0415
 
         self.timeout_secs: Optional[int] = resolve_readiness_timeout_secs(timeout_secs)
-        self.probe = ReadinessProbe()
+        self.probe: ReadinessProbe = ReadinessProbe()
         self.probe_scheduler: ProbeScheduler = probe_scheduler or _default_probe_scheduler
+        self._adapter_binder: Optional[AdapterReadinessBinder] = None
         self.bound_server: Any = None
         self.bound_dispatcher: Any = None
         self.dcc_scheduled: bool = False
-        self.published_to_server: bool = False
+
+    @property
+    def published_to_server(self) -> bool:
+        """Whether the probe was published to the inner Rust server."""
+        return self._adapter_binder.published if self._adapter_binder else False
 
     def report(self) -> dict:
         """Return the current three-state readiness snapshot."""
@@ -94,30 +106,22 @@ class ReadinessBinder:
         return self.probe.is_ready()
 
     def bind(self, server: Any) -> bool:
-        """Wire the probe into *server*.
-
-        Publishes the probe through ``server._server.set_readiness_probe`` so
-        MCP ``tools/call``, REST ``/v1/readyz`` and ``/v1/call`` share state,
-        flips the ``dispatcher`` bit, then schedules the ``dcc`` probe on the
-        attached host dispatcher (or marks it ready immediately when none is
-        attached — background / standalone mode).
-        """
+        """Wire the probe into *server*."""
         if self.bound_server is server:
             return self.dcc_scheduled
         self.bound_server = server
 
-        try:
-            server._server.set_readiness_probe(self.probe)
-            self.published_to_server = True
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("[blender] readiness: set_readiness_probe failed: %s", exc)
-
-        self.mark_dispatcher_ready()
+        self._adapter_binder = AdapterReadinessBinder(server, probe=self.probe, publish=True)
+        self._adapter_binder.mark_dispatcher_ready(
+            True,
+            host_execution_bridge_ready=True,
+            main_thread_executor_ready=True,
+        )
 
         dispatcher = getattr(server, "_blender_dispatcher", None)
         if dispatcher is None:
             self.bound_dispatcher = None
-            self.mark_dcc_ready()
+            self._adapter_binder.mark_inline_ready()
             self.dcc_scheduled = True
             return True
 

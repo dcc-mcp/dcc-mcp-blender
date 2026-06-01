@@ -362,8 +362,7 @@ class BlenderMcpServer(DccServerBase):
             include_bundled=include_bundled,
             minimal_mode=minimal_mode,
         )
-        self._register_recipes_tools(extra_skill_paths, include_bundled)
-        self._register_skill_reference_docs_tools(extra_skill_paths, include_bundled)
+        self._register_metadata_driven_tools(extra_skill_paths, include_bundled)
         self._register_introspect_tools()
         self._register_feedback_tool()
         self._register_capability_manifest_tool()
@@ -371,57 +370,17 @@ class BlenderMcpServer(DccServerBase):
         self._attach_resources()
         return self
 
-    def _register_recipes_tools(
+    def _register_metadata_driven_tools(
         self,
         extra_skill_paths: Optional[List[str]] = None,
         include_bundled: bool = True,
     ) -> None:
-        """Expose ``recipes__*`` tools for skills declaring ``metadata.dcc-mcp.recipes``."""
+        """Register ``recipes__*`` and ``skill_refs__*`` via core metadata registration."""
         try:
-            from dcc_mcp_core.recipes import register_recipes_tools  # noqa: PLC0415
+            from dcc_mcp_core.metadata_registration import register_metadata_driven_tools  # noqa: PLC0415
         except ImportError as exc:
-            logger.debug("[%s] recipes tools skipped (import): %s", _DCC_NAME, exc)
+            logger.debug("[%s] metadata_driven_tools skipped (import): %s", _DCC_NAME, exc)
             return
-        self._register_skill_metadata_tools(register_recipes_tools, "recipes", extra_skill_paths, include_bundled)
-
-    def _register_skill_reference_docs_tools(
-        self,
-        extra_skill_paths: Optional[List[str]] = None,
-        include_bundled: bool = True,
-    ) -> None:
-        """Expose ``skill_refs__*`` for sibling reference docs."""
-        try:
-            from dcc_mcp_core.skill_reference_docs import register_skill_reference_docs_tools  # noqa: PLC0415
-        except ImportError as exc:
-            logger.debug("[%s] skill_refs tools skipped (import): %s", _DCC_NAME, exc)
-            return
-        self._register_skill_metadata_tools(
-            register_skill_reference_docs_tools,
-            "skill_refs",
-            extra_skill_paths,
-            include_bundled,
-        )
-
-    def _register_skill_metadata_tools(
-        self,
-        register_fn: Any,
-        kind: str,
-        extra_skill_paths: Optional[List[str]],
-        include_bundled: bool,
-    ) -> None:
-        try:
-            skills = self._scan_skill_metadata_for_sidecars(extra_skill_paths, include_bundled)
-            register_fn(self._server, skills=skills, dcc_name=_DCC_NAME)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("[%s] %s tools failed: %s", _DCC_NAME, kind, exc)
-
-    def _scan_skill_metadata_for_sidecars(
-        self,
-        extra_skill_paths: Optional[List[str]],
-        include_bundled: bool,
-    ) -> List[Any]:
-        """Return ``SkillMetadata`` list aligned with discovery (read-only scan)."""
-        from dcc_mcp_core import scan_and_load_lenient  # noqa: PLC0415
 
         extra = list(extra_skill_paths) if extra_skill_paths else []
         paths = self.collect_skill_search_paths(
@@ -429,8 +388,23 @@ class BlenderMcpServer(DccServerBase):
             include_bundled=include_bundled,
             filter_existing=True,
         )
-        skills, _skipped = scan_and_load_lenient(extra_paths=paths or None, dcc_name=_DCC_NAME)
-        return skills
+        try:
+            report = register_metadata_driven_tools(
+                self._server,
+                dcc_name=_DCC_NAME,
+                extra_paths=paths,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] metadata_driven_tools registration failed: %s", _DCC_NAME, exc)
+            return
+        if not report.ok:
+            logger.debug(
+                "[%s] metadata_driven_tools: %d registered, %d skipped, %d failed",
+                _DCC_NAME,
+                report.registered_count,
+                report.skipped_count,
+                report.failed_count,
+            )
 
     def _register_introspect_tools(self) -> None:
         """Register the shared core ``dcc_introspect__*`` tools."""
