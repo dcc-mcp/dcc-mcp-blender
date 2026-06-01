@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.5...v0.1.6) (2026-06-01)
+
+
+### Features
+
+* add latest dcc-mcp-core integrations and agent install skill ([3bfd7fb](https://github.com/loonghao/dcc-mcp-blender/commit/3bfd7fb75c1705be5079851a0624e65f9aecd2fc))
+* update core integrations alignment with core-0.17.47 ([2fc658c](https://github.com/loonghao/dcc-mcp-blender/commit/2fc658c58bd836438ec7eea34f79518ed40faadc))
+
+
+### Bug Fixes
+
+* align bl_info version to 0.1.5 in addon entry and tests ([67dd390](https://github.com/loonghao/dcc-mcp-blender/commit/67dd3909a5a6dd5647274cc068431c2953dcc6d6))
+
 ## [0.1.5](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.4...v0.1.5) (2026-05-26)
 
 
