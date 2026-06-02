@@ -341,4 +341,5 @@ def unregister() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
 
+
 __addon_version__ = "0.1.6"  # x-release-please-version
