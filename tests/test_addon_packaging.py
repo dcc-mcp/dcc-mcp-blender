@@ -5,12 +5,25 @@ from __future__ import annotations
 import ast
 import importlib.util
 import pathlib
+import re
 import sys
 import zipfile
 from types import SimpleNamespace
 
 ROOT = pathlib.Path(__file__).parent.parent
 ADDON_ENTRY = ROOT / "packaging" / "addon_entry" / "__init__.py"
+
+
+def _get_addon_version():
+    """Extract the addon version from the __addon_version__ variable."""
+    src = ADDON_ENTRY.read_text(encoding="utf-8")
+    m = re.search(r'__addon_version__\s*=\s*"(\d+\.\d+\.\d+)"', src)
+    assert m, "could not find __addon_version__ in packaging/addon_entry/__init__.py"
+    return m.group(1)
+
+
+def _parse_version_tuple(version_str: str):
+    return tuple(int(x) for x in version_str.split("."))
 
 
 def _load_assemble_zip_module():
@@ -32,7 +45,7 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
     )
 
     assert isinstance(version_node, ast.Tuple)
-    assert ast.literal_eval(version_node) == (0, 1, 6)
+    assert ast.literal_eval(version_node) == _parse_version_tuple(_get_addon_version())
 
 
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
@@ -56,7 +69,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
-    assert '"version": (0, 1, 6)' in addon_init
+    assert '"version": (%s)' % ", ".join(_get_addon_version().split(".")) in addon_init
     assert "./wheels/dcc_mcp_core-0.17.47-cp38-abi3-win_amd64.whl" in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 

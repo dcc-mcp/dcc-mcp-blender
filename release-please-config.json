@@ -24,6 +24,10 @@
           "type": "toml",
           "path": "packaging/addon_entry/blender_manifest.toml",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "packaging/addon_entry/__init__.py"
         }
       ]
     }
