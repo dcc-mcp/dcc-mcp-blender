@@ -29,7 +29,7 @@ This is an operator skill, not a Blender runtime skill. Do not load it through
 the Blender MCP server. Run it from the repository checkout or copy its steps
 into another agent's instructions.
 
-If the user says "帮我参考 `loonghao/dcc-mcp-blender/install.md` 去安装", read the
+If the user says "帮我参考 `dcc-mcp/dcc-mcp-blender/install.md` 去安装", read the
 root `install.md` first, then follow this skill.
 
 ## Goal

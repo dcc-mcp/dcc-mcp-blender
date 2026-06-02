@@ -32,8 +32,8 @@ bl_info = {
     "location": "Top Bar > DCC MCP",
     "description": "Embeds an MCP HTTP server inside Blender for AI-driven 3D workflows",
     "category": "System",
-    "doc_url": "https://github.com/loonghao/dcc-mcp-blender",
-    "tracker_url": "https://github.com/loonghao/dcc-mcp-blender/issues",
+    "doc_url": "https://github.com/dcc-mcp/dcc-mcp-blender",
+    "tracker_url": "https://github.com/dcc-mcp/dcc-mcp-blender/issues",
 }
 
 _DEFAULT_GATEWAY_PORT = 9765

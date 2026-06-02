@@ -43,10 +43,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/loonghao/dcc-mcp-blender"
-Repository = "https://github.com/loonghao/dcc-mcp-blender"
-Issues = "https://github.com/loonghao/dcc-mcp-blender/issues"
-Changelog = "https://github.com/loonghao/dcc-mcp-blender/releases"
+Homepage = "https://github.com/dcc-mcp/dcc-mcp-blender"
+Repository = "https://github.com/dcc-mcp/dcc-mcp-blender"
+Issues = "https://github.com/dcc-mcp/dcc-mcp-blender/issues"
+Changelog = "https://github.com/dcc-mcp/dcc-mcp-blender/releases"
 
 [project.entry-points."dcc_mcp.adapters"]
 blender = "dcc_mcp_blender:BlenderMcpServer"

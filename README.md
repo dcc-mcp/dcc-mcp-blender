@@ -5,13 +5,13 @@
 [![PyPI version](https://badge.fury.io/py/dcc-mcp-blender.svg)](https://badge.fury.io/py/dcc-mcp-blender)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/)
 [![PyPI - Wheel](https://img.shields.io/pypi/wheel/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/#files)
-[![CI](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/ci.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/ci.yml)
-[![E2E Blender](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/e2e.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/e2e.yml)
-[![Release](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/release.yml/badge.svg)](https://github.com/loonghao/dcc-mcp-blender/actions/workflows/release.yml)
+[![CI](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/ci.yml/badge.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/ci.yml)
+[![E2E Blender](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/e2e.yml/badge.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/e2e.yml)
+[![Release](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/release.yml/badge.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/actions/workflows/release.yml)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/dcc-mcp-blender.svg?label=PyPI%20downloads)](https://pypi.org/project/dcc-mcp-blender/)
-[![GitHub release downloads](https://img.shields.io/github/downloads/loonghao/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/loonghao/dcc-mcp-blender/releases)
-[![GitHub Release](https://img.shields.io/github/v/release/loonghao/dcc-mcp-blender.svg)](https://github.com/loonghao/dcc-mcp-blender/releases)
-[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/loonghao/dcc-mcp-blender/blob/main/pyproject.toml)
+[![GitHub release downloads](https://img.shields.io/github/downloads/dcc-mcp/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
+[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
 [![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.17.47-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
@@ -101,7 +101,7 @@ Want an AI agent to install the Blender-side dependencies, write the MCP host
 config, and walk you through enabling the add-on? Just ask your agent:
 
 ```text
-帮我参考 loonghao/dcc-mcp-blender/install.md 去安装
+帮我参考 dcc-mcp/dcc-mcp-blender/install.md 去安装
 ```
 
 The agent follows [`install.md`](install.md), which delegates the setup workflow
@@ -110,7 +110,7 @@ options below are for manual installation.
 
 ### Option 1 — Install as Blender Addon (ZIP)
 
-1. Download the latest platform ZIP from the [Releases](https://github.com/loonghao/dcc-mcp-blender/releases) page:
+1. Download the latest platform ZIP from the [Releases](https://github.com/dcc-mcp/dcc-mcp-blender/releases) page:
    `dcc_mcp_blender_addon_win64_vX.Y.Z.zip`, `dcc_mcp_blender_addon_linux_vX.Y.Z.zip`, or
    `dcc_mcp_blender_addon_macos_vX.Y.Z.zip`
 2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP
@@ -185,7 +185,7 @@ dcc_mcp_blender.stop_server()
 ## Development
 
 ```bash
-git clone https://github.com/loonghao/dcc-mcp-blender
+git clone https://github.com/dcc-mcp/dcc-mcp-blender
 cd dcc-mcp-blender
 pip install -e ".[dev]"
 pytest

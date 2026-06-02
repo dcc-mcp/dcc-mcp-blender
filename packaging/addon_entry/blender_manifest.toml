@@ -22,7 +22,7 @@ location = "Top Bar > DCC MCP"
 description = "Embeds an MCP HTTP server (2025-03-26) for Claude, Cursor, and other MCP clients."
 category = "System"
 
-website = "https://github.com/loonghao/dcc-mcp-blender"
+website = "https://github.com/dcc-mcp/dcc-mcp-blender"
 
 [permissions]
 network = "Host MCP HTTP/SSE and optional gateway election on localhost"
