@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       - name: Install ruff
         run: pip install ruff>=0.8.0
       - name: Ruff check
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       - name: Install skill validation dependencies
         run: python -m pip install -e ".[dev]"
       - name: Install dcc-mcp-cli
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       - name: Install build backend
         run: pip install --upgrade pip build hatchling
       - name: python -m build
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       - name: Install tooling
         run: pip install --upgrade pip packaging
       - name: Assemble addon ZIP
