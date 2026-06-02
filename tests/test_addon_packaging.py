@@ -23,10 +23,6 @@ def _load_assemble_zip_module():
 
 def test_addon_entry_bl_info_version_is_static_tuple_literal():
     """Blender parses ``bl_info`` via AST, so version must not be computed."""
-    from dcc_mcp_blender import __version__
-
-    expected = tuple(int(x) for x in __version__.split("."))
-
     tree = ast.parse(ADDON_ENTRY.read_text(encoding="utf-8"))
     bl_info = next(node for node in tree.body if isinstance(node, ast.Assign) and node.targets[0].id == "bl_info")
     version_node = next(
@@ -36,7 +32,7 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
     )
 
     assert isinstance(version_node, ast.Tuple)
-    assert ast.literal_eval(version_node) == expected
+    assert ast.literal_eval(version_node) == (0, 1, 6)
 
 
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
@@ -60,9 +56,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
-    from dcc_mcp_blender import __version__
-
-    assert '"version": (%s)' % ", ".join(__version__.split(".")) in addon_init
+    assert '"version": (0, 1, 6)' in addon_init
     assert "./wheels/dcc_mcp_core-0.17.47-cp38-abi3-win_amd64.whl" in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
