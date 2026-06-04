@@ -15,6 +15,24 @@ metadata:
     search-hint: >-
       export preset, save export options, list export presets, load export preset,
       delete export preset, repeatable export settings
+    search-aliases: [export template, export profile, reuse export settings, saved export config, persistent export options]
+    intent: "Manage reusable, scene-stored export presets — save, list, load, and delete named export configurations for consistent batch interchange."
+    recall-context:
+      app_type: blender
+      domain: io
+      workflow_stage: interchange
+      task_category: mutate
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      modifies: true
+      targets: [scene_metadata]
+    produces: [export_preset]
+    requires: []
     tools: tools.yaml
 ---
 

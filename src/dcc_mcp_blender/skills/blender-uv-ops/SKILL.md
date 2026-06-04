@@ -16,6 +16,24 @@ metadata:
     search-hint: >-
       uv map, texture coordinates, unwrap uv, smart project, planar projection,
       cube projection, uv islands, pack islands, normalize uv, copy uv map
+    search-aliases: [UV editor, texture mapping, UV layout, seam unwrap, lightmap UV, UV channel, transfer UV, projection mapping]
+    intent: "Create, inspect, and edit UV maps — unwrap, project, pack, normalize, and copy UV data for texture authoring."
+    recall-context:
+      app_type: blender
+      domain: authoring
+      workflow_stage: texture_prep
+      task_category: mutate
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      modifies: true
+      targets: [uv_map, uv_island, mesh_data]
+    produces: [uv_map, uv_island_list, normalized_coordinates]
+    requires: []
     tools: tools.yaml
 ---
 

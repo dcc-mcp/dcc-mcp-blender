@@ -17,6 +17,26 @@ metadata:
     search-hint: >-
       mesh topology, polygon count, cleanup mesh, triangulate, combine meshes,
       separate mesh, merge vertices, extract faces, mirror mesh, select by material
+    search-aliases: [polygon edit, face selection, mesh cleanup, topology fix, weld vertices, combine objects, split mesh, mirror geometry, degenerate faces]
+    intent: "Inspect and edit polygon mesh topology — cleanup, triangulate, combine, separate, mirror, merge vertices, and extract faces."
+    recall-context:
+      app_type: blender
+      domain: authoring
+      workflow_stage: modeling
+      task_category: mutate
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      modifies: true
+      creates: true
+      deletes: true
+      targets: [mesh_data, polygon, vertex]
+    produces: [mesh_data, polygon_count, topology_report]
+    requires: []
     tools: tools.yaml
 ---
 

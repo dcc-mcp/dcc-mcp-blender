@@ -20,6 +20,7 @@ INTERCHANGE_TOOLS = {
     "import_file",
     "import_fbx",
     "import_obj",
+    "import_usd",
     "export_gltf",
     "export_usd",
     "export_alembic",
@@ -239,3 +240,104 @@ def test_shot_info_and_camera_export(tmp_path):
 
     invalid = load_and_call("blender-shot-export/scripts/get_shot_info.py", bpy, camera_name="Cube")
     assert invalid["success"] is False
+
+
+def test_import_usd_reports_imported_objects_and_summary(tmp_path):
+    """USD import should return imported objects with summary counts."""
+    source = tmp_path / "scene.usda"
+    source.write_text("#usda 1.0\n", encoding="utf-8")
+    bpy = _bpy_with_scene([])
+
+    def usd_import(filepath, **_kwargs):
+        assert filepath == str(source)
+        cube = FakeObject("UsdCube", "MESH")
+        light = FakeObject("UsdLight", "LIGHT")
+        bpy.data.objects.append(cube)
+        bpy.data.objects.append(light)
+        return {"FINISHED"}
+
+    bpy.ops.wm.usd_import.side_effect = usd_import
+
+    result = load_and_call(
+        "blender-interchange/scripts/import_usd.py",
+        bpy,
+        filepath=str(source),
+        scale=0.5,
+        import_meshes=True,
+        import_lights=True,
+        import_materials=False,
+        return_summary=True,
+    )
+
+    assert result["success"] is True
+    assert result["context"]["imported_object_names"] == ["UsdCube", "UsdLight"]
+    assert result["context"]["format"] == "usd"
+    assert result["context"]["imported_count"] == 2
+    assert "elapsed_ms" in result["context"]
+    assert "summary" in result["context"]
+    summary = result["context"]["summary"]
+    assert summary["total_objects"] == 2
+    assert summary["by_type"] == {"MESH": 1, "LIGHT": 1}
+
+
+def test_import_usd_reports_missing_file(tmp_path):
+    """USD import should fail gracefly for missing file."""
+    bpy = _bpy_with_scene([])
+    missing = tmp_path / "missing.usda"
+    result = load_and_call(
+        "blender-interchange/scripts/import_usd.py",
+        bpy,
+        filepath=str(missing),
+    )
+    assert result["success"] is False
+
+
+def test_import_usd_with_collection(tmp_path):
+    """USD import should optionally place objects into a named collection."""
+    source = tmp_path / "asset.usdc"
+    source.write_text("#usda 1.0\n", encoding="utf-8")
+    bpy = _bpy_with_scene([])
+
+    def usd_import(filepath, **_kwargs):
+        bpy.data.objects.append(FakeObject("UsdMesh"))
+        return {"FINISHED"}
+
+    bpy.ops.wm.usd_import.side_effect = usd_import
+
+    result = load_and_call(
+        "blender-interchange/scripts/import_usd.py",
+        bpy,
+        filepath=str(source),
+        collection_name="USD_Assets",
+    )
+    assert result["success"] is True
+    assert result["context"]["collection_name"] == "USD_Assets"
+
+
+def test_import_usd_exposes_typed_options(tmp_path):
+    """Ensure import_usd tool schema exposes typed USD import options."""
+    import yaml
+
+    doc = yaml.safe_load((INTERCHANGE_DIR / "tools.yaml").read_text(encoding="utf-8"))
+    tool = next((t for t in doc["tools"] if t["name"] == "import_usd"), None)
+    assert tool is not None, "import_usd tool must exist in tools.yaml"
+
+    props = tool["input_schema"]["properties"]
+    assert "filepath" in props
+    assert "scale" in props
+    assert "import_meshes" in props
+    assert "import_materials" in props
+    assert "import_cameras" in props
+    assert "import_lights" in props
+    assert "import_textures" in props
+    assert "import_subdiv" in props
+    assert "prim_path_mask" in props
+    assert "collection_name" in props
+    assert "return_summary" in props
+    assert "options" in props
+
+    required = tool["input_schema"]["required"]
+    assert required == ["filepath"]
+
+    assert tool["affinity"] == "main"
+    assert tool["execution"] == "sync"

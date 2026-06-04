@@ -108,18 +108,26 @@ The agent follows [`install.md`](install.md), which delegates the setup workflow
 to [`skills/dcc-mcp-blender-setup`](skills/dcc-mcp-blender-setup). The remaining
 options below are for manual installation.
 
-### Option 1 — Install as Blender Addon (ZIP)
+### Option 1 — Install as Blender Extension (ZIP, recommended)
+
+> **Important:** The release ZIP uses the **Blender 4.2+ Extension** format with
+> `blender_manifest.toml` at the archive root and a flat package layout.
+> **Legacy add-on install** (`Edit → Preferences → Add-ons → Install`) will
+> fail with *"ZIP packaged incorrectly; `__init__.py` should be in a
+> directory, not at top-level"*. This is expected — use the Extensions path
+> below. The Extension format is the **only supported GUI installation path**.
 
 1. Download the latest platform ZIP from the [Releases](https://github.com/dcc-mcp/dcc-mcp-blender/releases) page:
    `dcc_mcp_blender_addon_win64_vX.Y.Z.zip`, `dcc_mcp_blender_addon_linux_vX.Y.Z.zip`, or
    `dcc_mcp_blender_addon_macos_vX.Y.Z.zip`
-2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP
+2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP.
+   (Do **NOT** use **Edit → Preferences → Add-ons → Install** — that legacy path is unsupported.)
 3. Enable **DCC MCP Blender**
 4. The MCP server starts automatically on `http://127.0.0.1:8765`
 
-Release ZIPs include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
+Release ZIPs are Blender 4.2+ Extension packages. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
-The addon ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits.
+The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
 
 ### Option 2 — Install via pip (for scripts / CI)
 
@@ -179,6 +187,33 @@ dcc_mcp_blender.start_server()
 # Stop the server
 dcc_mcp_blender.stop_server()
 ```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DCC_MCP_BLENDER_SEMANTIC_INDEX` | `0` (off) | Set to `1` to enable the opt-in lexical+vector hybrid skill recall. When enabled, `search_skills` fuses BM25 with vector similarity via Reciprocal Rank Fusion (RRF), improving recall for natural-language queries like "import USD files" or "rendering a preview". |
+| `DCC_MCP_BLENDER_SEMANTIC_EMBEDDER` | `hashed` | Embedder backend for semantic recall. `hashed` (default) uses a zero-dependency hash-based embedding. Set to `onnx` for dense embeddings via `OnnxEmbedder` (requires `pip install 'dcc-mcp-core[semantic]'`). |
+| `DCC_MCP_BLENDER_READINESS_TIMEOUT_SECS` | *(none)* | Optional timeout in seconds for the readiness probe's dcc verification step. |
+
+#### Enabling Semantic Skill Recall
+
+```bash
+# Enable hybrid BM25 + vector recall
+export DCC_MCP_BLENDER_SEMANTIC_INDEX=1
+
+# Optional: use ONNX for dense embeddings (better semantic matching)
+pip install 'dcc-mcp-core[semantic]'
+export DCC_MCP_BLENDER_SEMANTIC_EMBEDDER=onnx
+```
+
+When enabled, skill search results include a `[semantic]` extra field and RRF-fused scores.
+The feature is **opt-in** — BM25-only recall remains the default and is not affected when the
+env var is unset.
 
 ---
 

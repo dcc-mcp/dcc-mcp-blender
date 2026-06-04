@@ -7,6 +7,18 @@ tools:
     read_only: false
     destructive: false
     idempotent: false
+    role: escape_hatch
+    risk: host_script_execution
+    search_aliases: [python, script, custom, escape hatch, execute code, run python, bpy eval]
+    intent: "Execute arbitrary Python code inside Blender's Python interpreter as a last-resort escape hatch."
+    side_effects:
+      modifies: true
+      creates: true
+      deletes: true
+      file_output: true
+      render: true
+      ui_mutation: true
+      targets: [arbitrary]
   - name: execute_script_file
     description: "Execute a Python script file inside Blender"
     source_file: scripts/execute_script_file.py
@@ -15,6 +27,18 @@ tools:
     read_only: false
     destructive: false
     idempotent: false
+    role: escape_hatch
+    risk: host_script_execution
+    search_aliases: [python script file, run script file, execute py file, custom script]
+    intent: "Execute a Python script file inside Blender's Python interpreter as a last-resort escape hatch."
+    side_effects:
+      modifies: true
+      creates: true
+      deletes: true
+      file_output: true
+      render: true
+      ui_mutation: true
+      targets: [arbitrary]
   - name: get_blender_info
     description: "Get Blender version and Python environment information"
     source_file: scripts/get_blender_info.py
@@ -23,3 +47,7 @@ tools:
     read_only: true
     destructive: false
     idempotent: true
+    role: read_only
+    risk: low
+    search_aliases: [blender version, python version, environment info, blender info]
+    intent: "Retrieve Blender version and Python environment information for diagnostics."

@@ -43,8 +43,10 @@ common install locations, then runs `<blender_python> -m pip install ...`.
 
 After the script finishes, the user must enable the add-on in Blender:
 
-1. Open Blender (4.2+ recommended).
+1. Open Blender (4.2+ required).
 2. Go to `Edit > Preferences > Extensions > Install from Disk…`.
+   (Not `Add-ons > Install` — this ZIP uses the Blender 4.2+ Extension
+   format; the legacy add-on path is unsupported.)
 3. Select the release ZIP (`dcc_mcp_blender_addon_<platform>_vX.Y.Z.zip`).
 4. Enable **DCC MCP Blender** — the embedded server starts automatically.
 

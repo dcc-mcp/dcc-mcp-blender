@@ -9,6 +9,25 @@ metadata:
     version: "1.0.0"
     tags: [blender, validation, pipeline, scene-checks, export-readiness]
     search-hint: "validate scene, validate mesh, material validation, animation validation, export readiness, severity report"
+    search-aliases: [scene check, mesh check, validation report, pre-export check, diagnostic, issue scan, sanity check, quality check, lint scene]
+    intent: "Run structured validation checks on Blender scenes — detect issues before export or publish with severity-coded reports."
+    recall-context:
+      app_type: blender
+      domain: diagnostics
+      workflow_stage: validation
+      task_category: query
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      modifies: false
+      creates: false
+      targets: [validation_report]
+    produces: [validation_report, issue_list]
+    requires: []
     tools: tools.yaml
 ---
 

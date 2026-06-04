@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _PRESET_STORE_KEY = "dcc_mcp_export_presets"
-_IMPORT_FORMATS = {"fbx", "obj"}
+_IMPORT_FORMATS = {"fbx", "obj", "usd"}
 _EXPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _FORMAT_EXTENSIONS = {
     ".fbx": "fbx",
@@ -174,6 +174,16 @@ def _import_by_format(
                     skill_error("OBJ import unavailable", "No Blender OBJ import operator is available."),
                 )
             _call_with_options(operator, {"filepath": str(target)}, options, warnings)
+        elif format == "usd":
+            usd_import = getattr(bpy.ops.wm, "usd_import", None)
+            if not callable(usd_import):
+                return (
+                    [],
+                    warnings,
+                    skill_error("USD import unavailable", "Blender USD import operator is not available."),
+                )
+            base = {"filepath": str(target)}
+            _call_with_options(usd_import, base, options, warnings)
         else:
             return [], warnings, skill_error("Unsupported import format", f"Format '{format}' is not importable.")
     except Exception as exc:
@@ -317,6 +327,112 @@ def import_fbx(path: str, options: Mapping[str, Any] | None = None) -> dict:
 def import_obj(path: str, options: Mapping[str, Any] | None = None) -> dict:
     """Import an OBJ file."""
     return import_file(path=path, format="obj", options=options)
+
+
+def _summarize_imported_scene(bpy: Any, imported_names: list[str]) -> dict[str, Any]:
+    """Build a summary of the imported objects by type."""
+    summary: dict[str, Any] = {
+        "total_objects": len(imported_names),
+        "by_type": {},
+        "materials": [],
+        "collections": [],
+    }
+    seen_materials: set[str] = set()
+    seen_collections: set[str] = set()
+    for name in imported_names:
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            continue
+        obj_type = getattr(obj, "type", "UNKNOWN")
+        summary["by_type"][obj_type] = summary["by_type"].get(obj_type, 0) + 1
+        if hasattr(obj, "material_slots"):
+            for slot in obj.material_slots:
+                mat = getattr(slot, "material", None)
+                if mat and mat.name not in seen_materials:
+                    seen_materials.add(mat.name)
+                    summary["materials"].append(mat.name)
+        for coll in getattr(bpy.data, "collections", []):
+            if obj.name in getattr(coll, "objects", ()):
+                if coll.name not in seen_collections:
+                    seen_collections.add(coll.name)
+                    summary["collections"].append(coll.name)
+    return summary
+
+
+def import_usd(
+    filepath: str,
+    scale: float = 1.0,
+    import_meshes: bool = True,
+    import_materials: bool = True,
+    import_cameras: bool = False,
+    import_lights: bool = False,
+    import_textures: bool = True,
+    import_subdiv: bool = False,
+    prim_path_mask: str | None = None,
+    collection_name: str | None = None,
+    return_summary: bool = True,
+    options: Mapping[str, Any] | None = None,
+) -> dict:
+    """Import a USD file into Blender with typed options and optional summary."""
+    import time
+
+    start = time.perf_counter()
+    opts, error = _mapping(options, "options")
+    if error:
+        return error
+    target, error = _path(filepath, must_exist=True)
+    if error:
+        return error
+    base_opts: dict[str, Any] = {
+        "import_meshes": import_meshes,
+        "import_materials": import_materials,
+        "import_cameras": import_cameras,
+        "import_lights": import_lights,
+        "import_textures": import_textures,
+        "import_subdiv": import_subdiv,
+        "scale": float(scale),
+    }
+    if prim_path_mask:
+        base_opts["prim_path_mask"] = str(prim_path_mask)
+    base_opts.update(opts)
+    try:
+        import bpy
+
+        imported, warnings, error = _import_by_format(bpy, target, "usd", base_opts)
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        if error:
+            return error
+        if collection_name and imported:
+            collection = bpy.data.collections.get(collection_name) or bpy.data.collections.new(collection_name)
+            try:
+                bpy.context.scene.collection.children.link(collection)
+            except Exception:
+                pass
+            for name in imported:
+                obj = bpy.data.objects.get(name)
+                if obj is not None:
+                    try:
+                        collection.objects.link(obj)
+                    except Exception:
+                        pass
+        result = skill_success(
+            f"Imported USD: {target}",
+            filepath=str(target),
+            format="usd",
+            collection_name=collection_name,
+            imported_object_names=imported,
+            imported_count=len(imported),
+            elapsed_ms=elapsed_ms,
+            warnings=warnings,
+            prompt="Use scene or object tools to inspect imported objects.",
+        )
+        if return_summary and imported:
+            result["context"]["summary"] = _summarize_imported_scene(bpy, imported)
+        return result
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to import USD: {target}")
 
 
 def export_file(

@@ -105,7 +105,48 @@ class TestReadinessBinder:
         binder = ReadinessBinder()
         assert binder.bind(server) is True
         assert captured["affinity"] == "main"
-        assert binder.report()["dcc"] is True
+        report = binder.report()
+        assert report["dcc"] is True
+        assert report.get("main_thread_executor") is True, (
+            "main_thread_executor should be True after dcc probe completes"
+        )
+
+    def test_main_thread_executor_deferred_until_probe_completes(self):
+        """main_thread_executor stays False until the dcc probe callback fires."""
+        from dcc_mcp_blender._readiness import ReadinessBinder
+
+        pending_on_complete = {}
+
+        class _DeferredAsyncDispatcher:
+            def submit_async_callable(self, *, request_id, task, affinity, timeout_ms, on_complete):
+                # Capture the callback but DON'T call it yet — simulates the
+                # real Blender timer pump where the callback runs later.
+                pending_on_complete["callback"] = on_complete
+                pending_on_complete["task"] = task
+
+        server = _FakeServer(dispatcher=_DeferredAsyncDispatcher())
+        binder = ReadinessBinder()
+        assert binder.bind(server) is True
+
+        # Before the probe completes, main_thread_executor should be False
+        # (the pump has not been verified yet).
+        report_before = binder.report()
+        assert report_before.get("main_thread_executor") is False, (
+            "main_thread_executor should be False before dcc probe completes — "
+            "the pump has not drained a callback yet"
+        )
+        assert report_before["dcc"] is False
+
+        # Now simulate the Blender timer pump draining the probe callback.
+        assert "callback" in pending_on_complete
+        pending_on_complete["callback"](pending_on_complete["task"]())
+
+        # After the probe completes, both bits should be green.
+        report_after = binder.report()
+        assert report_after["dcc"] is True
+        assert report_after.get("main_thread_executor") is True, (
+            "main_thread_executor should be True after the dcc probe callback fires"
+        )
 
     def test_bind_idempotent(self):
         from dcc_mcp_blender._readiness import ReadinessBinder
@@ -378,6 +419,114 @@ class TestSemanticIndex:
         index = BlenderSemanticIndex(MagicMock(), "hashed")
         base = [{"name": "blender-scene"}]
         assert index.augment(base, "", [{"name": "blender-scene"}]) == base
+
+    def test_morphology_recall_real_fusion_appends_relevant_skills(self, monkeypatch):
+        """Integration: real HashedEmbedder + RRF fusion for morphology queries.
+
+        Verifies that queries like "importing usd files" and "rendering a
+        preview" hit the correct skills even when the base result set does not
+        contain them.
+        """
+        monkeypatch.delenv("DCC_MCP_BLENDER_SEMANTIC_INDEX", raising=False)
+        monkeypatch.setenv("DCC_MCP_BLENDER_SEMANTIC_INDEX", "1")
+        monkeypatch.delenv("DCC_MCP_BLENDER_SEMANTIC_EMBEDDER", raising=False)
+        # Use hashed embedder (zero-dependency, always available)
+        monkeypatch.setenv("DCC_MCP_BLENDER_SEMANTIC_EMBEDDER", "hashed")
+
+        from dcc_mcp_blender._semantic_index import BlenderSemanticIndex, build_semantic_index
+
+        index = build_semantic_index()
+        assert index is not None, "semantic index should be built when env is enabled"
+
+        # Simulate a realistic skill catalog with descriptions
+        all_summaries: list[dict] = [
+            {
+                "name": "blender-interchange",
+                "description": "Import FBX/OBJ/USD files and export GLTF, USD, Alembic",
+                "tags": ["interchange", "import", "export", "usd"],
+            },
+            {
+                "name": "blender-render",
+                "description": "Render stills, viewport captures, and configure render settings",
+                "tags": ["render", "output", "viewport"],
+            },
+            {
+                "name": "blender-scene",
+                "description": "Inspect and manage Blender scene lifecycle",
+                "tags": ["scene", "hierarchy"],
+            },
+            {
+                "name": "blender-materials",
+                "description": "Create, assign, edit, list, and delete materials",
+                "tags": ["material", "lookdev"],
+            },
+            {
+                "name": "blender-animation",
+                "description": "Manage keyframes, frame ranges, and animation baking",
+                "tags": ["animation", "keyframe", "baking"],
+            },
+        ]
+
+        # Query 1: morphology variant — "importing usd files" should hit interchange
+        base = [{"name": "blender-scene"}]  # base only has scene
+        result = index.augment(base, "importing usd files", all_summaries)
+        names = [r["name"] for r in result]
+        assert names[0] == "blender-scene", "base ordering must be preserved"
+        assert "blender-interchange" in names, (
+            f"Morphology query 'importing usd files' should recall interchange; got {names}"
+        )
+
+        # Query 2: morphology variant — "rendering a preview" should hit render
+        base2 = [{"name": "blender-scene"}]
+        result2 = index.augment(base2, "rendering a preview", all_summaries)
+        names2 = [r["name"] for r in result2]
+        assert "blender-render" in names2, (
+            f"Morphology query 'rendering a preview' should recall render; got {names2}"
+        )
+
+        # Query 3: "create material for this object" should hit materials
+        base3: list[dict] = []
+        result3 = index.augment(base3, "create material for this object", all_summaries)
+        names3 = [r["name"] for r in result3]
+        assert "blender-materials" in names3, (
+            f"Morphology query should recall materials; got {names3}"
+        )
+
+    def test_morphology_recall_default_off_no_side_effect(self, monkeypatch):
+        """When SEMANTIC_INDEX is not set, build_semantic_index returns None."""
+        monkeypatch.delenv("DCC_MCP_BLENDER_SEMANTIC_INDEX", raising=False)
+        from dcc_mcp_blender._semantic_index import build_semantic_index
+
+        assert build_semantic_index() is None, "should be None when env is not set"
+
+    def test_semantic_augment_deduplicates_existing_skills(self):
+        """Skills already in base should not be duplicated by recall."""
+        from dcc_mcp_blender._semantic_index import BlenderSemanticIndex
+
+        class _Hit:
+            def __init__(self, skill_id):
+                self.skill_id = skill_id
+
+        class _FakeFusion:
+            def clear(self):
+                pass
+
+            def index(self, docs):
+                pass
+
+            def search(self, query, k=16):
+                return [_Hit("blender-scene"), _Hit("blender-render")]
+
+        index = BlenderSemanticIndex(_FakeFusion(), "hashed")
+        base = [{"name": "blender-scene"}]  # already in base
+        all_summaries = [
+            {"name": "blender-scene", "description": "scene"},
+            {"name": "blender-render", "description": "render"},
+        ]
+        result = index.augment(base, "something", all_summaries)
+        names = [r["name"] for r in result]
+        # blender-scene should appear once (already in base, not duplicated)
+        assert names == ["blender-scene", "blender-render"], f"Expected dedup; got {names}"
 
 
 # ---------------------------------------------------------------------------

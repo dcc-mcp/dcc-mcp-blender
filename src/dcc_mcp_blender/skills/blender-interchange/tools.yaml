@@ -104,6 +104,66 @@ tools:
       idempotent_hint: false
       open_world_hint: true
 
+  - name: import_usd
+    description: "Import a USD file using Blender's native USD importer with typed options."
+    source_file: scripts/import_usd.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: USD file path (.usd, .usda, .usdc, .usdz).
+        scale:
+          type: number
+          description: Scale factor for imported geometry (default 1.0).
+        import_meshes:
+          type: boolean
+          description: Import mesh geometry (default true).
+        import_materials:
+          type: boolean
+          description: Import materials (default true).
+        import_cameras:
+          type: boolean
+          description: Import cameras (default false).
+        import_lights:
+          type: boolean
+          description: Import lights (default false).
+        import_textures:
+          type: boolean
+          description: Import textures (default true).
+        import_subdiv:
+          type: boolean
+          description: Import subdivision surfaces (default false).
+        prim_path_mask:
+          type: string
+          description: Filter imported prims by path pattern (e.g. "/World/Characters/*").
+        collection_name:
+          type: string
+          minLength: 1
+          description: Optional target collection for imported objects.
+        return_summary:
+          type: boolean
+          description: Return a scene summary with object type counts and material list (default true).
+        options:
+          type: object
+          additionalProperties: true
+          description: Additional Blender USD import operator options.
+    output_schema: *interchange_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+
   - name: export_gltf
     description: "Export scene or selected objects to GLTF or GLB."
     source_file: scripts/export_gltf.py

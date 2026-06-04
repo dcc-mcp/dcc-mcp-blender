@@ -16,6 +16,25 @@ metadata:
     search-hint: >-
       rigging, armature, bones, create bone, constraints, skinning, armature
       modifier, shape keys, drivers, retarget animation
+    search-aliases: [character rig, skeleton, bone setup, IK constraint, copy rotation, limit distance, driver setup, blend shape, morpher, corrective shape, animation retarget]
+    intent: "Create and edit armatures, bones, constraints, shape keys, and drivers for character rigging and deformation."
+    recall-context:
+      app_type: blender
+      domain: authoring
+      workflow_stage: rigging
+      task_category: mutate
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      modifies: true
+      creates: true
+      targets: [armature, bone, constraint, shape_key, driver, modifier]
+    produces: [armature, bone_hierarchy, constraint_list, shape_key_list]
+    requires: []
     tools: tools.yaml
 ---
 

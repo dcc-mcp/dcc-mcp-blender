@@ -10,7 +10,8 @@ owns the *wiring*:
 
 * ``process``    — flipped by core the moment the server object exists.
 * ``dispatcher`` — flipped as soon as the binder runs (the execution bridge
-  is wired during ``__init__``).
+  is wired during ``__init__``). ``main_thread_executor`` is deferred
+  until the dcc probe verifies the main-thread pump is functional.
 * ``dcc``        — flipped after a no-op is marshalled onto Blender's main
   thread (via the attached host dispatcher / ``bpy.app.timers`` pump), or
   immediately in background (``--background``) / standalone mode where the
@@ -112,10 +113,12 @@ class ReadinessBinder:
         self.bound_server = server
 
         self._adapter_binder = AdapterReadinessBinder(server, probe=self.probe, publish=True)
+        # Dispatcher + bridge are wired during init (True). Main-thread executor
+        # stays False until the dcc probe callback verifies the pump can drain.
         self._adapter_binder.mark_dispatcher_ready(
             True,
             host_execution_bridge_ready=True,
-            main_thread_executor_ready=True,
+            main_thread_executor_ready=False,
         )
 
         dispatcher = getattr(server, "_blender_dispatcher", None)
@@ -142,9 +145,14 @@ class ReadinessBinder:
             logger.debug("[blender] readiness: set_dispatcher_ready failed: %s", exc)
 
     def mark_dcc_ready(self, value: bool = True) -> None:
-        """Flip the ``dcc`` bit."""
+        """Flip the ``dcc`` bit (and ``main_thread_executor`` once verified)."""
         try:
             self.probe.set_dcc_ready(value)
+            if value:
+                # Main-thread executor is verified by the dcc probe; flip it
+                # together with dcc so /v1/readyz only shows green when the
+                # pump has actually drained a callback.
+                self.probe.set_main_thread_executor_ready(True)
         except Exception as exc:  # noqa: BLE001
             logger.debug("[blender] readiness: set_dcc_ready failed: %s", exc)
             return

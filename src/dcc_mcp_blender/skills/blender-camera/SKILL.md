@@ -8,7 +8,26 @@ metadata:
     dcc: blender
     version: "1.0.0"
     tags: [blender, camera, viewport]
-    search-hint: "camera, lens, focal length, active camera, perspective"
+    search-hint: "camera, lens, focal length, active camera, perspective, create camera, list cameras"
+    search-aliases: [create camera, set active camera, camera properties, lens, focal length, list cameras, camera framing, shot setup]
+    intent: "Create cameras, set the active camera, edit camera properties, and list cameras in Blender for view and shot framing."
+    recall-context:
+      app_type: blender
+      domain: shot
+      workflow_stage: authoring
+      task_category: mutate
+    preconditions:
+      - type: software
+        name: blender
+        version: ">=4.0"
+      - type: scene_state
+        predicate: has_open_scene
+    side-effects:
+      creates: true
+      modifies: true
+      targets: [camera, scene_node]
+    produces: [camera, camera_settings]
+    requires: []
     tools: tools.yaml
 ---
 
