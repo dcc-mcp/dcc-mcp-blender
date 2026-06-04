@@ -433,7 +433,7 @@ class TestSemanticIndex:
         # Use hashed embedder (zero-dependency, always available)
         monkeypatch.setenv("DCC_MCP_BLENDER_SEMANTIC_EMBEDDER", "hashed")
 
-        from dcc_mcp_blender._semantic_index import BlenderSemanticIndex, build_semantic_index
+        from dcc_mcp_blender._semantic_index import build_semantic_index
 
         index = build_semantic_index()
         assert index is not None, "semantic index should be built when env is enabled"
