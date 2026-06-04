@@ -132,8 +132,7 @@ class TestReadinessBinder:
         # (the pump has not been verified yet).
         report_before = binder.report()
         assert report_before.get("main_thread_executor") is False, (
-            "main_thread_executor should be False before dcc probe completes — "
-            "the pump has not drained a callback yet"
+            "main_thread_executor should be False before dcc probe completes — the pump has not drained a callback yet"
         )
         assert report_before["dcc"] is False
 
@@ -480,17 +479,13 @@ class TestSemanticIndex:
         base2 = [{"name": "blender-scene"}]
         result2 = index.augment(base2, "rendering a preview", all_summaries)
         names2 = [r["name"] for r in result2]
-        assert "blender-render" in names2, (
-            f"Morphology query 'rendering a preview' should recall render; got {names2}"
-        )
+        assert "blender-render" in names2, f"Morphology query 'rendering a preview' should recall render; got {names2}"
 
         # Query 3: "create material for this object" should hit materials
         base3: list[dict] = []
         result3 = index.augment(base3, "create material for this object", all_summaries)
         names3 = [r["name"] for r in result3]
-        assert "blender-materials" in names3, (
-            f"Morphology query should recall materials; got {names3}"
-        )
+        assert "blender-materials" in names3, f"Morphology query should recall materials; got {names3}"
 
     def test_morphology_recall_default_off_no_side_effect(self, monkeypatch):
         """When SEMANTIC_INDEX is not set, build_semantic_index returns None."""
