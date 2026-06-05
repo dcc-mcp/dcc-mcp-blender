@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.7](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.6...v0.1.7) (2026-06-05)
+
+
+### Features
+
+* **blender:** bump dcc-mcp-core floor to &gt;=0.18.2 (PIP-571) ([a82ca5f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a82ca5f32446ea3a3af5d13dbe02fa87b12954e7))
+* migrate repo references from loonghao to dcc-mcp org ([71dadfe](https://github.com/dcc-mcp/dcc-mcp-blender/commit/71dadfe0d3ea34daadefbebb3970261a0a4d8493))
+
+
+### Bug Fixes
+
+* add release-please version marker to packaging entry for auto-sync ([38c7b1a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/38c7b1a0530f320feafb80835071052b068f6b76))
+* apply ruff format to packaging/addon_entry/__init__.py ([4f1ab1b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/4f1ab1b0b76110f5551fa7bd65e63cabdfc83e36))
+* GUI add-on Extension install readiness + docs + metadata uplift (GH [#59](https://github.com/dcc-mcp/dcc-mcp-blender/issues/59)-[#62](https://github.com/dcc-mcp/dcc-mcp-blender/issues/62)) ([f58de0f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f58de0fd8944c32c69c0063c9bd1318520356c00))
+* sync bl_info version to 0.1.6 to match release-please bump ([0e759d5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/0e759d54bdca63512a024a16ee5026b8e2665f77))
+* update test version assertions to match 0.1.6 release-please bump ([960ee0f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/960ee0fceed03da5cef57669ad9d88b58f8ef1aa))
+* use dynamic version in addon packaging tests instead of hardcoded value ([be42e94](https://github.com/dcc-mcp/dcc-mcp-blender/commit/be42e94cec531c47731cbf949505141ed8fb4e86))
+
 ## [0.1.6](https://github.com/loonghao/dcc-mcp-blender/compare/v0.1.5...v0.1.6) (2026-06-01)
 
 
