@@ -27,10 +27,10 @@ classifiers = [
 ]
 
 dependencies = [
-    # 0.17.43+: builtin registration passes skills to recipes; 0.17.47 semantic
-    # wheel fixes; AdapterReadinessBinder (0.17.32+) and
-    # register_metadata_driven_tools (0.17.34+) for unified sidecar registration.
-    "dcc-mcp-core>=0.17.47,<1.0.0",
+    # 0.18.2+: Release Train anchor — adapter_version / adapter_dcc gateway
+    # election support, HostUiDispatcherBase, AdapterReadinessBinder, and
+    # register_metadata_driven_tools for unified sidecar registration.
+    "dcc-mcp-core>=0.18.2,<1.0.0",
 ]
 
 [project.optional-dependencies]
