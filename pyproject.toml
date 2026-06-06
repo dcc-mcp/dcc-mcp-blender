@@ -27,10 +27,9 @@ classifiers = [
 ]
 
 dependencies = [
-    # 0.18.2+: Release Train anchor — adapter_version / adapter_dcc gateway
-    # election support, HostUiDispatcherBase, AdapterReadinessBinder, and
-    # register_metadata_driven_tools for unified sidecar registration.
-    "dcc-mcp-core>=0.18.2,<1.0.0",
+    # v0.18.7: marketplace icon + schema validation, gateway discovery optimizations,
+    # call_examples in model descriptions, SSE notification budget increase.
+    "dcc-mcp-core>=0.18.7,<1.0.0",
 ]
 
 [project.optional-dependencies]

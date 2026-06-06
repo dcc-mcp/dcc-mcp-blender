@@ -51,10 +51,10 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
     """The add-on package root must directly contain ``server.py`` and skills."""
     assemble_zip = _load_assemble_zip_module()
-    fake_wheel = tmp_path / "dcc_mcp_core-0.18.2-cp38-abi3-win_amd64.whl"
+    fake_wheel = tmp_path / "dcc_mcp_core-0.18.7-cp38-abi3-win_amd64.whl"
     fake_wheel.write_bytes(b"fake wheel")
 
-    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.18.2": "0.18.2")
+    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.18.7": "0.18.7")
     monkeypatch.setattr(assemble_zip, "download_core_wheel", lambda version, platform, dest_dir: fake_wheel)
 
     zip_path = assemble_zip.assemble(platform="win64", output_dir=tmp_path)
@@ -70,7 +70,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
     assert '"version": (%s)' % ", ".join(_get_addon_version().split(".")) in addon_init
-    assert "./wheels/dcc_mcp_core-0.18.2-cp38-abi3-win_amd64.whl" in manifest
+    assert "./wheels/dcc_mcp_core-0.18.7-cp38-abi3-win_amd64.whl" in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
 

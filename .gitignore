@@ -101,3 +101,6 @@ site/
 CHANGELOG.md
 *.zip
 dist_*
+
+# CodeGraph index
+.codegraph/
