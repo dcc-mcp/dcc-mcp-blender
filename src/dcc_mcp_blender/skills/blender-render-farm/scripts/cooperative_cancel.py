@@ -16,9 +16,19 @@ from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_
 def cooperative_cancel() -> dict:
     """Signal cooperative cancellation for the currently running farm operation.
 
-    This sets a cancellation flag that the running validation or submission
-    operation checks periodically.  The running operation will raise
-    ``CancelledError`` and abort promptly instead of continuing.
+    This sets a cancellation flag that the running farm operation checks
+    via ``check_dcc_cancelled()`` at key checkpoints:
+
+    - ``validate_scene_for_farm``: at start and inside image/library loops.
+    - ``write_render_job``: before scene inspection.
+    - ``submit_render_job``: before farm submission.
+    - ``get_render_job_status``: before API calls.
+    - ``list_render_jobs``: before API calls.
+    - ``cancel_render_job``: before API calls.
+    - ``render_farm_status``: before each API call.
+
+    When the flag is set, the checkpoint raises ``CancelledError`` and the
+    operation aborts promptly instead of continuing.
 
     Outside an MCP request context (e.g. standalone scripting), the
     cancellation flag has no effect.

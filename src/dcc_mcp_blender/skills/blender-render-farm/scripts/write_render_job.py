@@ -41,6 +41,9 @@ def write_render_job(
 
     try:
         import bpy  # noqa: PLC0415
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+        check_dcc_cancelled()
 
         scene_path = bpy.data.filepath or ""
         scene_stem = os.path.splitext(os.path.basename(scene_path))[0] or "untitled"

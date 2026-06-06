@@ -89,6 +89,7 @@ def submit_render_job(
                 sf=sf,
                 ef=ef,
                 chunk_size=chunk_size,
+                priority=priority,
                 render_engine=render.engine,
                 output_path=render.filepath,
                 flamenco_server_url=flamenco_server_url,
@@ -217,19 +218,30 @@ def _submit_to_flamenco(
     sf: int,
     ef: int,
     chunk_size: int,
+    priority: int,
     render_engine: str,
     output_path: str,
     flamenco_server_url: Optional[str],
     flamenco_project_id: Optional[str],
 ) -> dict:
-    """Submit to Flamenco Manager via its REST API."""
+    """Submit to Flamenco Manager via its REST API.
+
+    Aligns with the Flamenco \"Simple Blender Render\" job type schema
+    (v3 API).  Required settings: ``blender_cmd``, ``filepath``,
+    ``frames``, ``chunk_size``, ``render_output``, ``render_engine``,
+    ``add_path_components``.
+    """
     try:
         import urllib.request  # noqa: PLC0415
+
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
 
         server_url = flamenco_server_url or os.environ.get("FLAMENCO_SERVER_URL", "http://localhost:8080")
         server_url = server_url.rstrip("/")
 
-        # Build job payload for Flamenco API
+        check_dcc_cancelled()
+
+        # Build job payload matching Flamenco "blender-render" job type
         job_payload = {
             "name": name,
             "type": "blender-render",
@@ -241,8 +253,9 @@ def _submit_to_flamenco(
                 "render_output": output_path,
                 "frames": "{}-{}".format(sf, ef),
                 "chunk_size": chunk_size,
+                "add_path_components": True,
             },
-            "priority": 50,
+            "priority": priority,
         }
         if flamenco_project_id:
             job_payload["project_id"] = flamenco_project_id
@@ -271,6 +284,7 @@ def _submit_to_flamenco(
             farm="flamenco",
             server_url=server_url,
             frame_range="{}-{}".format(sf, ef),
+            priority=priority,
         )
     except ImportError:
         return skill_error(

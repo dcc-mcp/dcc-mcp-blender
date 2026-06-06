@@ -111,24 +111,45 @@ def _query_deadline_status(deadline_command: Optional[str]) -> dict:
 
 
 def _query_flamenco_status(flamenco_server_url: Optional[str]) -> dict:
-    """Query Flamenco Manager health and worker status via REST API."""
+    """Query Flamenco Manager health and worker status via REST API.
+
+    Uses the official Flamenco v3 API endpoints:
+    - ``GET /api/v3/status`` — manager version and health.
+    - ``GET /api/v3/worker-mgt/workers`` — registered worker list.
+    - ``GET /api/v3/jobs?status=queued`` — queued job count.
+    """
     try:
         import urllib.error  # noqa: PLC0415
         import urllib.request  # noqa: PLC0415
 
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
         server_url = flamenco_server_url or os.environ.get("FLAMENCO_SERVER_URL", "http://localhost:8080")
         server_url = server_url.rstrip("/")
 
-        # Query manager config/health
-        workers_url = "{}/api/v3/workers".format(server_url)
-        req = urllib.request.Request(workers_url, headers={"Accept": "application/json"}, method="GET")
+        # 1. Manager health via GET /api/v3/status
+        healthy = True
+        manager_name = ""
+        try:
+            check_dcc_cancelled()
+            status_url = "{}/api/v3/status".format(server_url)
+            status_req = urllib.request.Request(status_url, headers={"Accept": "application/json"}, method="GET")
+            with urllib.request.urlopen(status_req, timeout=30) as resp:
+                status_data = json.loads(resp.read().decode("utf-8"))
+                manager_name = status_data.get("name", "")
+        except urllib.error.HTTPError:
+            healthy = False
+        except Exception:
+            healthy = False
 
+        # 2. Worker list via GET /api/v3/worker-mgt/workers
         workers = []
         worker_count = 0
-        healthy = True
-
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            check_dcc_cancelled()
+            workers_url = "{}/api/v3/worker-mgt/workers".format(server_url)
+            workers_req = urllib.request.Request(workers_url, headers={"Accept": "application/json"}, method="GET")
+            with urllib.request.urlopen(workers_req, timeout=30) as resp:
                 workers_data = json.loads(resp.read().decode("utf-8"))
                 workers = workers_data.get("workers", workers_data if isinstance(workers_data, list) else [])
                 worker_count = len(workers)
@@ -139,21 +160,23 @@ def _query_flamenco_status(flamenco_server_url: Optional[str]) -> dict:
             healthy = False
             workers = [{"error": str(exc)}]
 
-        # Query job queue summary
+        # 3. Queue statistics via GET /api/v3/jobs?status=queued
         queue_stats = {}
         try:
-            queue_url = "{}/api/v3/jobs/queue".format(server_url)
+            check_dcc_cancelled()
+            queue_url = "{}/api/v3/jobs?status=queued&limit=0".format(server_url)
             queue_req = urllib.request.Request(queue_url, headers={"Accept": "application/json"}, method="GET")
             with urllib.request.urlopen(queue_req, timeout=30) as resp:
                 queue_data = json.loads(resp.read().decode("utf-8"))
                 queue_stats = {
-                    "queued": queue_data.get("length", 0) if isinstance(queue_data, dict) else len(queue_data),
+                    "queued": queue_data.get("total", 0) if isinstance(queue_data, dict) else len(queue_data),
                 }
         except Exception:
             pass
 
         return skill_success(
-            "Flamenco farm status: {} worker(s), {} queued job(s)".format(
+            "Flamenco {} status: {} worker(s), {} queued job(s)".format(
+                manager_name or "Manager",
                 worker_count,
                 queue_stats.get("queued", 0),
             ),

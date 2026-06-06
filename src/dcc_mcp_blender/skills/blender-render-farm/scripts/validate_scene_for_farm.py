@@ -26,6 +26,9 @@ def validate_scene_for_farm() -> dict:
 
     try:
         import bpy  # noqa: PLC0415
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+        check_dcc_cancelled()
 
         issues = []  # type: List[str]
 
@@ -42,7 +45,7 @@ def validate_scene_for_farm() -> dict:
         # 3. Render frame range
         start = scene.frame_start
         end = scene.frame_end
-        if end <= start:
+        if end < start:
             issues.append("Render frame range invalid: frame_start={} frame_end={}".format(start, end))
 
         # 4. Output path
@@ -53,6 +56,7 @@ def validate_scene_for_farm() -> dict:
         # 5. Missing external files
         if hasattr(bpy.data, "images"):
             for img in bpy.data.images:
+                check_dcc_cancelled()
                 if img.filepath and not img.packed_file:
                     abs_path = img.filepath_from_user()
                     if abs_path and not os.path.isfile(abs_path):
@@ -61,6 +65,7 @@ def validate_scene_for_farm() -> dict:
         # 6. Missing linked libraries
         if hasattr(bpy.data, "libraries"):
             for lib in bpy.data.libraries:
+                check_dcc_cancelled()
                 if lib.filepath and not os.path.isfile(lib.filepath):
                     issues.append("Missing library: '{}' (name: {})".format(lib.filepath, lib.name))
 

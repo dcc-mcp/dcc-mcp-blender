@@ -111,8 +111,12 @@ def _query_flamenco(job_id: str, flamenco_server_url: Optional[str]) -> dict:
         import urllib.error  # noqa: PLC0415
         import urllib.request  # noqa: PLC0415
 
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
         server_url = flamenco_server_url or os.environ.get("FLAMENCO_SERVER_URL", "http://localhost:8080")
         server_url = server_url.rstrip("/")
+
+        check_dcc_cancelled()
 
         api_url = "{}/api/v3/jobs/{}".format(server_url, job_id)
         req = urllib.request.Request(api_url, headers={"Accept": "application/json"}, method="GET")

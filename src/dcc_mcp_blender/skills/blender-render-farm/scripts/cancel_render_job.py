@@ -90,15 +90,23 @@ def _cancel_deadline_job(job_id: str, deadline_command: Optional[str]) -> dict:
 
 
 def _cancel_flamenco_job(job_id: str, flamenco_server_url: Optional[str]) -> dict:
-    """Cancel a Flamenco job via REST API."""
+    """Cancel a Flamenco job via REST API.
+
+    Uses the official Flamenco v3 API endpoint:
+    ``POST /api/v3/jobs/{job_id}/setstatus`` with body ``{"status": "cancel-requested"}``.
+    """
     try:
         import urllib.error  # noqa: PLC0415
         import urllib.request  # noqa: PLC0415
 
+        from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
         server_url = flamenco_server_url or os.environ.get("FLAMENCO_SERVER_URL", "http://localhost:8080")
         server_url = server_url.rstrip("/")
 
-        api_url = "{}/api/v3/jobs/{}/status".format(server_url, job_id)
+        check_dcc_cancelled()
+
+        api_url = "{}/api/v3/jobs/{}/setstatus".format(server_url, job_id)
         payload = json.dumps({"status": "cancel-requested"}).encode("utf-8")
         req = urllib.request.Request(
             api_url,
