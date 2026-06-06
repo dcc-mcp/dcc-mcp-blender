@@ -721,3 +721,36 @@ class TestDeadlineCancelCheckpoint:
                 mock_check.call_count
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Generic cooperative cancel checkpoint
+# ---------------------------------------------------------------------------
+
+
+class TestGenericCancelCheckpoint:
+    """Generic path in submit_render_job must also call check_dcc_cancelled()."""
+
+    def test_submit_generic_calls_check_dcc_cancelled(self):
+        """submit_render_job Generic path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        bpy = make_mock_bpy()
+        bpy.data.filepath = "/tmp/scene.blend"
+        bpy.context.scene.frame_start = 1
+        bpy.context.scene.frame_end = 100
+        bpy.context.scene.render.filepath = "/tmp/output/"
+        bpy.context.scene.render.engine = "CYCLES"
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/submit_render_job.py",
+            dcc_mock,
+            bpy_mock=bpy,
+            farm="generic",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "submit_render_job Generic path must call check_dcc_cancelled(), got {} calls".format(mock_check.call_count)
+        )

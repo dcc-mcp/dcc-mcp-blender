@@ -317,6 +317,10 @@ def _submit_generic(
     file_format: str,
 ) -> dict:
     """Write a generic render job spec and return the file path."""
+    from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+    check_dcc_cancelled()
+
     job_spec = {
         "name": name,
         "scene_file": scene_path,
