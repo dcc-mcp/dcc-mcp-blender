@@ -50,6 +50,10 @@ def get_render_job_status(
 
 def _query_deadline(job_id: str, deadline_command: Optional[str]) -> dict:
     """Query Deadline for job status via deadlinecommand."""
+    from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+    check_dcc_cancelled()
+
     cmd = deadline_command
     if not cmd:
         for candidate in ["deadlinecommand", "deadlinecommand.exe"]:
@@ -66,6 +70,8 @@ def _query_deadline(job_id: str, deadline_command: Optional[str]) -> dict:
             "deadlinecommand not found",
             "Install Thinkbox Deadline client and ensure it is on PATH",
         )
+
+    check_dcc_cancelled()
 
     proc = subprocess.run(
         [cmd, "-GetJobDetails", job_id],

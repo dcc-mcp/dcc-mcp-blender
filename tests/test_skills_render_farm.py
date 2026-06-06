@@ -548,3 +548,176 @@ class TestCooperativeCancelCheckpoint:
                 mock_check.call_count
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Deadline cooperative cancel checkpoints
+# ---------------------------------------------------------------------------
+
+
+def _load_deadline_script(
+    rel_path: str,
+    dcc_mock: MagicMock,
+    bpy_mock: MagicMock | None = None,
+    subprocess_mock: MagicMock | None = None,
+    **kwargs,
+):
+    """Load a farm script with Deadline path mocked (subprocess + dcc_mcp_core)."""
+    _LOAD_COUNTER[0] += 1
+    fpath = SKILLS_ROOT / rel_path
+    mod_name = f"skill_rf_dl_{fpath.stem}_{_LOAD_COUNTER[0]}"
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(mod_name, str(fpath))
+    mod = importlib.util.module_from_spec(spec)
+    patches = {"dcc_mcp_core": dcc_mock}
+    if bpy_mock is not None:
+        patches["bpy"] = bpy_mock
+        patches["mathutils"] = MagicMock()
+    if subprocess_mock is not None:
+        patches["subprocess"] = subprocess_mock
+    with patch.dict("sys.modules", patches):
+        spec.loader.exec_module(mod)
+        return mod.main(**kwargs)
+
+
+class TestDeadlineCancelCheckpoint:
+    """Deadline paths must call check_dcc_cancelled() before subprocess calls."""
+
+    def test_cancel_deadline_job_calls_check_dcc_cancelled(self):
+        """cancel_render_job Deadline path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        subp_mock = MagicMock()
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.stdout = ""
+        proc_mock.stderr = ""
+        subp_mock.run.return_value = proc_mock
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/cancel_render_job.py",
+            dcc_mock,
+            subprocess_mock=subp_mock,
+            job_id="deadline-job-1",
+            farm="deadline",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "cancel_render_job Deadline path must call check_dcc_cancelled(), got {} calls".format(
+                mock_check.call_count
+            )
+        )
+
+    def test_get_render_job_status_deadline_calls_check_dcc_cancelled(self):
+        """get_render_job_status Deadline path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        subp_mock = MagicMock()
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.stdout = "Status=Completed\n"
+        proc_mock.stderr = ""
+        subp_mock.run.return_value = proc_mock
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/get_render_job_status.py",
+            dcc_mock,
+            subprocess_mock=subp_mock,
+            job_id="deadline-job-1",
+            farm="deadline",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "get_render_job_status Deadline path must call check_dcc_cancelled(), got {} calls".format(
+                mock_check.call_count
+            )
+        )
+
+    def test_list_render_jobs_deadline_calls_check_dcc_cancelled(self):
+        """list_render_jobs Deadline path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        subp_mock = MagicMock()
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.stdout = "JobID=job-1\nStatus=Active\n"
+        proc_mock.stderr = ""
+        subp_mock.run.return_value = proc_mock
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/list_render_jobs.py",
+            dcc_mock,
+            subprocess_mock=subp_mock,
+            farm="deadline",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "list_render_jobs Deadline path must call check_dcc_cancelled(), got {} calls".format(mock_check.call_count)
+        )
+
+    def test_render_farm_status_deadline_calls_check_dcc_cancelled(self):
+        """render_farm_status Deadline path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        subp_mock = MagicMock()
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.stdout = "worker-1\nworker-2\n"
+        proc_mock.stderr = ""
+        subp_mock.run.return_value = proc_mock
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/render_farm_status.py",
+            dcc_mock,
+            subprocess_mock=subp_mock,
+            farm="deadline",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "render_farm_status Deadline path must call check_dcc_cancelled(), got {} calls".format(
+                mock_check.call_count
+            )
+        )
+
+    def test_submit_deadline_calls_check_dcc_cancelled(self):
+        """submit_render_job Deadline path should call check_dcc_cancelled()."""
+        mock_check = MagicMock()
+        dcc_mock = _make_dcc_mcp_core_mock(mock_check)
+
+        subp_mock = MagicMock()
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.stdout = "JobID=dl-123\n"
+        proc_mock.stderr = ""
+        subp_mock.run.return_value = proc_mock
+
+        bpy = make_mock_bpy()
+        bpy.data.filepath = "/tmp/scene.blend"
+        bpy.context.scene.frame_start = 1
+        bpy.context.scene.frame_end = 100
+        bpy.context.scene.render.filepath = "/tmp/output/"
+        bpy.context.scene.render.engine = "CYCLES"
+
+        result = _load_deadline_script(
+            "blender-render-farm/scripts/submit_render_job.py",
+            dcc_mock,
+            bpy_mock=bpy,
+            subprocess_mock=subp_mock,
+            farm="deadline",
+        )
+
+        assert result["success"] is True
+        assert mock_check.call_count >= 1, (
+            "submit_render_job Deadline path must call check_dcc_cancelled(), got {} calls".format(
+                mock_check.call_count
+            )
+        )

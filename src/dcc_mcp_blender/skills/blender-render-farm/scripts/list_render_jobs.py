@@ -56,6 +56,10 @@ def _list_deadline_jobs(
     deadline_command: Optional[str],
 ) -> dict:
     """List Deadline jobs via deadlinecommand."""
+    from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+    check_dcc_cancelled()
+
     cmd = deadline_command
     if not cmd:
         for candidate in ["deadlinecommand", "deadlinecommand.exe"]:
@@ -72,6 +76,8 @@ def _list_deadline_jobs(
             "deadlinecommand not found",
             "Install Thinkbox Deadline client and ensure it is on PATH",
         )
+
+    check_dcc_cancelled()
 
     args = [cmd, "-GetJobs"]
     if status_filter:

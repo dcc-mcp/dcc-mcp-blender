@@ -132,6 +132,10 @@ def _submit_to_deadline(
     deadline_command: Optional[str],
 ) -> dict:
     """Submit to Thinkbox Deadline via deadlinecommand CLI."""
+    from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+    check_dcc_cancelled()
+
     # Locate deadlinecommand
     cmd = deadline_command
     if not cmd:
@@ -149,6 +153,8 @@ def _submit_to_deadline(
             "deadlinecommand not found",
             "Install Thinkbox Deadline client and ensure it is on PATH",
         )
+
+    check_dcc_cancelled()
 
     # Build minimal job info files
     job_info = {

@@ -17,15 +17,16 @@ def cooperative_cancel() -> dict:
     """Signal cooperative cancellation for the currently running farm operation.
 
     This sets a cancellation flag that the running farm operation checks
-    via ``check_dcc_cancelled()`` at key checkpoints:
+    via ``check_dcc_cancelled()`` at key checkpoints.  **All supported farm
+    backends are covered** (Deadline, Flamenco, and Generic):
 
     - ``validate_scene_for_farm``: at start and inside image/library loops.
     - ``write_render_job``: before scene inspection.
-    - ``submit_render_job``: before farm submission.
-    - ``get_render_job_status``: before API calls.
-    - ``list_render_jobs``: before API calls.
-    - ``cancel_render_job``: before API calls.
-    - ``render_farm_status``: before each API call.
+    - ``submit_render_job``: before Deadline/Flamenco/Generic submission.
+    - ``get_render_job_status``: before Deadline CLI or Flamenco API calls.
+    - ``list_render_jobs``: before Deadline CLI or Flamenco API calls.
+    - ``cancel_render_job``: before Deadline CLI or Flamenco API calls.
+    - ``render_farm_status``: before Deadline CLI or Flamenco API calls.
 
     When the flag is set, the checkpoint raises ``CancelledError`` and the
     operation aborts promptly instead of continuing.

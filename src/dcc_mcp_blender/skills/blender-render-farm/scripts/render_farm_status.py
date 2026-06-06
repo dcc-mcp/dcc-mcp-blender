@@ -49,6 +49,10 @@ def render_farm_status(
 
 def _query_deadline_status(deadline_command: Optional[str]) -> dict:
     """Query Deadline farm status via deadlinecommand."""
+    from dcc_mcp_core import check_dcc_cancelled  # noqa: PLC0415
+
+    check_dcc_cancelled()
+
     cmd = deadline_command
     if not cmd:
         for candidate in ["deadlinecommand", "deadlinecommand.exe"]:
@@ -65,6 +69,8 @@ def _query_deadline_status(deadline_command: Optional[str]) -> dict:
             "deadlinecommand not found",
             "Install Thinkbox Deadline client and ensure it is on PATH",
         )
+
+    check_dcc_cancelled()
 
     # Query slave list for worker availability
     proc = subprocess.run(
