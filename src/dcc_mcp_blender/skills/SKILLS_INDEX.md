@@ -31,6 +31,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-lighting` | lookdev, render | Create lights, edit light properties, list lights, and set world background. | Load when visibility or render quality depends on lighting. | Mutating except light listing. | light, world background, sun, area light, exposure |
 | `blender-light-rig` | lookdev, render, environment | Create reusable light rigs, softboxes, HDRI worlds, grouped light collections, and view-transform settings. | Load after basic lighting when scenes need repeatable studio or environment lighting. | Mutating except rig listing and summary. | three point light, softbox, hdri world, light rig, view transform, lighting summary |
 | `blender-render` | render, diagnostics, delivery | Configure renders, render scenes, inspect render settings, and capture viewport images. | Load after scene/camera/lighting setup when output is needed. | Disk/output producing; read-only for render info. | render, viewport capture, image output, resolution |
+| `blender-render-farm` | render, pipeline | Validate scenes, write job configs, submit to Deadline or Flamenco, and query farm job status. | Load after blender-render when distributed / farm rendering is needed. | Read-only for status/listing; network calls for submission/cancellation. | render farm, deadline, flamenco, distributed render, farm submission, job status |
 | `blender-dev` | diagnostics, development | Inspect add-ons, Python environment, structured UI metadata, module reloads, debug listeners, and development entrypoints. | Load for adapter/add-on debugging before falling back to arbitrary scripting; avoid for normal scene authoring. | Mixed: read-only diagnostics plus explicit development code execution, path mutation, module reload, and add-on enable/disable. | addon diagnostics, reload modules, run check, debug server, UI snapshot, Python environment |
 | `blender-scripting` | diagnostics, escape hatch | Execute Python snippets or script files and inspect Blender runtime info. | Load last, after checking typed skills and only when custom logic is required. | Potentially arbitrary; use with explicit user intent. | python, script, custom, escape hatch, blender info |
 
@@ -51,6 +52,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Procedural node setup | `blender-objects` -> `blender-geometry-nodes` -> `blender-shader-nodes` for low-level graph edits -> `blender-render` |
 | Physics setup | `blender-objects` -> `blender-mesh` -> `blender-physics` |
 | Shot and render delivery | `blender-camera` -> `blender-lighting` or `blender-light-rig` -> `blender-render` |
+| Distributed render farm | `blender-render` -> `blender-render-farm` (validate, write job, submit, monitor) |
 | Studio lookdev setup | `blender-materials` -> `blender-material-library` -> `blender-light-rig` -> `blender-render` |
 | File interchange | `blender-scene` -> `blender-interchange` -> `blender-export-preset` when settings repeat |
 | Export validation | `blender-validation` -> `blender-interchange` -> `blender-export-preset` |

@@ -1,0 +1,68 @@
+tools:
+  - name: validate_scene_for_farm
+    description: "Validate the current Blender scene for render farm readiness"
+    source_file: scripts/validate_scene_for_farm.py
+    execution: sync
+    affinity: main
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: write_render_job
+    description: "Write a JSON render job spec from the current scene settings for a render farm"
+    source_file: scripts/write_render_job.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: submit_render_job
+    description: "Submit the current scene to a render farm (Flamenco, Deadline, or generic)"
+    source_file: scripts/submit_render_job.py
+    execution: async
+    affinity: main
+    timeout_hint_secs: 900
+    read_only: false
+    destructive: false
+    idempotent: false
+  - name: get_render_job_status
+    description: "Query the status of a submitted render job by job ID"
+    source_file: scripts/get_render_job_status.py
+    execution: sync
+    affinity: any
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: list_render_jobs
+    description: "List recent render jobs from the farm manager"
+    source_file: scripts/list_render_jobs.py
+    execution: sync
+    affinity: any
+    read_only: true
+    destructive: false
+    idempotent: true
+  - name: cancel_render_job
+    description: "Cancel a specific render job on the render farm"
+    source_file: scripts/cancel_render_job.py
+    execution: async
+    affinity: main
+    timeout_hint_secs: 300
+    read_only: false
+    destructive: true
+    idempotent: false
+  - name: cooperative_cancel
+    description: "Cooperatively cancel the currently running farm operation"
+    source_file: scripts/cooperative_cancel.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 60
+    read_only: false
+    destructive: true
+    idempotent: true
+  - name: render_farm_status
+    description: "Report the connected render farm health and worker status"
+    source_file: scripts/render_farm_status.py
+    execution: sync
+    affinity: any
+    read_only: true
+    destructive: false
+    idempotent: true

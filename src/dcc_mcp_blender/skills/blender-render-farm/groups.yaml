@@ -1,0 +1,13 @@
+groups:
+  - name: rendering
+    description: Render farm submission, status, and management tools
+    default_active: false
+    tools:
+    - validate_scene_for_farm
+    - write_render_job
+    - submit_render_job
+    - get_render_job_status
+    - list_render_jobs
+    - cancel_render_job
+    - cooperative_cancel
+    - render_farm_status

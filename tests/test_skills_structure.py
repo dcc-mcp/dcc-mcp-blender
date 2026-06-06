@@ -14,6 +14,7 @@ EXPECTED_SKILLS = [
     "blender-mesh",
     "blender-materials",
     "blender-render",
+    "blender-render-farm",
     "blender-scripting",
     "blender-animation",
     "blender-lighting",
