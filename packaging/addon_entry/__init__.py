@@ -342,4 +342,4 @@ def unregister() -> None:
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
 
 
-__addon_version__ = "0.1.7"  # x-release-please-version
+__addon_version__ = "0.1.8"  # x-release-please-version

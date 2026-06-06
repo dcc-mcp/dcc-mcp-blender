@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.7...v0.1.8) (2026-06-06)
+
+
+### Features
+
+* add blender-render-farm skill with Deadline and Flamenco support ([b9c136c](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b9c136cfb6587f4080b9b199f1a72d66bad096de))
+
 ## [0.1.7](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.6...v0.1.7) (2026-06-05)
 
 
