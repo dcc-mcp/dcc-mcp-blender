@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.11...v0.1.12) (2026-06-07)
+
+
+### Bug Fixes
+
+* update version references to dcc-mcp-core 0.18.9 ([a801fe7](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a801fe78e63a8e34153e23376fdc8b22b54a0331))
+
 ## [0.1.11](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.10...v0.1.11) (2026-06-07)
 
 
