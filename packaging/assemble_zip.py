@@ -320,10 +320,11 @@ def _render_static_bl_info_version(init_path: pathlib.Path, version: str) -> Non
     major, minor, patch = _version_tuple_from_string(version)
     text = init_path.read_text(encoding="utf-8")
     rendered, count = re.subn(
-        r'("version"\s*:\s*)\([0-9]+\s*,\s*[0-9]+\s*,\s*[0-9]+\)',
+        r'("version"\s*:\s*)\(\s*(\d+)\s*,\s*[^\d)]*?(\d+)\s*,\s*[^\d)]*?(\d+)\s*[^\d)]*?\)',
         rf"\1({major}, {minor}, {patch})",
         text,
         count=1,
+        flags=re.DOTALL,
     )
     if count != 1:
         raise RuntimeError(f"Could not find static bl_info version tuple in {init_path}")
