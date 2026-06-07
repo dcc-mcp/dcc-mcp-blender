@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "DCC MCP Blender",
     "author": "Long Hao",
-    "version": (0, 1, 10),
+    "version": (
+        0,  # x-release-please-major
+        1,  # x-release-please-minor
+        10,  # x-release-please-patch
+    ),
     "blender": (4, 2, 0),
     "location": "Top Bar > DCC MCP",
     "description": "Embeds an MCP HTTP server inside Blender for AI-driven 3D workflows",

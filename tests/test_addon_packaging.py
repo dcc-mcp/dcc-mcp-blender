@@ -69,7 +69,17 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
-    assert '"version": (%s)' % ", ".join(_get_addon_version().split(".")) in addon_init
+    addon_tree = ast.parse(addon_init)
+    addon_bl_info = next(
+        node for node in addon_tree.body if isinstance(node, ast.Assign) and node.targets[0].id == "bl_info"
+    )
+    addon_version_node = next(
+        value
+        for key, value in zip(addon_bl_info.value.keys, addon_bl_info.value.values)
+        if isinstance(key, ast.Constant) and key.value == "version"
+    )
+    assert isinstance(addon_version_node, ast.Tuple)
+    assert ast.literal_eval(addon_version_node) == _parse_version_tuple(_get_addon_version())
     assert "./wheels/dcc_mcp_core-0.18.7-cp38-abi3-win_amd64.whl" in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 

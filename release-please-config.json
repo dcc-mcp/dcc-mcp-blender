@@ -27,8 +27,7 @@
         },
         {
           "type": "generic",
-          "path": "packaging/addon_entry/__init__.py",
-          "updater": ".release-please/update-blender-addon-version.cjs"
+          "path": "packaging/addon_entry/__init__.py"
         }
       ]
     }
