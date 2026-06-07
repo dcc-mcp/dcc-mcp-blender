@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.10...v0.1.11) (2026-06-07)
+
+
+### Bug Fixes
+
+* update assemble_zip regex to handle multi-line bl_info version tuple ([2f54471](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2f54471eae315a62ac161aff68c0a3b2e2f3acd2))
+* use release-please built-in markers for bl_info version tuple ([d1e2580](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d1e2580f3ae45fac4c6756cee1cf794189b3717b))
+
 ## [0.1.10](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.9...v0.1.10) (2026-06-07)
 
 

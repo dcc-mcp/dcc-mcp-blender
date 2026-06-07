@@ -5,7 +5,7 @@
 schema_version = "1.0.0"
 
 id = "dcc_mcp_blender"
-version = "0.1.10"
+version = "0.1.11"
 name = "DCC MCP Blender"
 tagline = "MCP Streamable HTTP server inside Blender for AI-driven workflows"
 maintainer = "Long Hao <hal.long@outlook.com>"
