@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.10](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.9...v0.1.10) (2026-06-07)
+
+
+### Bug Fixes
+
+* add custom release-please updater for bl_info version tuple ([1312f49](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1312f49b769d96119a6479979e72de5e3563f257))
+* **ci:** add blender_manifest.toml and __version__.py to release PR allowed files ([1f18fce](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1f18fceed0ca1b4ab06ad27682356583db3be494))
+* **release-please:** fix $1-digit ambiguity in version tuple updater ([3499c3c](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3499c3cbda6384fd0030e78cfe5b8c90fe18e84a))
+
 ## [0.1.9](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.8...v0.1.9) (2026-06-07)
 
 
