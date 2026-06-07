@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 bl_info = {
     "name": "DCC MCP Blender",
     "author": "Long Hao",
-    "version": (0, 1, 8),
+    "version": (0, 1, 9),
     "blender": (4, 2, 0),
     "location": "Top Bar > DCC MCP",
     "description": "Embeds an MCP HTTP server inside Blender for AI-driven 3D workflows",
@@ -342,4 +342,4 @@ def unregister() -> None:
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
 
 
-__addon_version__ = "0.1.8"  # x-release-please-version
+__addon_version__ = "0.1.9"  # x-release-please-version

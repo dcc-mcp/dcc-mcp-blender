@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.8...v0.1.9) (2026-06-07)
+
+
+### Bug Fixes
+
+* **ci:** isolate workflow_dispatch from push concurrency in release workflow ([#74](https://github.com/dcc-mcp/dcc-mcp-blender/issues/74)) ([7f95128](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7f95128d9668f0600ef45e260b13719c8e67bc81))
+* **ci:** remove github.token fallback from release-please token ([739845f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/739845f5ffa9c69d90cc604c0bed1f31c7decb6a))
+
 ## [0.1.8](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.7...v0.1.8) (2026-06-06)
 
 
