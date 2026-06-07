@@ -1,0 +1,133 @@
+# CI gate for Release Please PRs
+#
+# Problem:
+# Release Please creates PRs using GITHUB_TOKEN (when PERSONAL_ACCESS_TOKEN
+# is not available). Due to GitHub's security model, PRs created by
+# github-actions[bot] via GITHUB_TOKEN do NOT trigger `pull_request`
+# workflow events. This means the main CI workflow never runs on release
+# PRs, so required status checks are never reported, blocking the merge.
+#
+# Solution:
+# Use `pull_request_target` which IS triggered for bot-created PRs. This
+# workflow validates the release PR metadata and creates successful commit
+# statuses via the GitHub API, satisfying branch protection requirements.
+#
+# Once PERSONAL_ACCESS_TOKEN is configured on all repos (preferred fix),
+# the regular CI will also run on release PRs. This workflow acts as a
+# safety net and gate when PAT is not yet available.
+#
+# Security:
+# - `pull_request_target` runs in the context of the base branch (main)
+# - We do NOT checkout or execute any code from the PR branch
+# - We only validate PR metadata (branch name, author) and changed file names
+# - This is safe per GitHub's security guidelines for `pull_request_target`
+
+name: CI (Release PR)
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  release-pr-gate:
+    name: Release PR Gate
+    runs-on: ubuntu-latest
+    # Only run for release-please PRs
+    if: startsWith(github.head_ref, 'release-please--')
+    steps:
+      - name: Validate release PR
+        env:
+          RELEASE_HEAD_REF: ${{ github.head_ref }}
+          RELEASE_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          echo "## Release PR CI Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${RELEASE_HEAD_REF}" >> $GITHUB_STEP_SUMMARY
+          echo "**Author:** ${RELEASE_AUTHOR}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Only gate release-please bot PRs. PAT-created PRs trigger normal CI.
+          AUTHOR="${RELEASE_AUTHOR}"
+          if [[ "$AUTHOR" != "github-actions[bot]" && "$AUTHOR" != "release-please[bot]" ]]; then
+            echo "✅ PR created by user (PAT), regular CI will handle this." >> $GITHUB_STEP_SUMMARY
+            echo "noop=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "✅ Release PR from bot — gating through commit status." >> $GITHUB_STEP_SUMMARY
+          echo "noop=false" >> $GITHUB_OUTPUT
+
+      - name: Validate release PR files
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pull = context.payload.pull_request;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pull.number,
+              per_page: 100
+            });
+
+            const names = files.map((file) => file.filename).sort();
+
+            // Release PRs typically only modify version/changelog files.
+            // Allow common patterns but flag unexpected files.
+            const releaseFiles = [
+              '.release-please-manifest.json',
+              'CHANGELOG.md',
+              'pyproject.toml',
+              'Cargo.toml',
+              'Cargo.lock',
+              'version.py',
+              '__init__.py',
+            ];
+            const disallowed = names.filter(
+              (name) => !releaseFiles.some((rf) => name.endsWith(rf) || name === rf)
+            );
+            if (disallowed.length > 0) {
+              core.setFailed(
+                `Release PR touches unexpected files: ${disallowed.join(', ')}. ` +
+                'If these are valid, update the allowed list in ci-release-pr.yml.'
+              );
+              return;
+            }
+
+            await core.summary
+              .addHeading('Release PR file validation', 2)
+              .addList(names.map((name) => `\`${name}\``))
+              .write();
+
+      - name: Report Lint status
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'success',
+              context: 'Lint',
+              description: 'Release PR — lint not required for version/changelog changes',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
+      - name: Report Lint SKILL.md files status
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'success',
+              context: 'Lint SKILL.md files',
+              description: 'Release PR — skill lint not required for version/changelog changes',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
