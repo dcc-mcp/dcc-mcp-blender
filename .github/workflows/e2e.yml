@@ -110,11 +110,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # NOTE: Keep at Python 3.11 — this step provides MSVC runtime DLLs
+      # compatible with Blender's bundled Python 3.11.  Upgrading would copy
+      # python3.dll from a newer CPython into Blender's bin/, breaking _core.pyd
+      # imports on Windows ("DLL load failed: The specified module could not be
+      # found").  The Renovate bot must NOT bump this version.
       - name: Setup Python for Windows runtime DLLs
         if: matrix.os == 'windows'
         uses: actions/setup-python@v6
         with:
-          python-version: "3.14"
+          python-version: "3.11"
 
       # ── Cache Blender download ─────────────────────────────────────────────
       - name: Cache Blender
