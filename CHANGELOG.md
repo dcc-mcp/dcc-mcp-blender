@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.14](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.13...v0.1.14) (2026-06-08)
+
+
+### Bug Fixes
+
+* **ci:** pre-install mcporter globally to avoid intermittent npx exit 127 on Windows ([c6ff601](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c6ff601d320e5ce00e1640180d49cd7138bb09ee))
+* keep Setup Python for Windows DLLs step at 3.11 ([38dd7c9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/38dd7c9eb57c005d53df00c7f84a2c831aead3fe))
+
 ## [0.1.13](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.12...v0.1.13) (2026-06-08)
 
 
