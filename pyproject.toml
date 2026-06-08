@@ -27,9 +27,9 @@ classifiers = [
 ]
 
 dependencies = [
-    # v0.18.9: marketplace extracted as shared crate, gateway election disabled for
-    # probe server, ADR-010 dual-protocol migration docs.
-    "dcc-mcp-core>=0.18.9,<1.0.0",
+    # v0.18.14: DccServerBase split into 4 seam controllers (PIP-688),
+    # shared registration phase pipeline (PIP-689), gateway discovery fixes.
+    "dcc-mcp-core>=0.18.14,<1.0.0",
 ]
 
 [project.optional-dependencies]
