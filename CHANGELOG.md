@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.12...v0.1.13) (2026-06-08)
+
+
+### Bug Fixes
+
+* reorder imports in test_agent_instruction_files.py for Ruff I001 ([497ab55](https://github.com/dcc-mcp/dcc-mcp-blender/commit/497ab55c10e4f6bca62991759100c47172dab9d8))
+
 ## [0.1.12](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.11...v0.1.12) (2026-06-07)
 
 
