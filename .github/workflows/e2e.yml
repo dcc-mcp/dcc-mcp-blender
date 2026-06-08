@@ -389,10 +389,10 @@ jobs:
             object_name:mcporterCube
 
           call_tool add_rigid_body \
-            object_name:mcporterCube mass:2.0 collision_shape:BOX
+            object_name:mcporterCube mass:2 collision_shape:BOX
 
           call_tool set_rigid_body_properties \
-            object_name:mcporterCube mass:3.0 friction:0.2
+            object_name:mcporterCube mass:3 friction:0.2
 
           call_tool remove_rigid_body \
             object_name:mcporterCube
