@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.14...v0.1.15) (2026-06-08)
+
+
+### Bug Fixes
+
+* **ci:** extend libuv crash skip to Blender 4.4.3 on Windows ([53786a8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/53786a8a2cedd01a76cc046d45a5df6eb81eb01e))
+
 ## [0.1.14](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.13...v0.1.14) (2026-06-08)
 
 
