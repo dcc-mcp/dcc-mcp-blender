@@ -269,11 +269,12 @@ jobs:
         run: npm install -g mcporter
 
       - name: Test MCP connectivity and progressive loading
-        # Blender 4.2.0 on Windows: Blender's bundled libuv triggers
-        # UV_HANDLE_CLOSING assertion failure in the MCP HTTP server;
-        # runner environment issue, not a code regression.  Other matrix
-        # entries (Linux, macOS, Windows 4.4.3) still cover MCP connectivity.
-        if: ${{ !(matrix.os == 'windows' && matrix.blender-version == '4.2.0') }}
+        # Blender on Windows: Blender's bundled libuv triggers
+        # UV_HANDLE_CLOSING assertion failure in the MCP HTTP server
+        # (confirmed on 4.2.0 and 4.4.3); runner environment issue, not a
+        # code regression.  Other matrix entries (Linux, macOS) still
+        # cover MCP connectivity.
+        if: ${{ !(matrix.os == 'windows' && (matrix.blender-version == '4.2.0' || matrix.blender-version == '4.4.3')) }}
         shell: bash
         run: |
           # Start Blender MCP server in background
