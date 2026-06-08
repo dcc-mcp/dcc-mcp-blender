@@ -52,9 +52,6 @@ def test_multica_runtime_artifacts_are_not_tracked() -> None:
     offenders = [
         path
         for path in tracked
-        if any(
-            path == prefix.rstrip("/") or path.startswith(prefix)
-            for prefix in FORBIDDEN_TRACKED_PREFIXES
-        )
+        if any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in FORBIDDEN_TRACKED_PREFIXES)
     ]
     assert offenders == []
