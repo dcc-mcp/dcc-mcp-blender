@@ -12,7 +12,7 @@
 [![GitHub release downloads](https://img.shields.io/github/downloads/dcc-mcp/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
-[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.18.7-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.18.34-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -78,6 +78,7 @@
 | **blender-material-library** | `save_material_preset`, `list_material_presets`, `load_material_preset`, `delete_material_preset`, `get_shader_assignment`, `get_material_connections`, `set_material_attribute`, `assign_texture`, `list_images`, `reload_image`, `list_color_spaces`, `set_color_management` |
 | **blender-texture-bake** | `list_bake_targets`, `bake_textures`, `bake_ambient_occlusion`, `bake_lighting`, `transfer_maps` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |
+| **blender-render-farm** | `validate_scene_for_farm`, `submit_render_job`, `get_render_job_status`, `list_render_jobs`, `cancel_render_job`, `render_farm_status` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
 | **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `enable_addon`, `disable_addon`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |
 | **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation` |
