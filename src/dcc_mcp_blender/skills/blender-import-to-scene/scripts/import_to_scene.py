@@ -6,21 +6,18 @@ Blender-native import operators via the existing _interchange_ops module.
 
 from __future__ import annotations
 
-from typing import Any
-from typing import Mapping
-from typing import Optional
+from typing import Any, Mapping, Optional
 
-from dcc_mcp_core.asset_import import AssetDescriptor
-from dcc_mcp_core.asset_import import AssetFileVariant
-from dcc_mcp_core.asset_import import ImportToSceneResult
-from dcc_mcp_core.asset_import import ImportWarning
-from dcc_mcp_core.asset_import import ImportWarningCode
-from dcc_mcp_core.asset_import import MaterialMode
-from dcc_mcp_core.asset_import import PlacementHint
-from dcc_mcp_core.skill import skill_entry
-from dcc_mcp_core.skill import skill_error
-from dcc_mcp_core.skill import skill_exception
-from dcc_mcp_core.skill import skill_success
+from dcc_mcp_core.asset_import import (
+    AssetDescriptor,
+    AssetFileVariant,
+    ImportToSceneResult,
+    ImportWarning,
+    ImportWarningCode,
+    MaterialMode,
+    PlacementHint,
+)
+from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
 def _pick_variant(descriptor: AssetDescriptor) -> AssetFileVariant | None:
