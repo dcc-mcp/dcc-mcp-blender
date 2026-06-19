@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.15...v0.1.16) (2026-06-19)
+
+
+### Features
+
+* add blender-import-to-scene skill for cross-DCC asset import (PIP-1833) ([7af9fcd](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7af9fcd53b85374558a45bc7400c77b028c07e6d))
+
 ## [0.1.15](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.14...v0.1.15) (2026-06-08)
 
 
