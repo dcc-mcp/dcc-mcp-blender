@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.16...v0.1.17) (2026-06-19)
+
+
+### Documentation
+
+* add blender-import-to-scene skill to tools table ([#99](https://github.com/dcc-mcp/dcc-mcp-blender/issues/99)) ([d4648b8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d4648b834996b47302930b0e0e0d2fe7042ac983))
+
 ## [0.1.16](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.15...v0.1.16) (2026-06-19)
 
 
