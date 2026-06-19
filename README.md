@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **150+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting and more
+- **200+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting, cross-DCC import and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — GUI mode uses core `HostUiDispatcherBase` semantics through `BlenderUiDispatcher`; headless mode uses `BlenderHost` with a core `BlockingDispatcher`
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -68,6 +68,7 @@
 | **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
 | **blender-rigging** | `create_armature`, `create_bone`, `mirror_bones`, `add_constraint`, `set_constraint_properties`, `bind_mesh_to_armature`, `add_shape_key`, `set_driver`, `retarget_animation` |
 | **blender-pose-library** | `list_poses`, `save_pose`, `load_pose` |
+| **blender-import-to-scene** | `import_to_scene` |
 | **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
 | **blender-export-preset** | `list_export_presets`, `save_export_preset`, `load_export_preset`, `delete_export_preset` |
 | **blender-shot-export** | `get_shot_info`, `export_camera` |
