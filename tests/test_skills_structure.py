@@ -24,6 +24,7 @@ EXPECTED_SKILLS = [
     "blender-shader-nodes",
     "blender-geometry-nodes",
     "blender-physics",
+    "blender-import-to-scene",
 ]
 
 
