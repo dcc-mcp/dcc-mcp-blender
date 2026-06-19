@@ -217,9 +217,7 @@ def import_to_scene(
         placement_hint = PlacementHint.from_dict(placement)
 
     try:
-        imported_names, warnings = _import_file_to_scene(
-            bpy, filepath, target_collection, material_mode
-        )
+        imported_names, warnings = _import_file_to_scene(bpy, filepath, target_collection, material_mode)
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to import {filepath}")
 
