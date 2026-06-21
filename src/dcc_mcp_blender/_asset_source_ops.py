@@ -74,9 +74,7 @@ def _build_descriptor(
         asset_type=asset_type,
         source=source,
         size_bytes=stat.st_size if stat else 0,
-        modified_at=(
-            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stat.st_mtime)) if stat else ""
-        ),
+        modified_at=(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stat.st_mtime)) if stat else ""),
         metadata=metadata or {},
     )
 
@@ -127,9 +125,7 @@ def _scan_filesystem(
                 errors.append(f"Cannot stat {entry.name}: {exc}")
                 continue
     except PermissionError as exc:
-        return results, skill_error(
-            "Permission denied", f"Cannot read directory '{search_path}': {exc}"
-        )
+        return results, skill_error("Permission denied", f"Cannot read directory '{search_path}': {exc}")
     except Exception as exc:
         return results, skill_exception(exc, message=f"Failed to scan '{search_path}'")
 
@@ -226,8 +222,7 @@ def search_assets(
         if unknown:
             return skill_error(
                 "Unsupported asset type(s)",
-                f"Unsupported types: {sorted(unknown)}. "
-                f"Supported: {sorted(set(_SUPPORTED_ASSET_TYPES.values()))}.",
+                f"Unsupported types: {sorted(unknown)}. Supported: {sorted(set(_SUPPORTED_ASSET_TYPES.values()))}.",
             )
 
     start = time.perf_counter()
@@ -252,8 +247,7 @@ def search_assets(
         if search_path is None:
             return skill_error(
                 "No search path",
-                "Pass a ``path`` or open a Blender scene so the blend-file "
-                "directory can be used.",
+                "Pass a ``path`` or open a Blender scene so the blend-file directory can be used.",
             )
         fs_results, fs_error = _scan_filesystem(
             search_path,
