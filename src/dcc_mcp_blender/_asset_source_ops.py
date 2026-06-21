@@ -141,22 +141,16 @@ def _scan_asset_library(
     """Scan Blender's registered asset libraries via ``bpy.data.asset_libraries``."""
     results: List[AssetDescriptor] = []
 
-    libraries = getattr(bpy.data, "asset_libraries", None)
-    if libraries is None:
-        try:
-            bpy.ops.asset.library_refresh()
-        except Exception:
-            pass
-        libraries = getattr(bpy.data, "asset_libraries", None)
-
-    if libraries is None or not hasattr(libraries, "__iter__"):
-        return results, None
-
-    # Refresh catalogues so the search sees latest state.
+    # Force-refresh catalogues so the search sees the latest state.
     try:
         bpy.ops.asset.library_refresh()
     except Exception:
         pass
+
+    libraries = getattr(bpy.data, "asset_libraries", None)
+
+    if libraries is None or not hasattr(libraries, "__iter__"):
+        return results, None
 
     try:
         for lib in libraries:
@@ -228,6 +222,7 @@ def search_assets(
     start = time.perf_counter()
     all_results: List[AssetDescriptor] = []
     warnings: List[str] = []
+    truncated = False
 
     try:
         import bpy
@@ -287,13 +282,14 @@ def search_assets(
             allowed_types=allowed,
             max_results=max_results - len(all_results),
         )
-        if lib_error and not all_results:
+        if lib_error:
             if not all_results:
                 return lib_error
             warnings.append(lib_error.get("message", "Asset library scan had errors"))
         all_results.extend(lib_results)
         if len(all_results) >= max_results:
             all_results = all_results[:max_results]
+            truncated = True
 
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     context: Dict[str, Any] = dict(
@@ -305,6 +301,8 @@ def search_assets(
         context["path"] = str(search_path)
     if warnings:
         context["warnings"] = warnings
+    if truncated:
+        context["truncated"] = True
 
     return skill_success(
         f"Found {len(all_results)} asset(s)",
