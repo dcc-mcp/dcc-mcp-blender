@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.18](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.17...v0.1.18) (2026-06-21)
+
+
+### Features
+
+* **asset-source:** implement blender-asset-source skill for asset import pipeline ([90a6078](https://github.com/dcc-mcp/dcc-mcp-blender/commit/90a607830d32bd62bb25937d689ac89c6f2b4542))
+
+
+### Bug Fixes
+
+* address Linus review — dead code, duplicate refresh, truncated flag ([ac88171](https://github.com/dcc-mcp/dcc-mcp-blender/commit/ac88171107d34a4b0275a4eb84f9d838cfcabba5))
+
+
+### Documentation
+
+* sync README with actual env vars, diagram count, and missing tool listings ([0720887](https://github.com/dcc-mcp/dcc-mcp-blender/commit/0720887117b165621f226bfda70bad934a0c6728))
+
 ## [0.1.17](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.16...v0.1.17) (2026-06-19)
 
 
