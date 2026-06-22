@@ -48,8 +48,8 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
     assert ast.literal_eval(version_node) == _parse_version_tuple(_get_addon_version())
 
 
-def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
-    """The add-on package root must directly contain ``server.py`` and skills."""
+def test_assembled_addon_zip_uses_installable_package_directory_layout(tmp_path, monkeypatch):
+    """The ZIP root must contain the add-on package directory, not raw package files."""
     assemble_zip = _load_assemble_zip_module()
     fake_wheel = tmp_path / "dcc_mcp_core-0.18.9-cp38-abi3-win_amd64.whl"
     fake_wheel.write_bytes(b"fake wheel")
@@ -61,14 +61,14 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
 
     with zipfile.ZipFile(zip_path) as zf:
         names = set(zf.namelist())
-        addon_init = zf.read("__init__.py").decode("utf-8")
-        manifest = zf.read("blender_manifest.toml").decode("utf-8")
+        addon_init = zf.read("dcc_mcp_blender/__init__.py").decode("utf-8")
+        manifest = zf.read("dcc_mcp_blender/blender_manifest.toml").decode("utf-8")
 
-    assert "__init__.py" in names
-    assert "server.py" in names
-    assert "host.py" in names
-    assert "skills/blender-scene/SKILL.md" in names
-    assert not any(name.startswith("dcc_mcp_blender/") for name in names)
+    assert "__init__.py" not in names
+    assert "dcc_mcp_blender/__init__.py" in names
+    assert "dcc_mcp_blender/server.py" in names
+    assert "dcc_mcp_blender/host.py" in names
+    assert "dcc_mcp_blender/skills/blender-scene/SKILL.md" in names
     addon_tree = ast.parse(addon_init)
     addon_bl_info = next(
         node for node in addon_tree.body if isinstance(node, ast.Assign) and node.targets[0].id == "bl_info"

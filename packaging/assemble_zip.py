@@ -285,13 +285,13 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         _stage_addon_entry(addon_dir, version=version)
         _inject_wheels_into_manifest(addon_dir / "blender_manifest.toml", [wheel.name])
 
-        # 4) Zip the extension package contents at archive root. Blender's
-        # extension installer expects ``blender_manifest.toml`` at ZIP root.
+        # 4) Zip the add-on as a top-level package directory. Blender's legacy
+        # add-on installer rejects ZIPs with ``__init__.py`` directly at root.
         print(f"Creating {zip_name}...")
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for file in addon_dir.rglob("*"):
                 if file.is_file() and "__pycache__" not in str(file):
-                    arcname = file.relative_to(addon_dir)
+                    arcname = file.relative_to(tmp_dir)
                     zf.write(file, arcname)
 
     print(f"Created: {zip_path}")
