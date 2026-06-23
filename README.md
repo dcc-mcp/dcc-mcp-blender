@@ -36,7 +36,7 @@
 │  dcc-mcp-core                   │
 │  ├─ McpHttpServer               │
 │  ├─ JSON-RPC 2.0                │
-│  └─ SSE Streaming               │
+│  └─ Streamable HTTP             │
 └─────────────────────────────────┘
          ↓ http://127.0.0.1:8765/mcp
 ┌─────────────────────────────────┐
