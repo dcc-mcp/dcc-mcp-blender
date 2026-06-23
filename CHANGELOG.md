@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.19...v0.1.20) (2026-06-23)
+
+
+### Documentation
+
+* fix architecture diagram — SSE Streaming -&gt; Streamable HTTP ([b862e87](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b862e873eb34e29874ddca11e0f0de242b465bfc))
+
 ## [0.1.19](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.18...v0.1.19) (2026-06-23)
 
 
