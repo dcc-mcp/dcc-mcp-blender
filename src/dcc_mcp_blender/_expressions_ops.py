@@ -60,9 +60,7 @@ def _driver_info(fcurve: Any) -> Dict[str, Any]:
     }
 
 
-def _find_driver(
-    bpy, object_name: str, data_path: str, array_index: int = 0
-) -> tuple[Optional[Any], Optional[dict]]:
+def _find_driver(bpy, object_name: str, data_path: str, array_index: int = 0) -> tuple[Optional[Any], Optional[dict]]:
     """Return the fcurve driver on *obj[data_path][array_index]*, or an error dict."""
     obj, err = _get_object(bpy, object_name)
     if err:

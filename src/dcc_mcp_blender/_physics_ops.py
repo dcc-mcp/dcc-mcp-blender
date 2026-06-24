@@ -745,9 +745,7 @@ def remove_rigid_body_constraint(object_name: str) -> dict:
         if obj is None:
             return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
         if getattr(obj, "rigid_body_constraint", None) is None:
-            return skill_error(
-                f"No constraint on {object_name}", f"{object_name} has no rigid_body_constraint."
-            )
+            return skill_error(f"No constraint on {object_name}", f"{object_name} has no rigid_body_constraint.")
         _activate_object(bpy, obj)
         bpy.ops.rigidbody.constraint_remove()
         return skill_success(
