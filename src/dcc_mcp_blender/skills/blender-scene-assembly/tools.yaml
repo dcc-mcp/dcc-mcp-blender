@@ -1,0 +1,241 @@
+tools:
+  - name: merge_scene
+    description: "Merge all data from an external .blend file into the current scene."
+    source_file: scripts/merge_scene.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: Path to the .blend file to merge from.
+        import_all:
+          type: boolean
+          default: true
+          description: Import all data blocks when true.
+    output_schema: &assembly_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: &mutating_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: append_from_blend
+    description: "Append specific data block types from an external .blend file."
+    source_file: scripts/append_from_blend.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath, data_type]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: Path to the .blend file.
+        data_type:
+          type: string
+          enum: [objects, collections, materials, meshes, lights, cameras, worlds, node_groups, actions, armatures]
+          description: Type of data to append.
+        names:
+          type: array
+          items:
+            type: string
+          description: Optional specific data block names to append (all if omitted).
+    output_schema: *assembly_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: link_from_blend
+    description: "Link data blocks from an external .blend file as library references."
+    source_file: scripts/link_from_blend.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath, data_type]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: Path to the .blend file.
+        data_type:
+          type: string
+          enum: [objects, collections, materials, meshes, lights, cameras, worlds, node_groups, actions, armatures]
+          description: Type of data to link.
+        names:
+          type: array
+          items:
+            type: string
+          description: Optional specific data block names to link (all if omitted).
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: list_view_layers
+    description: "List view layers in the current scene or a named scene."
+    source_file: scripts/list_view_layers.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        scene_name:
+          type: string
+          minLength: 1
+          description: Optional scene name; uses current scene if omitted.
+    output_schema: &layer_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: create_view_layer
+    description: "Create a new view layer in a scene."
+    source_file: scripts/create_view_layer.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name for the new view layer.
+        scene_name:
+          type: string
+          minLength: 1
+          description: Optional scene name; uses current scene if omitted.
+    output_schema: *layer_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: remove_view_layer
+    description: "Remove a view layer from a scene."
+    source_file: scripts/remove_view_layer.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the view layer to remove.
+        scene_name:
+          type: string
+          minLength: 1
+          description: Optional scene name; uses current scene if omitted.
+    output_schema: *layer_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_active_view_layer
+    description: "Set the active view layer."
+    source_file: scripts/set_active_view_layer.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the view layer to activate.
+        scene_name:
+          type: string
+          minLength: 1
+          description: Optional scene name; uses current scene if omitted.
+    output_schema: *layer_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_external_references
+    description: "List all external .blend file references (library linking)."
+    source_file: scripts/list_external_references.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
