@@ -61,8 +61,16 @@ def _append_common(
 ) -> dict:
     """Internal: append or link data blocks from an external .blend file."""
     valid_types = {
-        "objects", "collections", "materials", "meshes", "lights",
-        "cameras", "worlds", "node_groups", "actions", "armatures",
+        "objects",
+        "collections",
+        "materials",
+        "meshes",
+        "lights",
+        "cameras",
+        "worlds",
+        "node_groups",
+        "actions",
+        "armatures",
     }
     data_type_key = data_type.lower()
     if data_type_key not in valid_types:
