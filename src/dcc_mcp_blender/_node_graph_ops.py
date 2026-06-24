@@ -10,6 +10,7 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 _SHADER_KINDS = {"shader", "material"}
 _GEOMETRY_KINDS = {"geometry", "geometry_nodes", "node_group"}
 _MODIFIER_KINDS = {"geometry_modifier", "modifier"}
+_COMPOSITOR_KINDS = {"compositor", "composite"}
 
 
 def _iter_collection(collection: Any) -> list[Any]:
@@ -222,6 +223,19 @@ def _resolve_node_tree(bpy: Any, node_tree_ref: Mapping[str, Any]) -> tuple[Any 
         if group is None:
             return None, {}, skill_error(f"Node group not found: {group_name}", f"No node group named '{group_name}'.")
         return group, {"kind": "geometry", "group_name": str(group_name)}, None
+
+    if kind in _COMPOSITOR_KINDS:
+        scene = bpy.context.scene
+        if not getattr(scene, "use_nodes", False) or getattr(scene, "node_tree", None) is None:
+            return (
+                None,
+                {},
+                skill_error(
+                    "Compositor nodes not enabled",
+                    "Enable compositor nodes (scene.use_nodes = True) before accessing the node tree.",
+                ),
+            )
+        return scene.node_tree, {"kind": "compositor"}, None
 
     if kind in _MODIFIER_KINDS:
         object_name = node_tree_ref.get("object_name") or node_tree_ref.get("owner_name")
@@ -977,3 +991,98 @@ def evaluate_geometry_nodes_info(object_name: str, modifier_name: str) -> dict:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to evaluate Geometry Nodes info for {object_name}")
+
+
+def get_compositor_node_tree() -> dict:
+    """Return the compositor node tree for the current scene."""
+    try:
+        import bpy
+
+        scene = bpy.context.scene
+        if not getattr(scene, "use_nodes", False):
+            return skill_error(
+                "Compositor nodes not enabled",
+                "Enable compositor nodes (scene.use_nodes = True) before accessing the node tree.",
+            )
+        node_tree = getattr(scene, "node_tree", None)
+        if node_tree is None:
+            return skill_error(
+                "No compositor node tree",
+                "The scene has no compositor node tree.",
+            )
+        nodes = []
+        for node in _iter_collection(node_tree.nodes):
+            nodes.append(_node_info(node))
+        links = [_link_info(link) for link in _iter_collection(node_tree.links)]
+        return skill_success(
+            f"Compositor node tree: {len(nodes)} nodes, {len(links)} links",
+            nodes=nodes,
+            links=links,
+            node_count=len(nodes),
+            link_count=len(links),
+            prompt="Use list_nodes with {kind: compositor} for more detailed inspection.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to get compositor node tree")
+
+
+def list_all_node_graphs() -> dict:
+    """List all node graphs (material, geometry, compositor) in the scene."""
+    try:
+        import bpy
+
+        graphs = []
+
+        # Material node trees
+        for material in _iter_collection(bpy.data.materials):
+            if getattr(material, "use_nodes", False) and getattr(material, "node_tree", None) is not None:
+                nt = material.node_tree
+                graphs.append(
+                    {
+                        "kind": "shader",
+                        "name": material.name,
+                        "type": "material",
+                        "node_count": len(_iter_collection(nt.nodes)),
+                        "link_count": len(_iter_collection(nt.links)),
+                    }
+                )
+
+        # Geometry node groups
+        for group in _iter_collection(bpy.data.node_groups):
+            if _node_group_type(group) in {"GeometryNodeTree", "GEOMETRY"}:
+                graphs.append(
+                    {
+                        "kind": "geometry",
+                        "name": group.name,
+                        "type": "geometry_nodes",
+                        "node_count": len(_iter_collection(group.nodes)),
+                        "link_count": len(_iter_collection(group.links)),
+                    }
+                )
+
+        # Compositor node tree
+        scene = bpy.context.scene
+        if getattr(scene, "use_nodes", False) and getattr(scene, "node_tree", None) is not None:
+            nt = scene.node_tree
+            graphs.append(
+                {
+                    "kind": "compositor",
+                    "name": "Compositor",
+                    "type": "compositor",
+                    "node_count": len(_iter_collection(nt.nodes)),
+                    "link_count": len(_iter_collection(nt.links)),
+                }
+            )
+
+        return skill_success(
+            f"Found {len(graphs)} node graph(s)",
+            node_graphs=graphs,
+            count=len(graphs),
+            prompt="Use list_nodes or get_compositor_node_tree to inspect a specific graph.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to list all node graphs")
