@@ -377,3 +377,244 @@ class TestSimulationModifiers:
 
         assert result["success"] is False
         assert "not a mesh" in result["message"].lower()
+
+
+class TestSoftBody:
+    def test_adds_soft_body_modifier(self):
+        cube = _make_obj()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/add_soft_body_modifier.py",
+            bpy,
+            object_name="Cube",
+            name="MySoftBody",
+        )
+
+        assert result["success"] is True
+        modifier = cube.modifiers.get("MySoftBody")
+        assert modifier is not None
+        assert modifier.type == "SOFT_BODY"
+
+    def test_set_soft_body_settings_returns_error_when_no_modifier(self):
+        cube = _make_obj()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/set_soft_body_settings.py",
+            bpy,
+            object_name="Cube",
+            modifier_name="Missing",
+            settings={"mass": 1.5},
+        )
+
+        assert result["success"] is False
+        assert "not found" in result["message"].lower()
+
+
+class TestRigidBodyConstraints:
+    def test_adds_rigid_body_constraint(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj()
+        obj.rigid_body_constraint = None
+        bpy.data.objects.get.return_value = obj
+
+        rbc = SimpleNamespace(type="FIXED", enabled=True, disable_collisions=False, object1=None, object2=None)
+
+        def _add_constraint(type="FIXED"):
+            obj.rigid_body_constraint = rbc
+            rbc.type = type
+
+        bpy.ops.rigidbody.constraint_add.side_effect = _add_constraint
+
+        result = load_and_call(
+            "blender-physics/scripts/add_rigid_body_constraint.py",
+            bpy,
+            object_name="Cube",
+            constraint_type="HINGE",
+        )
+
+        assert result["success"] is True
+        bpy.ops.rigidbody.constraint_add.assert_called_once_with(type="HINGE")
+
+    def test_invalid_constraint_type_returns_error(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj()
+        obj.rigid_body_constraint = None
+        bpy.data.objects.get.return_value = obj
+
+        result = load_and_call(
+            "blender-physics/scripts/add_rigid_body_constraint.py",
+            bpy,
+            object_name="Cube",
+            constraint_type="INVALID_TYPE",
+        )
+
+        assert result["success"] is False
+
+    def test_lists_rigid_body_constraints(self):
+        cube = _make_obj()
+        cube.rigid_body_constraint = SimpleNamespace(
+            type="FIXED", enabled=True, disable_collisions=False, object1=None, object2=None
+        )
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call("blender-physics/scripts/list_rigid_body_constraints.py", bpy)
+
+        assert result["success"] is True
+        assert result["context"]["count"] == 1
+        assert result["context"]["constraints"][0]["constraint_type"] == "FIXED"
+
+    def test_remove_rigid_body_constraint_when_none_returns_error(self):
+        cube = _make_obj()
+        cube.rigid_body_constraint = None
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/remove_rigid_body_constraint.py",
+            bpy,
+            object_name="Cube",
+        )
+
+        assert result["success"] is False
+
+
+class TestForceFields:
+    def test_adds_force_field(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj()
+        field = SimpleNamespace(type="FORCE", strength=1.0, falloff_power=2.0)
+        obj.field = field
+        bpy.data.objects.get.return_value = obj
+
+        result = load_and_call(
+            "blender-physics/scripts/add_force_field.py",
+            bpy,
+            object_name="Cube",
+            field_type="WIND",
+            strength=5.0,
+        )
+
+        assert result["success"] is True
+        assert field.type == "WIND"
+        assert field.strength == 5.0
+
+    def test_invalid_field_type_returns_error(self):
+        bpy = make_mock_bpy()
+        bpy.data.objects.get.return_value = _make_obj()
+
+        result = load_and_call(
+            "blender-physics/scripts/add_force_field.py",
+            bpy,
+            object_name="Cube",
+            field_type="INVALID_FIELD",
+        )
+
+        assert result["success"] is False
+
+    def test_lists_force_fields(self):
+        cube = _make_obj()
+        cube.field = SimpleNamespace(type="VORTEX", strength=2.0, falloff_power=1.0)
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call("blender-physics/scripts/list_force_fields.py", bpy)
+
+        assert result["success"] is True
+        assert result["context"]["count"] == 1
+        assert result["context"]["force_fields"][0]["field_type"] == "VORTEX"
+
+    def test_remove_force_field_when_none_returns_error(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj()
+        obj.field = SimpleNamespace(type="NONE", strength=0.0, falloff_power=2.0)
+        bpy.data.objects.get.return_value = obj
+
+        result = load_and_call(
+            "blender-physics/scripts/remove_force_field.py",
+            bpy,
+            object_name="Cube",
+        )
+
+        assert result["success"] is False
+
+
+class TestParticleSystems:
+    def test_adds_particle_system(self):
+        cube = _make_obj()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/add_particle_system.py",
+            bpy,
+            object_name="Cube",
+            name="Sparks",
+            count=500,
+            frame_start=1,
+            frame_end=120,
+            lifetime=50,
+        )
+
+        assert result["success"] is True
+        modifier = cube.modifiers.get("Sparks")
+        assert modifier is not None
+        assert modifier.type == "PARTICLE_SYSTEM"
+
+    def test_add_particle_system_requires_mesh(self):
+        lamp = _make_obj("Lamp")
+        lamp.type = "LIGHT"
+        bpy = _bpy_with_objects(lamp)
+
+        result = load_and_call(
+            "blender-physics/scripts/add_particle_system.py",
+            bpy,
+            object_name="Lamp",
+        )
+
+        assert result["success"] is False
+        assert "not a mesh" in result["message"].lower()
+
+    def test_set_particle_system_settings_no_modifier_returns_error(self):
+        cube = _make_obj()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/set_particle_system_settings.py",
+            bpy,
+            object_name="Cube",
+            modifier_name="NoParticle",
+            settings={"count": 100},
+        )
+
+        assert result["success"] is False
+
+    def test_lists_particle_systems(self):
+        cube = _make_obj()
+        # Manually add a PARTICLE_SYSTEM modifier to the collection
+        cache = SimpleNamespace(frame_start=1, frame_end=250, is_baked=False, use_disk_cache=False)
+        ps_settings = SimpleNamespace(
+            count=1000,
+            frame_start=1.0,
+            frame_end=50.0,
+            lifetime=30.0,
+            physics_type="NEWTON",
+        )
+        ps = SimpleNamespace(name="Sparks", settings=ps_settings)
+        modifier = SimpleNamespace(
+            name="Sparks",
+            type="PARTICLE_SYSTEM",
+            particle_system=ps,
+            settings=SimpleNamespace(point_cache=cache),
+            point_cache=cache,
+        )
+        cube.modifiers.append(modifier)
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/list_particle_systems.py",
+            bpy,
+            object_name="Cube",
+        )
+
+        assert result["success"] is True
+        assert result["context"]["count"] == 1
+        assert result["context"]["particle_systems"][0]["modifier_name"] == "Sparks"

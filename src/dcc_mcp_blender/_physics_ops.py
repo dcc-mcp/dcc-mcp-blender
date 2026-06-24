@@ -572,6 +572,551 @@ def clear_simulation_cache(
         return skill_exception(exc, message="Failed to clear simulation cache")
 
 
+# ---------------------------------------------------------------------------
+# Soft body
+# ---------------------------------------------------------------------------
+
+SOFT_BODY_NUMERIC_SETTINGS = {
+    "mass",
+    "friction",
+    "speed",
+    "goal_spring",
+    "goal_friction",
+    "pull",
+    "push",
+    "damping",
+    "bend",
+    "shear",
+}
+
+
+def add_soft_body_modifier(
+    object_name: str,
+    name: str = "Softbody",
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add or update a soft-body modifier on a mesh object."""
+    return add_simulation_modifier(object_name, "SOFT_BODY", name=name, settings=settings)
+
+
+def set_soft_body_settings(
+    object_name: str,
+    modifier_name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Update settings on an existing soft-body modifier."""
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier = _find_modifier(obj, modifier_name, "SOFT_BODY")
+        if modifier is None:
+            label = modifier_name or "SOFT_BODY"
+            return skill_error(f"Soft-body modifier not found: {label}", f"{object_name} has no soft-body modifier.")
+
+        # Soft body settings live on modifier.settings
+        target = _modifier_settings(modifier)
+        applied, skipped = _apply_settings(target, settings, SOFT_BODY_NUMERIC_SETTINGS)
+        return skill_success(
+            f"Updated SOFT_BODY settings on {object_name}",
+            object_name=object_name,
+            modifier=_modifier_context(modifier),
+            applied=applied,
+            skipped=skipped,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to update soft-body settings on {object_name}")
+
+
+# ---------------------------------------------------------------------------
+# Rigid body constraints
+# ---------------------------------------------------------------------------
+
+RIGID_BODY_CONSTRAINT_TYPES = {
+    "FIXED",
+    "POINT",
+    "HINGE",
+    "SLIDER",
+    "PISTON",
+    "GENERIC",
+    "GENERIC_SPRING",
+    "MOTOR",
+}
+
+RIGID_BODY_CONSTRAINT_NUMERIC = {
+    "breaking_threshold",
+    "limit_lin_x_lower",
+    "limit_lin_x_upper",
+    "limit_lin_y_lower",
+    "limit_lin_y_upper",
+    "limit_lin_z_lower",
+    "limit_lin_z_upper",
+    "limit_ang_x_lower",
+    "limit_ang_x_upper",
+    "limit_ang_y_lower",
+    "limit_ang_y_upper",
+    "limit_ang_z_lower",
+    "limit_ang_z_upper",
+}
+
+
+def add_rigid_body_constraint(
+    object_name: str,
+    constraint_type: str = "FIXED",
+    object1: Optional[str] = None,
+    object2: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a rigid-body constraint to *object_name*.
+
+    The constraint is stored on the object's ``rigid_body_constraint``
+    property; Blender requires the object to be of type EMPTY or MESH.
+
+    Parameters
+    ----------
+    object_name:
+        Name of the empty/mesh that holds the constraint.
+    constraint_type:
+        One of FIXED, POINT, HINGE, SLIDER, PISTON, GENERIC, GENERIC_SPRING, MOTOR.
+    object1, object2:
+        Names of the two rigid body objects to connect (optional).
+    settings:
+        Additional constraint properties to set (e.g. breaking_threshold).
+    """
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+
+        normalized = constraint_type.upper()
+        if normalized not in RIGID_BODY_CONSTRAINT_TYPES:
+            return skill_error(
+                f"Unsupported constraint type: {constraint_type}",
+                f"Expected one of {sorted(RIGID_BODY_CONSTRAINT_TYPES)}.",
+            )
+
+        _activate_object(bpy, obj)
+        if getattr(obj, "rigid_body_constraint", None) is None:
+            bpy.ops.rigidbody.constraint_add(type=normalized)
+
+        rbc = getattr(obj, "rigid_body_constraint", None)
+        if rbc is None:
+            return skill_error("Constraint creation failed", "Blender did not attach a rigid body constraint.")
+
+        rbc.type = normalized
+
+        if object1:
+            tgt1 = _object_named(bpy, object1)
+            if tgt1 is not None:
+                rbc.object1 = tgt1
+        if object2:
+            tgt2 = _object_named(bpy, object2)
+            if tgt2 is not None:
+                rbc.object2 = tgt2
+
+        if settings:
+            _apply_settings(rbc, settings, RIGID_BODY_CONSTRAINT_NUMERIC)
+
+        return skill_success(
+            f"Added {normalized} rigid body constraint to {object_name}",
+            object_name=object_name,
+            constraint_type=getattr(rbc, "type", normalized),
+            object1=getattr(getattr(rbc, "object1", None), "name", None),
+            object2=getattr(getattr(rbc, "object2", None), "name", None),
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add rigid body constraint to {object_name}")
+
+
+def remove_rigid_body_constraint(object_name: str) -> dict:
+    """Remove the rigid-body constraint from *object_name*."""
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        if getattr(obj, "rigid_body_constraint", None) is None:
+            return skill_error(
+                f"No constraint on {object_name}", f"{object_name} has no rigid_body_constraint."
+            )
+        _activate_object(bpy, obj)
+        bpy.ops.rigidbody.constraint_remove()
+        return skill_success(
+            f"Removed rigid body constraint from {object_name}",
+            object_name=object_name,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to remove rigid body constraint from {object_name}")
+
+
+def list_rigid_body_constraints(object_name: Optional[str] = None) -> dict:
+    """List rigid-body constraints in the scene or on a single object."""
+    try:
+        import bpy
+
+        objects, error = _matching_objects(bpy, object_name)
+        if error:
+            return error
+
+        constraints = []
+        for obj in objects:
+            rbc = getattr(obj, "rigid_body_constraint", None)
+            if rbc is None:
+                continue
+            constraints.append(
+                {
+                    "object_name": getattr(obj, "name", ""),
+                    "constraint_type": getattr(rbc, "type", None),
+                    "enabled": bool(getattr(rbc, "enabled", True)),
+                    "disable_collisions": bool(getattr(rbc, "disable_collisions", False)),
+                    "object1": getattr(getattr(rbc, "object1", None), "name", None),
+                    "object2": getattr(getattr(rbc, "object2", None), "name", None),
+                }
+            )
+        return skill_success(
+            f"Found {len(constraints)} rigid body constraints",
+            count=len(constraints),
+            constraints=constraints,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to list rigid body constraints")
+
+
+# ---------------------------------------------------------------------------
+# Force fields
+# ---------------------------------------------------------------------------
+
+FORCE_FIELD_TYPES = {
+    "FORCE",
+    "WIND",
+    "VORTEX",
+    "MAGNET",
+    "HARMONIC",
+    "CHARGE",
+    "LENNARDJ",
+    "TEXTURE",
+    "GUIDE",
+    "BOID",
+    "TURBULENCE",
+    "DRAG",
+    "SMOKE",
+}
+
+FORCE_FIELD_NUMERIC = {
+    "strength",
+    "falloff_power",
+    "distance_min",
+    "distance_max",
+    "noise",
+    "flow",
+}
+
+
+def add_force_field(
+    object_name: str,
+    field_type: str = "FORCE",
+    strength: float = 1.0,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a force-field physics property to *object_name*.
+
+    Parameters
+    ----------
+    object_name:
+        Name of the Blender object that emits the force.
+    field_type:
+        Type of force field (FORCE, WIND, VORTEX, etc.).
+    strength:
+        Initial strength value.
+    settings:
+        Additional force field properties to set.
+    """
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+
+        normalized = field_type.upper()
+        if normalized not in FORCE_FIELD_TYPES:
+            return skill_error(
+                f"Unsupported force field type: {field_type}",
+                f"Expected one of {sorted(FORCE_FIELD_TYPES)}.",
+            )
+
+        _activate_object(bpy, obj)
+        # Set the field type on the object's physics
+        if not hasattr(obj, "field") or obj.field is None:
+            # Blender creates the field property when we set the type
+            pass
+
+        field = getattr(obj, "field", None)
+        if field is not None:
+            field.type = normalized
+            field.strength = float(strength)
+        else:
+            # Fallback: use bpy.ops if available
+            try:
+                bpy.ops.object.forcefield_toggle()
+                field = getattr(obj, "field", None)
+                if field is not None:
+                    field.type = normalized
+                    field.strength = float(strength)
+            except Exception:
+                pass
+
+        field = getattr(obj, "field", None)
+        if field is None or getattr(field, "type", "NONE") == "NONE":
+            return skill_error("Force field creation failed", "Could not set force field on object.")
+
+        if settings:
+            _apply_settings(field, settings, FORCE_FIELD_NUMERIC)
+
+        return skill_success(
+            f"Added {normalized} force field to {object_name}",
+            object_name=object_name,
+            field_type=getattr(field, "type", normalized),
+            strength=getattr(field, "strength", strength),
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add force field to {object_name}")
+
+
+def remove_force_field(object_name: str) -> dict:
+    """Remove the force-field physics property from *object_name*."""
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+
+        field = getattr(obj, "field", None)
+        if field is None or getattr(field, "type", "NONE") == "NONE":
+            return skill_error(f"No force field on {object_name}", f"{object_name} has no active force field.")
+
+        _activate_object(bpy, obj)
+        try:
+            bpy.ops.object.forcefield_toggle()
+        except Exception:
+            field.type = "NONE"
+
+        return skill_success(
+            f"Removed force field from {object_name}",
+            object_name=object_name,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to remove force field from {object_name}")
+
+
+def list_force_fields(object_name: Optional[str] = None) -> dict:
+    """List objects that have an active force field."""
+    try:
+        import bpy
+
+        objects, error = _matching_objects(bpy, object_name)
+        if error:
+            return error
+
+        fields = []
+        for obj in objects:
+            field = getattr(obj, "field", None)
+            if field is None or getattr(field, "type", "NONE") == "NONE":
+                continue
+            fields.append(
+                {
+                    "object_name": getattr(obj, "name", ""),
+                    "field_type": getattr(field, "type", None),
+                    "strength": getattr(field, "strength", None),
+                    "falloff_power": getattr(field, "falloff_power", None),
+                }
+            )
+        return skill_success(
+            f"Found {len(fields)} force fields",
+            count=len(fields),
+            force_fields=fields,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to list force fields")
+
+
+# ---------------------------------------------------------------------------
+# Particle systems
+# ---------------------------------------------------------------------------
+
+PARTICLE_SYSTEM_NUMERIC = {
+    "count",
+    "frame_start",
+    "frame_end",
+    "lifetime",
+    "emit_from",
+}
+
+
+def add_particle_system(
+    object_name: str,
+    name: str = "ParticleSystem",
+    count: Optional[int] = None,
+    frame_start: Optional[int] = None,
+    frame_end: Optional[int] = None,
+    lifetime: Optional[float] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a particle system modifier to a mesh object.
+
+    Parameters
+    ----------
+    object_name:
+        Mesh object to receive the particle system.
+    name:
+        Name for the new particle system (and its modifier).
+    count:
+        Number of particles.
+    frame_start, frame_end:
+        Emission frame range.
+    lifetime:
+        Particle lifetime in frames.
+    settings:
+        Additional particle settings properties.
+    """
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        if getattr(obj, "type", None) != "MESH":
+            return skill_error(f"{object_name} is not a mesh", "Particle systems require a mesh object.")
+
+        _activate_object(bpy, obj)
+        modifier = obj.modifiers.new(name, "PARTICLE_SYSTEM")
+        ps = getattr(modifier, "particle_system", None)
+        psettings = getattr(ps, "settings", None) if ps else None
+
+        if psettings is not None:
+            if count is not None:
+                psettings.count = int(count)
+            if frame_start is not None:
+                psettings.frame_start = float(frame_start)
+            if frame_end is not None:
+                psettings.frame_end = float(frame_end)
+            if lifetime is not None:
+                psettings.lifetime = float(lifetime)
+            if settings:
+                _apply_settings(psettings, settings, PARTICLE_SYSTEM_NUMERIC)
+
+        return skill_success(
+            f"Added particle system '{name}' to {object_name}",
+            object_name=object_name,
+            modifier_name=getattr(modifier, "name", name),
+            count=getattr(psettings, "count", None) if psettings else None,
+            frame_start=getattr(psettings, "frame_start", None) if psettings else None,
+            frame_end=getattr(psettings, "frame_end", None) if psettings else None,
+            lifetime=getattr(psettings, "lifetime", None) if psettings else None,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add particle system to {object_name}")
+
+
+def set_particle_system_settings(
+    object_name: str,
+    modifier_name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Update particle settings on an existing particle system modifier."""
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier = _find_modifier(obj, modifier_name, "PARTICLE_SYSTEM")
+        if modifier is None:
+            label = modifier_name or "PARTICLE_SYSTEM"
+            return skill_error(
+                f"Particle system not found: {label}", f"{object_name} has no matching particle system modifier."
+            )
+
+        ps = getattr(modifier, "particle_system", None)
+        psettings = getattr(ps, "settings", None) if ps else None
+        if psettings is None:
+            return skill_error("Particle settings unavailable", "Could not access particle system settings.")
+
+        applied, skipped = _apply_settings(psettings, settings, PARTICLE_SYSTEM_NUMERIC)
+        return skill_success(
+            f"Updated particle system settings on {object_name}",
+            object_name=object_name,
+            modifier=_modifier_context(modifier),
+            applied=applied,
+            skipped=skipped,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to update particle system settings on {object_name}")
+
+
+def list_particle_systems(object_name: Optional[str] = None) -> dict:
+    """List particle system modifiers in the scene."""
+    try:
+        import bpy
+
+        objects, error = _matching_objects(bpy, object_name)
+        if error:
+            return error
+
+        entries = []
+        for obj in objects:
+            for modifier in getattr(obj, "modifiers", []):
+                if getattr(modifier, "type", None) != "PARTICLE_SYSTEM":
+                    continue
+                ps = getattr(modifier, "particle_system", None)
+                psettings = getattr(ps, "settings", None) if ps else None
+                entries.append(
+                    {
+                        "object_name": getattr(obj, "name", ""),
+                        "modifier_name": getattr(modifier, "name", ""),
+                        "particle_system_name": getattr(ps, "name", "") if ps else "",
+                        "count": getattr(psettings, "count", None) if psettings else None,
+                        "frame_start": getattr(psettings, "frame_start", None) if psettings else None,
+                        "frame_end": getattr(psettings, "frame_end", None) if psettings else None,
+                        "lifetime": getattr(psettings, "lifetime", None) if psettings else None,
+                        "physics_type": getattr(psettings, "physics_type", None) if psettings else None,
+                    }
+                )
+        return skill_success(
+            f"Found {len(entries)} particle systems",
+            count=len(entries),
+            particle_systems=entries,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to list particle systems")
+
+
 def get_simulation_status(object_name: Optional[str] = None) -> dict:
     """Return rigid-body world and modifier cache status."""
     try:

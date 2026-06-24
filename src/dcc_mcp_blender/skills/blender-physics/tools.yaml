@@ -549,6 +549,434 @@ tools:
       idempotent_hint: false
       open_world_hint: false
 
+  - name: add_soft_body_modifier
+    description: "Add or update a soft-body modifier on a mesh object."
+    source_file: scripts/add_soft_body_modifier.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          default: Softbody
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_soft_body_settings
+    description: "Update settings on an existing soft-body modifier."
+    source_file: scripts/set_soft_body_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: add_rigid_body_constraint
+    description: "Add a rigid-body constraint (FIXED, POINT, HINGE, etc.) to an empty or mesh object."
+    source_file: scripts/add_rigid_body_constraint.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        constraint_type:
+          type: string
+          enum: [FIXED, POINT, HINGE, SLIDER, PISTON, GENERIC, GENERIC_SPRING, MOTOR]
+          default: FIXED
+        object1:
+          type: string
+          description: "First rigid body object to connect."
+        object2:
+          type: string
+          description: "Second rigid body object to connect."
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: remove_rigid_body_constraint
+    description: "Remove the rigid-body constraint from an object."
+    source_file: scripts/remove_rigid_body_constraint.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_rigid_body_constraints
+    description: "List rigid-body constraints in the scene or on a single object."
+    source_file: scripts/list_rigid_body_constraints.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: add_force_field
+    description: "Add a force-field physics property to an object (FORCE, WIND, VORTEX, etc.)."
+    source_file: scripts/add_force_field.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        field_type:
+          type: string
+          enum: [FORCE, WIND, VORTEX, MAGNET, HARMONIC, CHARGE, LENNARDJ, TEXTURE, GUIDE, BOID, TURBULENCE, DRAG, SMOKE]
+          default: FORCE
+        strength:
+          type: number
+          default: 1.0
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: remove_force_field
+    description: "Remove the force-field physics property from an object."
+    source_file: scripts/remove_force_field.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_force_fields
+    description: "List objects that have an active force field in the scene."
+    source_file: scripts/list_force_fields.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: add_particle_system
+    description: "Add a particle system modifier to a mesh object."
+    source_file: scripts/add_particle_system.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          default: ParticleSystem
+        count:
+          type: integer
+          description: "Number of particles."
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        lifetime:
+          type: number
+          description: "Particle lifetime in frames."
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_particle_system_settings
+    description: "Update particle system settings on an existing particle system modifier."
+    source_file: scripts/set_particle_system_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_particle_systems
+    description: "List particle system modifiers in the scene or on a single object."
+    source_file: scripts/list_particle_systems.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: get_simulation_status
     description: "Return rigid-body world and simulation modifier cache status."
     source_file: scripts/get_simulation_status.py
