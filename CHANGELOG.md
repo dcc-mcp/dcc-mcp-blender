@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.20...v0.1.21) (2026-06-24)
+
+
+### Documentation
+
+* add AGENTS.md, CLAUDE.md, GEMINI.md, and llms.txt ([ff3afad](https://github.com/dcc-mcp/dcc-mcp-blender/commit/ff3afad887f28bee231612e0f2069a26026206ae))
+
 ## [0.1.20](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.19...v0.1.20) (2026-06-24)
 
 
