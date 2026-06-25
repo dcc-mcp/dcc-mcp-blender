@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.13...v0.1.14) (2026-06-25)
+
+
+### Bug Fixes
+
+* keep Setup Python for Windows DLLs step at 3.11 ([542bf3f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/542bf3fd67e6fc7e1309e2aeab2cb87059dc2f02))
+
 ## [0.1.13](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.12...v0.1.13) (2026-06-08)
 
 
