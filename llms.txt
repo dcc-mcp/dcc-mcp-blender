@@ -1,0 +1,152 @@
+# llms.txt — dcc-mcp-blender Core Reference for AI Agents
+
+> One-page cheat sheet.
+
+---
+
+## Project
+
+**dcc-mcp-blender** — Embed a standards-compliant MCP Streamable HTTP server directly inside Blender.
+**Version:** 0.1.20 <!-- x-release-please-version -->
+**License:** MIT
+**Repo:** https://github.com/dcc-mcp/dcc-mcp-blender
+**Python:** >=3.10 (bundled with Blender)
+**Blender:** 3.6 LTS, 4.2 LTS, 4.3, 4.4
+**Core dep:** `dcc-mcp-core>=0.18.34,<1.0.0`
+
+---
+
+## Quick Start
+
+```python
+import dcc_mcp_blender
+handle = dcc_mcp_blender.start_server(port=8765)
+# MCP host → http://127.0.0.1:8765/mcp
+handle.shutdown()
+```
+
+Headless bootstrap:
+```bash
+blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
+```
+
+---
+
+## Core API
+
+### Module-Level Functions
+
+```python
+start_server(
+    port: int = 8765,
+    server_name: str = "blender-mcp",
+    register_builtins: bool = True,
+    extra_skill_paths: Optional[List[str]] = None,
+    include_bundled: bool = True,
+    enable_gateway_failover: bool = True,
+) -> McpServerHandle
+
+stop_server() -> None
+```
+
+### BlenderMcpServer Constructor
+
+```python
+BlenderMcpServer(
+    port: int = 8765,
+    server_name: str = "blender-mcp",
+    server_version: str = "0.1.20",  # x-release-please-version
+    enable_gateway_failover: bool = True,
+    metrics_enabled: Optional[bool] = None,     # env: DCC_MCP_BLENDER_METRICS=1
+    job_storage_path: Optional[str] = None,     # env: DCC_MCP_BLENDER_JOB_STORAGE
+)
+```
+
+Key methods: `register_builtin_actions()`, `start()`, `stop()`, `build_capability_manifest(loaded_only=False)`.
+
+---
+
+## Skill Discovery & Loading
+
+Agent workflow (skills-first — **default**):
+1. `search_skills` / `search_tools` — find the domain skill.
+2. `load_skill("blender-animation")` — activate tools with `inputSchema` + annotations.
+3. Call the concrete tool (e.g. `blender_animation__set_keyframe`).
+
+Reserve `blender_scripting__execute_python` for **escape hatches** (no skill yet, bulk in-Blender loops, bpy-only API). Operators can block arbitrary execution with `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON=1` or `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT=1`.
+
+Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene__new_scene`).
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/dcc_mcp_blender/server.py` | `BlenderMcpServer`, builtin skill discovery, metrics, jobs |
+| `src/dcc_mcp_blender/dispatcher/` | Thread-affinity dispatchers + cancellation |
+| `src/dcc_mcp_blender/api.py` | Skill authoring helpers (`blender_success`, `blender_error`, `with_main_thread`) |
+| `src/dcc_mcp_blender/host.py` | Host adapter (GUI vs headless mode) |
+| `src/dcc_mcp_blender/context_snapshot.py` | Scene context provider |
+| `src/dcc_mcp_blender/skills/` | 25+ built-in skill packages (200+ typed MCP tools) |
+| `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` | Staged loading guide and task-to-skill chains |
+| `README.md` | Human overview |
+| `AGENTS.md` | Progressive disclosure map |
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DCC_MCP_BLENDER_PORT` | `8765` | TCP port |
+| `DCC_MCP_BLENDER_SERVER_NAME` | `blender-mcp` | MCP init name |
+| `DCC_MCP_BLENDER_SKILL_PATHS` | — | Blender skill search roots |
+| `DCC_MCP_SKILL_PATHS` | — | Global fallback skill search roots |
+| `DCC_MCP_BLENDER_SEMANTIC_INDEX` | `0` | `1`=hybrid BM25+vector skill search |
+| `DCC_MCP_BLENDER_SEMANTIC_EMBEDDER` | `hashed` | `onnx` for dense embeddings |
+| `DCC_MCP_BLENDER_METRICS` | `false` | `true`=Prometheus `/metrics` |
+| `DCC_MCP_BLENDER_JOB_STORAGE` | *(auto)* | Render-job SQLite persistence dir |
+| `DCC_MCP_BLENDER_READINESS_TIMEOUT_SECS` | — | Advisory timeout for readiness probe |
+| `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` | `false` | `1`/`true`/`yes`/`on` — refuse `execute_python` |
+| `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` | `false` | Same tokens — refuse all arbitrary script execution |
+| `DCC_MCP_BLENDER_PROJECT_TOOLS` | — | `0` to opt out of project tools |
+| `DCC_MCP_BLENDER_RESOURCES` | — | `0` to opt out of MCP resource publishing |
+| `DCC_MCP_BLENDER_STRICT_SKILL_SCAN` | `false` | Raise on invalid skill YAML |
+| `DCC_MCP_BLENDER_ENABLE_WORKFLOWS` | `true` | Enable workflow orchestration surface |
+| `DCC_MCP_BLENDER_ENABLE_GATEWAY_FAILOVER` | `true` | Enable gateway failover |
+
+---
+
+## Available Tool Categories
+
+| Skill Package | Key Tools |
+|---------------|-----------|
+| blender-scene | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info` |
+| blender-objects | `create_object`, `delete_object`, `move/rotate/scale`, `get_selection`, `set_selection` |
+| blender-mesh / blender-mesh-ops | `add_modifier`, `apply_modifier`, `triangulate_mesh`, `combine_meshes`, `merge_vertices` |
+| blender-uv-ops | `create_uv_map`, `unwrap_uvs`, `pack_uvs`, `project_uvs` |
+| blender-rigging | `create_armature`, `create_bone`, `add_constraint`, `bind_mesh_to_armature`, `retarget_animation` |
+| blender-pose-library | `list_poses`, `save_pose`, `load_pose` |
+| blender-interchange | `import_fbx/obj/usd`, `export_gltf/usd/alembic`, `batch_export` |
+| blender-materials / blender-shader-nodes | `create_material`, `create_node`, `connect_nodes`, `set_principled_input` |
+| blender-material-library | `save/load/delete_material_preset`, `assign_texture`, `list_images` |
+| blender-texture-bake | `bake_textures`, `bake_ambient_occlusion`, `transfer_maps` |
+| blender-render | `render_scene`, `set_render_settings`, `capture_viewport` |
+| blender-render-farm | `submit_render_job`, `get_render_job_status`, `cancel_render_job` |
+| blender-animation | `set_keyframe`, `set_frame_range`, `bake_animation` |
+| blender-lighting / blender-light-rig | `create_light`, `create_three_point_light_rig`, `create_hdri_world` |
+| blender-camera | `create_camera`, `set_active_camera`, `set_camera_properties` |
+| blender-physics | `add_rigid_body`, `add_cloth_modifier`, `add_force_field`, `bake_simulation` |
+| blender-geometry-nodes | `create_geometry_node_group`, `set_geometry_node_modifier_input` |
+| blender-scripting | `execute_python`, `execute_script_file`, `get_blender_info` |
+| blender-dev | `reload_modules`, `capture_ui_snapshot`, `start_debug_server`, `get_python_environment` |
+| blender-validation | `run_scene_checks`, `validate_mesh/materials/animation`, `get_validation_report` |
+| blender-pipeline | `get/tag/clear_asset_metadata`, `set_project_context`, `create_publish_manifest` |
+| blender-shot-export | `get_shot_info`, `export_camera` |
+| blender-export-preset | `list/save/load/delete_export_preset` |
+| blender-collection | `create_collection`, `link_to_collection`, `list_collections` |
+| blender-node-graph | `list_all_node_graphs`, `list_compositor_nodes`, `get_compositor_node_tree` |
+| blender-import-to-scene | `import_to_scene` |
+
+See `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` for staged loading guidance, task-to-skill chains, and side-effect profiles.

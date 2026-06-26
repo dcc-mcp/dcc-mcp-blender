@@ -12,7 +12,7 @@
 [![GitHub release downloads](https://img.shields.io/github/downloads/dcc-mcp/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
-[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.18.7-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.18.34-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -29,7 +29,7 @@
 ├─────────────────────────────────┤
 │  dcc_mcp_blender                │
 │  ├─ BlenderMcpServer            │
-│  ├─ SkillCatalog (150+ tools)   │
+│  ├─ SkillCatalog (200+ tools)   │
 │  ├─ ActionRegistry              │
 │  └─ HTTP Handlers               │
 ├─────────────────────────────────┤
@@ -49,7 +49,7 @@
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
-- **150+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting and more
+- **200+ pre-built tools** — scene management, object manipulation, mesh/UV editing, rigging, pose libraries, interchange, materials, node graphs, rendering, physics, scripting, cross-DCC import and more
 - **Extensible skill system** — drop new skill folders alongside built-ins or point to them via env vars
 - **Main-thread host adapter** — GUI mode uses core `HostUiDispatcherBase` semantics through `BlenderUiDispatcher`; headless mode uses `BlenderHost` with a core `BlockingDispatcher`
 - **Streamable HTTP transport** — compatible with any MCP 2025-03-26 client
@@ -68,7 +68,8 @@
 | **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
 | **blender-rigging** | `create_armature`, `create_bone`, `mirror_bones`, `add_constraint`, `set_constraint_properties`, `bind_mesh_to_armature`, `add_shape_key`, `set_driver`, `retarget_animation` |
 | **blender-pose-library** | `list_poses`, `save_pose`, `load_pose` |
-| **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
+| **blender-import-to-scene** | `import_to_scene` |
+| **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `import_usd`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
 | **blender-export-preset** | `list_export_presets`, `save_export_preset`, `load_export_preset`, `delete_export_preset` |
 | **blender-shot-export** | `get_shot_info`, `export_camera` |
 | **blender-validation** | `run_scene_checks`, `validate_mesh`, `validate_materials`, `validate_animation`, `validate_export_readiness`, `get_validation_report` |
@@ -78,6 +79,7 @@
 | **blender-material-library** | `save_material_preset`, `list_material_presets`, `load_material_preset`, `delete_material_preset`, `get_shader_assignment`, `get_material_connections`, `set_material_attribute`, `assign_texture`, `list_images`, `reload_image`, `list_color_spaces`, `set_color_management` |
 | **blender-texture-bake** | `list_bake_targets`, `bake_textures`, `bake_ambient_occlusion`, `bake_lighting`, `transfer_maps` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |
+| **blender-render-farm** | `validate_scene_for_farm`, `write_render_job`, `submit_render_job`, `get_render_job_status`, `list_render_jobs`, `cancel_render_job`, `cooperative_cancel`, `render_farm_status` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
 | **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `enable_addon`, `disable_addon`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |
 | **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation` |
@@ -199,6 +201,17 @@ dcc_mcp_blender.stop_server()
 | `DCC_MCP_BLENDER_SEMANTIC_INDEX` | `0` (off) | Set to `1` to enable the opt-in lexical+vector hybrid skill recall. When enabled, `search_skills` fuses BM25 with vector similarity via Reciprocal Rank Fusion (RRF), improving recall for natural-language queries like "import USD files" or "rendering a preview". |
 | `DCC_MCP_BLENDER_SEMANTIC_EMBEDDER` | `hashed` | Embedder backend for semantic recall. `hashed` (default) uses a zero-dependency hash-based embedding. Set to `onnx` for dense embeddings via `OnnxEmbedder` (requires `pip install 'dcc-mcp-core[semantic]'`). |
 | `DCC_MCP_BLENDER_READINESS_TIMEOUT_SECS` | *(none)* | Optional timeout in seconds for the readiness probe's dcc verification step. |
+| `DCC_MCP_BLENDER_METRICS` | `false` | Enable Prometheus `/metrics` HTTP endpoint. |
+| `DCC_MCP_BLENDER_JOB_STORAGE` | *(auto)* | Directory for render-job SQLite persistence; auto-resolves to platform tempdir when unset. |
+| `DCC_MCP_BLENDER_STRICT_SKILL_SCAN` | `false` | Raise on invalid skill YAML instead of logging a debug warning and skipping. |
+| `DCC_MCP_BLENDER_ENABLE_WORKFLOWS` | `true` | Enable workflow orchestration surface (`workflows.run`, `workflows.resume`, etc.). |
+| `DCC_MCP_BLENDER_ENABLE_GATEWAY_FAILOVER` | `true` | Enable gateway failover for high-availability configurations. |
+| `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` | `false` | Disable the `execute_python` tool to restrict arbitrary code execution. |
+| `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` | `false` | Disable arbitrary script execution; implies `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`. |
+| `DCC_MCP_BLENDER_PROJECT_TOOLS` | *(none)* | Set to `0` to opt out of the four `project_*` MCP tools. |
+| `DCC_MCP_BLENDER_RESOURCES` | *(none)* | Set to `0` to opt out of MCP resource publishing (e.g. `scene://current`). |
+| `DCC_MCP_BLENDER_SKILL_PATHS` | *(none)* | Additional `os.pathsep`-delimited skill search paths extending the bundled set. |
+| `DCC_MCP_SKILL_PATHS` | *(none)* | Shared across all DCC-MCP packages; skill-path search falls back here when the Blender-specific var is unset. |
 
 #### Enabling Semantic Skill Recall
 
