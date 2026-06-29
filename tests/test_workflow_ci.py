@@ -109,7 +109,7 @@ def test_e2e_workflow_uses_checked_in_ci_scripts():
     assert ".github/scripts/run_blender_e2e.py" in text
     assert ".github/scripts/start_mcp_server2.py" in text
     assert "pytest.main" in runner
-    assert "os._exit(main())" in runner
+    assert "os._exit(exit_code)" in runner
 
 
 def test_windows_e2e_targets_vs2026_runner_explicitly():
