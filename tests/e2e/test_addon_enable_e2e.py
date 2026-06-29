@@ -57,6 +57,14 @@ def _stage_addon() -> Path:
     for item in ADDON_ENTRY.parent.iterdir():
         if item.is_file():
             shutil.copy2(item, dest / item.name)
+
+    # Patch bl_info in the staged copy to ensure compatibility with the whole
+    # E2E matrix (3.6 - 4.4). Production uses (4, 2, 0) as it targets extensions.
+    init_py = dest / "__init__.py"
+    content = init_py.read_text(encoding="utf-8")
+    content = content.replace('"blender": (4, 2, 0)', '"blender": (3, 6, 0)')
+    init_py.write_text(content, encoding="utf-8")
+
     return dest
 
 
@@ -74,6 +82,7 @@ def _cleanup(dest: Path) -> None:
 
 def test_blender_enables_packaged_addon():
     """The packaged add-on enables through Blender's real add-on manager."""
+    import sys
     import traceback  # noqa: PLC0415
 
     import addon_utils  # noqa: PLC0415
@@ -82,7 +91,6 @@ def test_blender_enables_packaged_addon():
     # add-on entry's self-aliasing guard stays a no-op (it uses setdefault).
     import dcc_mcp_blender  # noqa: F401, PLC0415
 
-    import sys
     print(f"\n[DEBUG] sys.path: {sys.path}", file=sys.__stdout__)
     print(f"[DEBUG] script_paths: {bpy.utils.script_paths()}", file=sys.__stdout__)
     print(f"[DEBUG] user_addons: {_addon_dir()}", file=sys.__stdout__)
