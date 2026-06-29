@@ -53,7 +53,10 @@ def _stage_addon() -> Path:
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ADDON_ENTRY, dest / "__init__.py")
+    # Copy the whole directory so we get blender_manifest.toml too (required for 4.2+)
+    for item in ADDON_ENTRY.parent.iterdir():
+        if item.is_file():
+            shutil.copy2(item, dest / item.name)
     return dest
 
 
@@ -71,22 +74,53 @@ def _cleanup(dest: Path) -> None:
 
 def test_blender_enables_packaged_addon():
     """The packaged add-on enables through Blender's real add-on manager."""
+    import traceback  # noqa: PLC0415
+
     import addon_utils  # noqa: PLC0415
 
     # Ensure the real package owns ``dcc_mcp_blender`` in sys.modules so the
     # add-on entry's self-aliasing guard stays a no-op (it uses setdefault).
     import dcc_mcp_blender  # noqa: F401, PLC0415
 
+    print(f"\n[DEBUG] sys.path: {sys.path}")
+    print(f"[DEBUG] script_paths: {bpy.utils.script_paths()}")
+    print(f"[DEBUG] user_addons: {_addon_dir()}")
+
     assert ADDON_ENTRY.is_file(), f"add-on entry missing: {ADDON_ENTRY}"
 
     dest = _stage_addon()
+    print(f"[DEBUG] Staged addon to: {dest}")
+    print(f"[DEBUG] Staged files: {list(dest.iterdir())}")
+
     try:
         bpy.ops.preferences.addon_refresh()
         addon_utils.modules(refresh=True)
 
-        bpy.ops.preferences.addon_enable(module=ADDON_MODULE)
+        # Check if it's even visible to addon_utils
+        matches = [m for m in addon_utils.modules() if m.__name__ == ADDON_MODULE]
+        if not matches:
+            print(f"[ERROR] {ADDON_MODULE} not found in addon_utils.modules() after refresh")
+            all_names = [m.__name__ for m in addon_utils.modules()]
+            print(f"[DEBUG] First 10 modules: {all_names[:10]}")
+
+        print(f"[DEBUG] Enabling {ADDON_MODULE}...")
+        try:
+            res = bpy.ops.preferences.addon_enable(module=ADDON_MODULE)
+            print(f"[DEBUG] addon_enable result: {res}")
+        except Exception:
+            print(f"[ERROR] addon_enable raised exception:\n{traceback.format_exc()}")
+            raise
 
         is_enabled, is_loaded = addon_utils.check(ADDON_MODULE)
+        print(f"[DEBUG] addon_utils.check: enabled={is_enabled}, loaded={is_loaded}")
+
+        if not is_enabled:
+            # Look for the module in Blender's internal addon data to see why it failed
+            from addon_utils import addon_modules_info  # noqa: PLC0415
+
+            info = addon_modules_info().get(ADDON_MODULE)
+            print(f"[DEBUG] addon_modules_info for {ADDON_MODULE}: {info}")
+
         assert is_enabled, f"{ADDON_MODULE} not marked enabled after addon_enable"
         assert is_loaded, f"{ADDON_MODULE} module not loaded after addon_enable"
 
@@ -95,6 +129,9 @@ def test_blender_enables_packaged_addon():
         assert hasattr(bpy.ops, "dcc_mcp") and hasattr(bpy.ops.dcc_mcp, "show_server_urls"), (
             "dcc_mcp operators not registered after enable"
         )
+    except Exception:
+        print(f"[FAIL] Test failed with traceback:\n{traceback.format_exc()}")
+        raise
     finally:
         _cleanup(dest)
 
