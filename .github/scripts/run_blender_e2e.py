@@ -25,6 +25,7 @@ def main() -> int:
         [
             os.path.join(workspace, "tests", "e2e"),
             "-v",
+            "-s",
             "--tb=short",
             "-m",
             "e2e",
@@ -37,4 +38,7 @@ def main() -> int:
 if __name__ == "__main__":
     # Bypass Blender C++ cleanup in Linux background mode; sys.exit() can
     # otherwise try to destroy uninitialized X11/OpenGL resources.
-    os._exit(main())
+    exit_code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(exit_code)
