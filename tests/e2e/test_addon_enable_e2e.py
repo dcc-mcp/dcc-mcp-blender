@@ -61,9 +61,14 @@ def _stage_addon() -> Path:
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
-    # Copy the whole directory so we get blender_manifest.toml too (required for 4.2+)
+    # Copy the whole directory so we get bl_info from __init__.py
     for item in ADDON_ENTRY.parent.iterdir():
         if item.is_file():
+            # In Blender 4.2+, a 'blender_manifest.toml' in the legacy 'addons' folder
+            # can cause the add-on to be ignored or treated as a malformed extension.
+            # We want to test enablement via the legacy path for this E2E test.
+            if item.name == "blender_manifest.toml":
+                continue
             shutil.copy2(item, dest / item.name)
 
     # Patch bl_info in the staged copy to ensure compatibility with the whole
