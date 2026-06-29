@@ -43,7 +43,15 @@ ADDON_MODULE = "dcc_mcp_blender_enable_e2e"
 
 
 def _addon_dir() -> Path:
-    """User ``scripts/addons`` directory Blender scans for legacy add-ons."""
+    """Directory Blender scans for add-ons."""
+    # Use the first standard script path (usually the one in the Blender installation).
+    # In CI this is writable and guaranteed to be in Blender's search path.
+    paths = bpy.utils.script_paths()
+    if paths:
+        p = Path(paths[0]) / "addons"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    # Fallback to user resource
     return Path(bpy.utils.user_resource("SCRIPTS", path="addons", create=True))
 
 
