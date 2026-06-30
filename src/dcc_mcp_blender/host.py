@@ -276,8 +276,20 @@ class BlenderInlineCallableDispatcher:
     def __init__(self, host_dispatcher: Any) -> None:
         self._host_dispatcher = host_dispatcher
 
-    def dispatch_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    def dispatch_callable(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        affinity: str = "main",
+        context: Any = None,
+        action_name: str = "",
+        skill_name: Optional[str] = None,
+        execution: str = "sync",
+        timeout_hint_secs: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Any:
         """Execute ``func`` inline once HTTP has dispatched onto Blender's thread."""
+        _ = (affinity, context, action_name, skill_name, execution, timeout_hint_secs)
         return func(*args, **kwargs)
 
     def shutdown(self, reason: str = "Interrupted") -> Any:

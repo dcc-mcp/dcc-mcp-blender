@@ -80,7 +80,7 @@ class TestBlenderMcpServerBasic:
         # so the bridge uses BlenderInlineCallableDispatcher for the hop
         assert isinstance(mode.bridge.dispatcher, BlenderInlineCallableDispatcher)
         assert mode.bridge.host_dispatcher is dispatcher.host_dispatcher
-        assert mode.bridge.dispatch_callable(lambda: "ok", affinity="main") == "ok"
+        assert mode.bridge.dispatch_callable(lambda: "ok", thread_affinity="main") == "ok"
 
     def test_explicit_execution_bridge_takes_precedence(self):
         from dcc_mcp_core import HostExecutionBridge
