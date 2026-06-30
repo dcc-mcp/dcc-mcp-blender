@@ -1,5 +1,78 @@
 # Changelog
 
+## [0.1.22](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.21...v0.1.22) (2026-06-30)
+
+
+### Features
+
+* add _env module and dispatcher module for Blender MCP server ([49a5866](https://github.com/dcc-mcp/dcc-mcp-blender/commit/49a586624b42dd7e2fe8b4d94cc0878ede640130))
+* add blender asset validation pipeline tools ([#55](https://github.com/dcc-mcp/dcc-mcp-blender/issues/55)) ([f47b1ce](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f47b1cea673d3fe5f55bb08c73573773b1830081))
+* add blender dev diagnostic tools ([df1b2d8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/df1b2d81a90df76496424cc1425a73cad337d557))
+* add blender interchange export tools ([92adaa5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/92adaa564f2da2346b9905eab37ffd2ebbb48d7a))
+* add blender light rig environment tools ([8bd5140](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8bd5140c2c81ebc6c2b2cb258e099011401532ff))
+* add blender material library bake tools ([#56](https://github.com/dcc-mcp/dcc-mcp-blender/issues/56)) ([84e8e3e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/84e8e3e109b1f732e3968679c8d196eaed1bfad1))
+* add blender mesh and scene operations ([e27aa3a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e27aa3a1133cd4b1f676a4f5036f836c093c51e4))
+* add blender rigging and pose operations ([459625f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/459625fea1a562d93076c400009560d489300a49))
+* add blender uv operations skill ([f7c4249](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f7c424917683565fc393f2b89a62945b3369850c))
+* add blender-dev-build-link-core-win (align with Maya) ([49bb005](https://github.com/dcc-mcp/dcc-mcp-blender/commit/49bb005c8331e5aa2af12edb53063f90a98d18f7))
+* add blender-render-farm skill with Deadline and Flamenco support ([30b40f5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/30b40f5914d59b88bd094cbc08e479cded33d384))
+* add justfile and tools for local Blender development ([8f61e54](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8f61e545d53236d76e6f2720dd32ff19874299c3))
+* add latest dcc-mcp-core integrations and agent install skill ([0d33d1d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/0d33d1d90fef6d407bd3d5e9568fed058822402d))
+* align addon packaging with core 0.17.5 ([66f565a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/66f565adc53cdc9f3ed9538697f49d8febc074d3))
+* align with dcc-mcp-core 0.17.2 API (add diagnostics/execution options) ([d4d062c](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d4d062c68337d542fbbac52113e0562789c4bf5f))
+* **blender:** bump dcc-mcp-core floor to &gt;=0.18.2 (PIP-571) ([929748d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/929748d2cfd6f363618372833eabc6b09fef6708))
+* expand Blender host skills and release flow ([acc01f5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/acc01f5126b6f4fd8968a4b22d44fc4d480bf5b0))
+* expand blender mcp skills ([b9677e9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b9677e9332001e35886ee884addef1112698bac7))
+* expand blender node graph tools ([378ea57](https://github.com/dcc-mcp/dcc-mcp-blender/commit/378ea5748d9459654953a356aac136a806d02e7c))
+* expand blender simulation physics tools ([26c8c70](https://github.com/dcc-mcp/dcc-mcp-blender/commit/26c8c7037e01b9f2924fa653ae197c5f5620fc3b))
+* initial project setup for dcc-mcp-blender ([82382d8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/82382d8d21682a1c4f829dc9b91d0cdf89ecdaa7))
+* migrate repo references from loonghao to dcc-mcp org ([40851fe](https://github.com/dcc-mcp/dcc-mcp-blender/commit/40851fe64e722184e67b70c7a10b3459d5cfedbb))
+* update core integrations alignment with core-0.17.47 ([d324dcc](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d324dcc7f931caff55c13f8f58cad807864c7cc0))
+* upgrade to dcc-mcp-core v0.12.24 — progressive loading, multi-instance gateway, more Blender E2E versions ([#6](https://github.com/dcc-mcp/dcc-mcp-blender/issues/6)) ([bde0a6b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bde0a6b604d4cc5fcb15a7cd8b9705ecd1b04adc))
+
+
+### Bug Fixes
+
+* add blender callable dispatcher ([13f4cfe](https://github.com/dcc-mcp/dcc-mcp-blender/commit/13f4cfe6b243843c6b6b290a20c43ee91fbd5f09))
+* add custom release-please updater for bl_info version tuple ([93eb39d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/93eb39daed258f444a6b989aff0272e8fdaf1399))
+* add release-please version marker to packaging entry for auto-sync ([dbc6c52](https://github.com/dcc-mcp/dcc-mcp-blender/commit/dbc6c527dab85ba1559b9098193d6397f6beb6af))
+* align bl_info version to 0.1.5 in addon entry and tests ([7fb86ae](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7fb86ae1c59bfb6a470570797f5c169df6988d36))
+* align blender dispatcher with core pump ([c7ee2dc](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c7ee2dce73c94778fee9ddb6294974d0df2d316b))
+* apply ruff format to packaging/addon_entry/__init__.py ([e4297e9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e4297e917aeef3d6d3e4c42dcd9772650a206891))
+* **ci:** add blender_manifest.toml and __version__.py to release PR allowed files ([87a8117](https://github.com/dcc-mcp/dcc-mcp-blender/commit/87a8117779aa12117155db44a4a416745c3c54bb))
+* **ci:** add E2E tests and fix Windows/macOS CI issues ([#3](https://github.com/dcc-mcp/dcc-mcp-blender/issues/3)) ([9237ab3](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9237ab32c2323e9b1909bb11a3c9214393a62c49))
+* **ci:** add shell: bash for release zip step + add Python 3.7 support ([#4](https://github.com/dcc-mcp/dcc-mcp-blender/issues/4)) ([9850e0d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9850e0d735d09f11b7e3c64ce45da6b18e393e1d))
+* **ci:** isolate workflow_dispatch from push concurrency in release workflow ([#74](https://github.com/dcc-mcp/dcc-mcp-blender/issues/74)) ([b583cef](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b583cef4842943ca8dc6c72c4306c1e762088b4c))
+* **ci:** remove github.token fallback from release-please token ([fa5e565](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fa5e56535aad7e5cfe4ab059b36d9fc3f3043575))
+* **ci:** resolve all CI failures on main ([a3e7baf](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a3e7baf458a02c7ce3a1f035966213311c0dd745))
+* export obj without ui context ([5961b11](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5961b11c6dc748192134ce7ce8a15fe1a96a62e5))
+* GUI add-on Extension install readiness + docs + metadata uplift (GH [#59](https://github.com/dcc-mcp/dcc-mcp-blender/issues/59)-[#62](https://github.com/dcc-mcp/dcc-mcp-blender/issues/62)) ([2ef083f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2ef083f5aad84de028158b022a682e373b84f728))
+* **host:** wire real main-thread dispatcher and manage its lifecycle ([#121](https://github.com/dcc-mcp/dcc-mcp-blender/issues/121)) ([822c2c5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/822c2c562bfc53a08c16426aff05bc50842baa34))
+* keep Setup Python for Windows DLLs step at 3.11 ([542bf3f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/542bf3fd67e6fc7e1309e2aeab2cb87059dc2f02))
+* migrate blender skills metadata schema ([7833af9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7833af91dcf94b55c8d1649d61f0ae0c879d0dd5))
+* recover main from v0.1.21 ([c44d142](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c44d1422f3f35839db481a3421cc07b47e872123))
+* **release-please:** fix $1-digit ambiguity in version tuple updater ([a14bdea](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a14bdea234ce845f9b4a0b879ebd7cb2389c98fd))
+* reorder imports in test_agent_instruction_files.py for Ruff I001 ([1bfefeb](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1bfefebdb824eeeb8ffd453784cc6d1053029c4c))
+* repair blender addon startup ([f11ffeb](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f11ffeb3e9892f337f1833c9b01e051e2b87af5d))
+* resolve active object in headless blender ([977c661](https://github.com/dcc-mcp/dcc-mcp-blender/commit/977c66154040651c58ff49f67d87607eb4c8cf1b))
+* sync bl_info version to 0.1.6 to match release-please bump ([49a8099](https://github.com/dcc-mcp/dcc-mcp-blender/commit/49a809948ec1e1945297a1c1a800d5947398329c))
+* update assemble_zip regex to handle multi-line bl_info version tuple ([91a6e46](https://github.com/dcc-mcp/dcc-mcp-blender/commit/91a6e46fd94e73264afb9e46543cc799d67cebdc))
+* update test version assertions to match 0.1.6 release-please bump ([2bde418](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2bde4182f70d54f23f9f31b0909e8f4d55311b9e))
+* update version references to dcc-mcp-core 0.18.9 ([3a59781](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3a5978144bd1ad576118a3ea47a9d59bd14ee1db))
+* use dynamic version in addon packaging tests instead of hardcoded value ([10b67e5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/10b67e5eda9c51385f1456829d57e69fcf627acb))
+* use release-please built-in markers for bl_info version tuple ([b99dbc6](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b99dbc64f17531c0889f9842a11814caf7a017c0))
+
+
+### Code Refactoring
+
+* inherit DccServerBase from dcc-mcp-core, upgrade to &gt;=0.12.29 ([#10](https://github.com/dcc-mcp/dcc-mcp-blender/issues/10)) ([4c4e571](https://github.com/dcc-mcp/dcc-mcp-blender/commit/4c4e571aa2f77e8f8ccd0827dee6318d0d1f48a9))
+* simplify blender dispatcher with core interfaces ([41c18d2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/41c18d201eaf7a50030bd5b8de5baf5e55c15050))
+
+
+### Documentation
+
+* add blender skills index ([bc1501f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bc1501fafdef5f7690a9e91549e74ad1f4625582))
+
 ## [0.1.21](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.20...v0.1.21) (2026-06-24)
 
 
