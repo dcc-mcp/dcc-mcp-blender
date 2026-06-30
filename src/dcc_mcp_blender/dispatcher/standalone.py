@@ -6,7 +6,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from dcc_mcp_core import InProcessCallableDispatcher, JobOutcome
+from dcc_mcp_core import JobOutcome
+from dcc_mcp_core.host import BlockingDispatcher
 
 
 class BlenderStandaloneDispatcher:
@@ -18,37 +19,31 @@ class BlenderStandaloneDispatcher:
 
     def __init__(self, timeout_ms: int = 30000) -> None:
         self.timeout_ms = timeout_ms
-        self._dispatcher = InProcessCallableDispatcher()
+        self._host_dispatcher = BlockingDispatcher()
         self._results: Dict[str, Any] = {}
         self._errors: Dict[str, str] = {}
 
+    @property
+    def host_dispatcher(self) -> BlockingDispatcher:
+        """Expose the core dispatcher that backs HTTP main-thread routing."""
+        return self._host_dispatcher
+
     def dispatch(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         """Dispatch a call inline through core's in-process dispatcher."""
-        outcome = self._dispatcher.submit_callable(
-            self._request_id(func),
-            lambda: func(*args, **kwargs),
-            affinity="main",
-            timeout_ms=self.timeout_ms,
-        )
-        return self._value_or_raise(outcome)
+        handle = self._host_dispatcher.post(lambda: func(*args, **kwargs))
+        return handle.wait(self.timeout_ms / 1000.0)
 
     def dispatch_async(self, func: Callable, *args: Any, **kwargs: Any) -> str:
         """Dispatch a call asynchronously and return a pollable request id."""
         job_id = self._request_id(func)
 
-        def _complete(outcome: JobOutcome) -> None:
-            if outcome.ok:
-                self._results[job_id] = outcome.value
-            else:
-                self._errors[job_id] = outcome.error or "Blender standalone dispatch failed"
+        def _invoke():
+            try:
+                self._results[job_id] = func(*args, **kwargs)
+            except Exception as exc:
+                self._errors[job_id] = str(exc)
 
-        self._dispatcher.submit_async_callable(
-            job_id,
-            lambda: func(*args, **kwargs),
-            affinity="main",
-            timeout_ms=self.timeout_ms,
-            on_complete=_complete,
-        )
+        self._host_dispatcher.post(_invoke)
         return job_id
 
     def get_result(self, job_id: str) -> Optional[Any]:

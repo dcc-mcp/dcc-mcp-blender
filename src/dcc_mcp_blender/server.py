@@ -203,6 +203,16 @@ class BlenderMcpServer(DccServerBase):
         options: Optional[BlenderServerOptions] = None,
     ) -> None:
         if options is None:
+            if dispatcher is None and execution_bridge is None:
+                # Default to a UI or standalone dispatcher if none provided
+                # (essential for workers started via CLI)
+                try:
+                    from dcc_mcp_blender.dispatcher import create_dispatcher
+
+                    dispatcher = create_dispatcher(ui_mode=not self.is_background())
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("[%s] Failed to create default dispatcher: %s", _DCC_NAME, exc)
+
             options = BlenderServerOptions(
                 port=port,
                 extra_skill_paths=extra_skill_paths,
@@ -329,18 +339,31 @@ class BlenderMcpServer(DccServerBase):
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     def start(self, *, install_atexit_hook: bool = True) -> "BlenderMcpServer":
-        """Start the MCP HTTP server.  Returns *self* for chaining."""
+        """Start the MCP HTTP server and the attached host dispatcher.
+
+        Returns *self* for chaining.
+        """
         super().start(install_atexit_hook=install_atexit_hook)
+        if self._blender_dispatcher is not None:
+            start_fn = getattr(self._blender_dispatcher, "start", None)
+            if callable(start_fn):
+                start_fn()
         return self
 
     def stop(self) -> None:
-        """Detach MCP resource handlers, then stop the HTTP server."""
+        """Detach MCP resource handlers, stop the HTTP server and the dispatcher."""
         if self._resources is not None:
             try:
                 self._resources.unbind()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("[%s] resources.unbind failed: %s", _DCC_NAME, exc)
+
         super().stop()
+
+        if self._blender_dispatcher is not None:
+            stop_fn = getattr(self._blender_dispatcher, "stop", None)
+            if callable(stop_fn):
+                stop_fn()
 
     # ── Builtin action registration + core integrations ────────────────────────
 

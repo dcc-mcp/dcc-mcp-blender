@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from dcc_mcp_core import HostUiDispatcherBase
-from dcc_mcp_core.host import BlockingDispatcher, HostAdapter
+from dcc_mcp_core.host import BlockingDispatcher, HostAdapter, QueueDispatcher
 
 TickFn = Callable[[], Optional[float]]
 
@@ -129,7 +129,13 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
         self.active_interval_secs = float(active_interval_secs)
         self.idle_interval_secs = float(idle_interval_secs)
         self._pump = pump or BlenderTimerPump(budget_ms=budget_ms)
+        self._host_dispatcher = QueueDispatcher()
         self._owner_thread_ident = threading.get_ident()
+
+    @property
+    def host_dispatcher(self) -> QueueDispatcher:
+        """Expose the core dispatcher that backs HTTP main-thread routing."""
+        return self._host_dispatcher
 
     @property
     def pump(self) -> BlenderTimerPump:
@@ -161,6 +167,11 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
         """Return the number of currently executing main-thread jobs."""
         with self._lock:
             return len(self._active)
+
+    def shutdown(self, reason: str = "Interrupted") -> int:
+        """Shutdown queued work and the underlying core dispatcher."""
+        self._host_dispatcher.shutdown()
+        return super().shutdown(reason)
 
     def dispatch_callable(
         self,
@@ -194,6 +205,7 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
     def _timer_tick(self) -> Optional[float]:
         if self.is_shutdown:
             return None
+        self._host_dispatcher.tick(16)
         _executed, remaining = self.drain_queue(self.budget_ms)
         return self.active_interval_secs if remaining else self.idle_interval_secs
 
