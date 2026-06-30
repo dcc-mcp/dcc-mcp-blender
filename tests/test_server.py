@@ -68,7 +68,7 @@ class TestBlenderMcpServerBasic:
         assert mode.bridge.dispatch_callable(lambda: "ok") == "ok"
 
     def test_core_backed_ui_dispatcher_is_used_as_execution_bridge(self):
-        from dcc_mcp_blender.host import BlenderUiDispatcher
+        from dcc_mcp_blender.host import BlenderInlineCallableDispatcher, BlenderUiDispatcher
         from dcc_mcp_blender.server import BlenderMcpServer
 
         dispatcher = BlenderUiDispatcher()
@@ -76,9 +76,11 @@ class TestBlenderMcpServerBasic:
 
         mode = server._options.execution.mode
         assert getattr(mode, "kind", None) == "bridge"
-        assert mode.bridge.dispatcher is dispatcher
-        assert mode.bridge.host_dispatcher is None
-        assert mode.bridge.dispatch_callable(lambda: "ok", thread_affinity="main") == "ok"
+        # The UI dispatcher now carries a host_dispatcher (QueueDispatcher)
+        # so the bridge uses BlenderInlineCallableDispatcher for the hop
+        assert isinstance(mode.bridge.dispatcher, BlenderInlineCallableDispatcher)
+        assert mode.bridge.host_dispatcher is dispatcher.host_dispatcher
+        assert mode.bridge.dispatch_callable(lambda: "ok", affinity="main") == "ok"
 
     def test_explicit_execution_bridge_takes_precedence(self):
         from dcc_mcp_core import HostExecutionBridge
