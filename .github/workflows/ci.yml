@@ -17,6 +17,22 @@ permissions:
   contents: read
 
 jobs:
+  # ── Python 3.7 syntax gate ──────────────────────────────────────────────
+  # Blender 2.83 LTS embeds Python 3.7.7; pure-Python modules must remain
+  # syntax-compatible with 3.7 through 2026-12-31.  This job runs
+  # check_py37_syntax.py with a 3.7 interpreter to catch PEP 604 unions,
+  # walrus operators, and other 3.8+ syntax.
+  py37-syntax-check:
+    name: py37 syntax check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.7"
+      - name: Run py37 syntax check
+        run: python tools/check_py37_syntax.py
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
