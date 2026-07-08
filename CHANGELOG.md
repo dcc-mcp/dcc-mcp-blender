@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.22...v0.1.23) (2026-07-08)
+
+
+### Bug Fixes
+
+* align Blender addon bundled core version ([b4f35eb](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b4f35ebf969776d074131053fcb2dea2cea88ed3))
+
 ## [0.1.22](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.21...v0.1.22) (2026-06-30)
 
 
