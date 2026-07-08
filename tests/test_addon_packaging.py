@@ -34,6 +34,10 @@ def _load_assemble_zip_module():
     return mod
 
 
+def _manifest_wheels(manifest: str):
+    return re.findall(r'"\.\/(wheels\/dcc_mcp_core-[^"]+\.whl)"', manifest)
+
+
 def test_addon_entry_bl_info_version_is_static_tuple_literal():
     """Blender parses ``bl_info`` via AST, so version must not be computed."""
     tree = ast.parse(ADDON_ENTRY.read_text(encoding="utf-8"))
@@ -51,10 +55,10 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
     """The add-on package root must directly contain ``server.py`` and skills."""
     assemble_zip = _load_assemble_zip_module()
-    fake_wheel = tmp_path / "dcc_mcp_core-0.18.9-cp38-abi3-win_amd64.whl"
+    fake_wheel = tmp_path / "dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"
     fake_wheel.write_bytes(b"fake wheel")
 
-    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.18.9": "0.18.9")
+    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.19.17": "0.19.17")
     monkeypatch.setattr(assemble_zip, "download_core_wheel", lambda version, platform, dest_dir: fake_wheel)
 
     zip_path = assemble_zip.assemble(platform="win64", output_dir=tmp_path)
@@ -69,6 +73,9 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
+    assert [name for name in sorted(names) if name.startswith("wheels/dcc_mcp_core-")] == [
+        "wheels/dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"
+    ]
     addon_tree = ast.parse(addon_init)
     addon_bl_info = next(
         node for node in addon_tree.body if isinstance(node, ast.Assign) and node.targets[0].id == "bl_info"
@@ -80,7 +87,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     )
     assert isinstance(addon_version_node, ast.Tuple)
     assert ast.literal_eval(addon_version_node) == _parse_version_tuple(_get_addon_version())
-    assert "./wheels/dcc_mcp_core-0.18.9-cp38-abi3-win_amd64.whl" in manifest
+    assert _manifest_wheels(manifest) == ["wheels/dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"]
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
 

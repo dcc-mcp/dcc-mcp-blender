@@ -12,7 +12,7 @@
 **Repo:** https://github.com/dcc-mcp/dcc-mcp-blender
 **Python:** >=3.10 (bundled with Blender)
 **Blender:** 3.6 LTS, 4.2 LTS, 4.3, 4.4
-**Core dep:** `dcc-mcp-core>=0.19.9,<1.0.0`
+**Core dep:** `dcc-mcp-core>=0.19.17,<1.0.0`
 
 ---
 

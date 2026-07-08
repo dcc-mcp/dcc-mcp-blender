@@ -27,8 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    # v0.19.9: bump dcc-mcp-core minimum version.
-    "dcc-mcp-core>=0.19.9,<1.0.0",
+    # v0.19.17: align bundled add-on core with the current release train.
+    "dcc-mcp-core>=0.19.17,<1.0.0",
 ]
 
 [project.optional-dependencies]

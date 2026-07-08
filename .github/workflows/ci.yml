@@ -141,6 +141,7 @@ jobs:
           python - <<'PY'
           import glob
           import os
+          import re
           import zipfile
 
           platform = os.environ["PLATFORM"]
@@ -167,4 +168,8 @@ jobs:
               raw = zf.read("blender_manifest.toml").decode("utf-8")
           assert "wheels = [" in raw and "./wheels/" in raw, raw[:400]
           assert raw.index("wheels = [") < raw.index("[permissions]"), raw
+          manifest_wheels = re.findall(r'"./(wheels/dcc_mcp_core-[^"]+\.whl)"', raw)
+          assert sorted(manifest_wheels) == sorted(wheels), (manifest_wheels, wheels)
+          assert any("dcc_mcp_core-0.19.17-" in wheel for wheel in wheels), wheels
+          print(f"{platform}: manifest wheels={manifest_wheels}")
           PY
