@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.23...v0.1.24) (2026-07-10)
+
+
+### Bug Fixes
+
+* import gltf asset descriptors ([#126](https://github.com/dcc-mcp/dcc-mcp-blender/issues/126)) ([bc1f91b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bc1f91b2aa954891599a4fba1b9b09185c1547c2))
+
 ## [0.1.23](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.22...v0.1.23) (2026-07-08)
 
 
