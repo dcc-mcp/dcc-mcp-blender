@@ -146,6 +146,24 @@ def test_import_obj_reports_imported_objects_and_missing_file(tmp_path):
     assert missing["success"] is False
 
 
+def test_import_file_supports_gltf(tmp_path):
+    source = tmp_path / "asset.gltf"
+    source.write_text("{}", encoding="utf-8")
+    bpy = _bpy_with_scene([])
+
+    def import_gltf(filepath, **_kwargs):
+        assert filepath == str(source)
+        bpy.data.objects.append(FakeObject("ImportedGlTF"))
+        return {"FINISHED"}
+
+    bpy.ops.import_scene.gltf.side_effect = import_gltf
+    result = load_and_call("blender-interchange/scripts/import_file.py", bpy, path=str(source))
+
+    assert result["success"] is True
+    assert result["context"]["format"] == "gltf"
+    assert result["context"]["imported_object_names"] == ["ImportedGlTF"]
+
+
 def test_export_obj_fallback_and_gltf_batch_export(tmp_path):
     cube = FakeObject("Cube")
     bpy = _bpy_with_scene([cube])

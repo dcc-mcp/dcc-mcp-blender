@@ -1,6 +1,6 @@
 tools:
   - name: import_file
-    description: "Import an FBX or OBJ file using Blender-native import operators."
+    description: "Import an FBX, OBJ, GLTF, or GLB file using Blender-native import operators."
     source_file: scripts/import_file.py
     execution: sync
     affinity: main
@@ -16,7 +16,7 @@ tools:
           description: File path to import.
         format:
           type: string
-          enum: [fbx, obj]
+          enum: [fbx, obj, gltf]
           description: Optional format override; inferred from extension when omitted.
         collection_name:
           type: string

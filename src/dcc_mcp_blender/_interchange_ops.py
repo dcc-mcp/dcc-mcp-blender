@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _PRESET_STORE_KEY = "dcc_mcp_export_presets"
-_IMPORT_FORMATS = {"fbx", "obj", "usd"}
+_IMPORT_FORMATS = {"fbx", "obj", "gltf", "usd"}
 _EXPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _FORMAT_EXTENSIONS = {
     ".fbx": "fbx",
@@ -174,6 +174,8 @@ def _import_by_format(
                     skill_error("OBJ import unavailable", "No Blender OBJ import operator is available."),
                 )
             _call_with_options(operator, {"filepath": str(target)}, options, warnings)
+        elif format == "gltf":
+            _call_with_options(bpy.ops.import_scene.gltf, {"filepath": str(target)}, options, warnings)
         elif format == "usd":
             usd_import = getattr(bpy.ops.wm, "usd_import", None)
             if not callable(usd_import):
