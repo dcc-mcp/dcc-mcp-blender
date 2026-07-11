@@ -47,6 +47,22 @@ _server_dispatcher: Any = None
 _server_host: Any = None
 
 
+def _env_port(name: str, default: int) -> int:
+    """Read a TCP port while preserving zero as the random-port request."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        port = int(raw, 10)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r", name, raw)
+        return default
+    if not 0 <= port <= 65535:
+        logger.warning("Ignoring out-of-range %s=%r", name, raw)
+        return default
+    return port
+
+
 def _start_server_with_host():
     """Start the MCP server with a Blender main-thread dispatcher attached."""
     global _server_dispatcher, _server_host  # noqa: PLW0603
@@ -62,7 +78,12 @@ def _start_server_with_host():
 
     dispatcher = BlenderUiDispatcher()
     try:
-        server = start_server(dispatcher=dispatcher)
+        server = start_server(
+            port=_env_port("DCC_MCP_BLENDER_PORT", 8765),
+            gateway_port=_env_port("DCC_MCP_GATEWAY_PORT", _DEFAULT_GATEWAY_PORT),
+            registry_dir=os.environ.get("DCC_MCP_REGISTRY_DIR") or None,
+            dispatcher=dispatcher,
+        )
         dispatcher.start()
     except Exception:
         with suppress(Exception):
