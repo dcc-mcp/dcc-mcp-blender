@@ -14,6 +14,7 @@ OBJECTS_DIR = SKILLS_ROOT / "blender-objects"
 MESH_OPS_DIR = SKILLS_ROOT / "blender-mesh-ops"
 
 NEW_OBJECT_TOOLS = {
+    "create_object",
     "get_selection",
     "set_selection",
     "select_by_type",
