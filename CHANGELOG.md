@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.24...v0.1.25) (2026-07-11)
+
+
+### Bug Fixes
+
+* define object schema and launcher ports ([cadff62](https://github.com/dcc-mcp/dcc-mcp-blender/commit/cadff62e3df4682c6ba90d5ba7505b63957bd185))
+
 ## [0.1.24](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.23...v0.1.24) (2026-07-10)
 
 
