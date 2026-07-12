@@ -19,6 +19,22 @@
 
 ---
 
+## Six-DCC production showcase
+
+![Maya to 3ds Max to Houdini to Blender animated portal showcase](docs/showcase/six-dcc-portal-showcase.gif)
+
+This scene was produced through live DCC-MCP calls across six concurrently
+registered instances: Maya authored an animated IK/FK skeleton, 3ds Max
+imported and baked the character transforms, Houdini generated and cached the
+procedural portal particles, and Blender assembled and rendered the final
+scene. The environment includes the Poly Haven `boulder_01` asset downloaded
+through the no-token `dcc-asset-polyhaven` marketplace skill (CC0-1.0).
+
+The tested interchange chain used baked FBX for the rig, Alembic for animated
+effects, and a Lightbox/Rez-style local package deployment for every adapter.
+
+---
+
 ## Overview
 
 `dcc-mcp-blender` turns Blender into a first-class MCP server. Once the addon is enabled, any MCP client (Claude Desktop, custom agents, etc.) can call Blender tools over HTTP without any external gateway.
