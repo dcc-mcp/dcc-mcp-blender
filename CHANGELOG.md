@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.26](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.25...v0.1.26) (2026-07-12)
+
+
+### Documentation
+
+* add six dcc production showcase ([#130](https://github.com/dcc-mcp/dcc-mcp-blender/issues/130)) ([afa19ca](https://github.com/dcc-mcp/dcc-mcp-blender/commit/afa19ca14bf14dc24e0c049a351c9e6da52ef5fd))
+* simplify interchange showcase wording ([#132](https://github.com/dcc-mcp/dcc-mcp-blender/issues/132)) ([c3ab331](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c3ab331f72b8ba3980248992058bbca20c41322a))
+
 ## [0.1.25](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.24...v0.1.25) (2026-07-11)
 
 
