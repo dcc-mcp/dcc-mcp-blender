@@ -30,8 +30,7 @@ procedural portal particles, and Blender assembled and rendered the final
 scene. The environment includes the Poly Haven `boulder_01` asset downloaded
 through the no-token `dcc-asset-polyhaven` marketplace skill (CC0-1.0).
 
-The tested interchange chain used baked FBX for the rig, Alembic for animated
-effects, and a Lightbox/Rez-style local package deployment for every adapter.
+The tested interchange chain used baked FBX for the rig, Alembic for animated effects.
 
 ---
 
