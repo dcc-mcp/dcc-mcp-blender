@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.26...v0.1.27) (2026-07-13)
+
+
+### Features
+
+* add typed Alembic import ([#134](https://github.com/dcc-mcp/dcc-mcp-blender/issues/134)) ([f51193c](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f51193c44157324dd622accfcd2f64756c8288ab))
+
 ## [0.1.26](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.25...v0.1.26) (2026-07-12)
 
 
