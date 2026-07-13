@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _PRESET_STORE_KEY = "dcc_mcp_export_presets"
-_IMPORT_FORMATS = {"fbx", "obj", "gltf", "usd"}
+_IMPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _EXPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _FORMAT_EXTENSIONS = {
     ".fbx": "fbx",
@@ -186,6 +186,15 @@ def _import_by_format(
                 )
             base = {"filepath": str(target)}
             _call_with_options(usd_import, base, options, warnings)
+        elif format == "alembic":
+            alembic_import = getattr(bpy.ops.wm, "alembic_import", None)
+            if not callable(alembic_import):
+                return (
+                    [],
+                    warnings,
+                    skill_error("Alembic import unavailable", "Blender Alembic import operator is not available."),
+                )
+            _call_with_options(alembic_import, {"filepath": str(target)}, options, warnings)
         else:
             return [], warnings, skill_error("Unsupported import format", f"Format '{format}' is not importable.")
     except Exception as exc:
@@ -329,6 +338,11 @@ def import_fbx(path: str, options: Mapping[str, Any] | None = None) -> dict:
 def import_obj(path: str, options: Mapping[str, Any] | None = None) -> dict:
     """Import an OBJ file."""
     return import_file(path=path, format="obj", options=options)
+
+
+def import_alembic(path: str, options: Mapping[str, Any] | None = None) -> dict:
+    """Import an Alembic cache."""
+    return import_file(path=path, format="alembic", options=options)
 
 
 def _summarize_imported_scene(bpy: Any, imported_names: list[str]) -> dict[str, Any]:

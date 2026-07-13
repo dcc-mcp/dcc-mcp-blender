@@ -21,6 +21,7 @@ INTERCHANGE_TOOLS = {
     "import_fbx",
     "import_obj",
     "import_usd",
+    "import_alembic",
     "export_gltf",
     "export_usd",
     "export_alembic",
@@ -144,6 +145,25 @@ def test_import_obj_reports_imported_objects_and_missing_file(tmp_path):
 
     missing = load_and_call("blender-interchange/scripts/import_file.py", bpy, path=str(tmp_path / "missing.fbx"))
     assert missing["success"] is False
+
+
+def test_import_alembic_reports_imported_cache_objects(tmp_path):
+    source = tmp_path / "energy_fx.abc"
+    source.write_bytes(b"Ogawa")
+    bpy = _bpy_with_scene([])
+
+    def alembic_import(filepath, **_kwargs):
+        assert filepath == str(source)
+        bpy.data.objects.append(FakeObject("EnergyFxCache"))
+        return {"FINISHED"}
+
+    bpy.ops.wm.alembic_import.side_effect = alembic_import
+
+    result = load_and_call("blender-interchange/scripts/import_alembic.py", bpy, path=str(source))
+
+    assert result["success"] is True
+    assert result["context"]["format"] == "alembic"
+    assert result["context"]["imported_object_names"] == ["EnergyFxCache"]
 
 
 def test_import_file_supports_gltf(tmp_path):
