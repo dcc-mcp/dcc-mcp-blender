@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.28...v0.1.29) (2026-07-14)
+
+
+### Bug Fixes
+
+* preserve supported USD import options ([#138](https://github.com/dcc-mcp/dcc-mcp-blender/issues/138)) ([b3883a8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b3883a8b2bcb4547fc971ea50ea04de2ac4bf174))
+
 ## [0.1.28](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.27...v0.1.28) (2026-07-14)
 
 
