@@ -318,6 +318,64 @@ def test_import_usd_reports_imported_objects_and_summary(tmp_path):
     assert summary["by_type"] == {"MESH": 1, "LIGHT": 1}
 
 
+def test_import_usd_filters_only_unsupported_operator_options(tmp_path):
+    """One unsupported Blender option must not discard the supported USD options."""
+    source = tmp_path / "scene.usda"
+    source.write_text("#usda 1.0\n", encoding="utf-8")
+    bpy = _bpy_with_scene([])
+    received = {}
+
+    class Property:
+        def __init__(self, identifier):
+            self.identifier = identifier
+
+    class UsdImportOperator:
+        def get_rna_type(self):
+            properties = [
+                Property("rna_type"),
+                Property("filepath"),
+                Property("import_meshes"),
+                Property("import_materials"),
+                Property("import_cameras"),
+                Property("import_lights"),
+                Property("import_subdiv"),
+                Property("scale"),
+            ]
+            return type("RnaType", (), {"properties": properties})()
+
+        def __call__(self, **kwargs):
+            received.update(kwargs)
+            bpy.data.objects.append(FakeObject("UsdMesh"))
+            return {"FINISHED"}
+
+    bpy.ops.wm.usd_import = UsdImportOperator()
+
+    result = load_and_call(
+        "blender-interchange/scripts/import_usd.py",
+        bpy,
+        filepath=str(source),
+        import_meshes=True,
+        import_materials=True,
+        import_cameras=True,
+        import_lights=True,
+        import_textures=True,
+        import_subdiv=True,
+        scale=0.5,
+    )
+
+    assert result["success"] is True
+    assert received == {
+        "filepath": str(source),
+        "import_meshes": True,
+        "import_materials": True,
+        "import_cameras": True,
+        "import_lights": True,
+        "import_subdiv": True,
+        "scale": 0.5,
+    }
+    assert result["context"]["warnings"] == ["Ignored unsupported options: ['import_textures']"]
+
+
 def test_import_usd_reports_missing_file(tmp_path):
     """USD import should fail gracefly for missing file."""
     bpy = _bpy_with_scene([])

@@ -95,7 +95,30 @@ def _select_objects(bpy: Any, object_names: Sequence[str] | None) -> tuple[bool,
     return True, [obj.name for obj in objects], None
 
 
+def _operator_property_names(operator: Any) -> set[str] | None:
+    """Return Blender RNA option names when the operator exposes them."""
+    get_rna_type = getattr(operator, "get_rna_type", None)
+    if not callable(get_rna_type):
+        return None
+    try:
+        properties = get_rna_type().properties
+        names = set()
+        for prop in properties:
+            identifier = getattr(prop, "identifier", None)
+            if identifier and identifier != "rna_type":
+                names.add(identifier)
+    except Exception:
+        return None
+    return names or None
+
+
 def _call_with_options(operator: Any, base: dict[str, Any], options: dict[str, Any], warnings: list[str]) -> None:
+    supported = _operator_property_names(operator)
+    if supported is not None:
+        ignored = sorted(set(options) - supported)
+        if ignored:
+            warnings.append(f"Ignored unsupported options: {ignored}")
+        options = {key: value for key, value in options.items() if key in supported}
     payload = dict(base)
     payload.update(options)
     try:
