@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import yaml
+
 from tests.conftest import load_and_call, make_mock_bpy
+
+
+def test_render_tools_publish_ci_safe_input_contracts():
+    tools_path = Path("src/dcc_mcp_blender/skills/blender-render/tools.yaml")
+    tools = {tool["name"]: tool for tool in yaml.safe_load(tools_path.read_text(encoding="utf-8"))["tools"]}
+
+    render_scene = tools["render_scene"]["input_schema"]
+    assert render_scene["properties"]["write_still"]["default"] is True
+    assert render_scene["additionalProperties"] is False
+
+    settings = tools["set_render_settings"]["input_schema"]["properties"]
+    assert "CYCLES" in settings["engine"]["enum"]
+    assert settings["resolution_percentage"]["maximum"] == 100
+    assert settings["samples"]["minimum"] == 1
+
+    capture = tools["capture_viewport"]["input_schema"]
+    assert capture["required"] == ["filepath"]
+    assert capture["properties"]["resolution_x"]["minimum"] == 1
+
+    assert tools["get_render_info"]["input_schema"]["properties"] == {}
 
 
 class TestGetRenderInfo:

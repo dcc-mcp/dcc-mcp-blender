@@ -4,6 +4,19 @@ tools:
     source_file: scripts/execute_python.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: Python source code to execute inside Blender.
+        context:
+          type: object
+          additionalProperties: true
+          description: Optional variables injected into the execution namespace.
     read_only: false
     destructive: false
     idempotent: false
@@ -24,6 +37,15 @@ tools:
     source_file: scripts/execute_script_file.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: Absolute path to a Python script readable by Blender.
     read_only: false
     destructive: false
     idempotent: false
@@ -44,6 +66,10 @@ tools:
     source_file: scripts/get_blender_info.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
     read_only: true
     destructive: false
     idempotent: true

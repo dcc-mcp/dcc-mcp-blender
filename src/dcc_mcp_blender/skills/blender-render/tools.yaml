@@ -4,6 +4,18 @@ tools:
     source_file: scripts/render_scene.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        output_path:
+          type: string
+          minLength: 1
+          description: Optional destination image path; defaults to the scene output path.
+        write_still:
+          type: boolean
+          default: true
+          description: Write the rendered image to disk.
     read_only: false
     destructive: false
     idempotent: false
@@ -12,6 +24,39 @@ tools:
     source_file: scripts/set_render_settings.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        engine:
+          type: string
+          enum: [CYCLES, BLENDER_EEVEE, BLENDER_EEVEE_NEXT, BLENDER_WORKBENCH]
+          description: Blender render engine identifier.
+        resolution_x:
+          type: integer
+          minimum: 1
+          description: Horizontal output resolution in pixels.
+        resolution_y:
+          type: integer
+          minimum: 1
+          description: Vertical output resolution in pixels.
+        resolution_percentage:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Output resolution percentage.
+        samples:
+          type: integer
+          minimum: 1
+          description: Render sample count for Cycles or EEVEE.
+        output_path:
+          type: string
+          minLength: 1
+          description: Output file path or directory used by Blender.
+        file_format:
+          type: string
+          minLength: 1
+          description: Blender image format identifier such as PNG, JPEG, or OPEN_EXR.
     read_only: false
     destructive: false
     idempotent: true
@@ -20,6 +65,10 @@ tools:
     source_file: scripts/get_render_info.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
     read_only: true
     destructive: false
     idempotent: true
@@ -28,6 +77,23 @@ tools:
     source_file: scripts/capture_viewport.py
     execution: sync
     affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [filepath]
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+          description: Destination image path.
+        resolution_x:
+          type: integer
+          minimum: 1
+          description: Optional temporary viewport capture width.
+        resolution_y:
+          type: integer
+          minimum: 1
+          description: Optional temporary viewport capture height.
     read_only: false
     destructive: false
     idempotent: false

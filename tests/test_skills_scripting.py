@@ -3,8 +3,27 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
+
+import yaml
 
 from tests.conftest import load_and_call, make_mock_bpy
+
+
+def test_scripting_tools_publish_ci_safe_input_contracts():
+    tools_path = Path("src/dcc_mcp_blender/skills/blender-scripting/tools.yaml")
+    tools = {tool["name"]: tool for tool in yaml.safe_load(tools_path.read_text(encoding="utf-8"))["tools"]}
+
+    execute_python = tools["execute_python"]["input_schema"]
+    assert execute_python["required"] == ["code"]
+    assert execute_python["properties"]["code"]["minLength"] == 1
+    assert execute_python["additionalProperties"] is False
+
+    execute_file = tools["execute_script_file"]["input_schema"]
+    assert execute_file["required"] == ["filepath"]
+    assert execute_file["properties"]["filepath"]["type"] == "string"
+
+    assert tools["get_blender_info"]["input_schema"]["properties"] == {}
 
 
 class TestExecutePython:
