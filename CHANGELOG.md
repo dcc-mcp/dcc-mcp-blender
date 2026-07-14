@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.27...v0.1.28) (2026-07-14)
+
+
+### Bug Fixes
+
+* publish scripting and render tool schemas ([#136](https://github.com/dcc-mcp/dcc-mcp-blender/issues/136)) ([bb48275](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bb48275d59b0683394095b4b0e36ee89f5e6e6e0))
+
 ## [0.1.27](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.26...v0.1.27) (2026-07-13)
 
 
