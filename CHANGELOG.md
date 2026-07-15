@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.29...v0.1.30) (2026-07-15)
+
+
+### Features
+
+* add extension package installation ([9052c4b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9052c4b2d69297c776f6f1ac7f842f3b1feaa81e))
+
 ## [0.1.29](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.28...v0.1.29) (2026-07-14)
 
 
