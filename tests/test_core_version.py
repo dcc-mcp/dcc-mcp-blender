@@ -19,10 +19,10 @@ def _load_assemble_zip_module():
     return mod
 
 
-def test_core_dependency_floor_is_01942():
+def test_core_dependency_floor_is_01945():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '"dcc-mcp-core>=0.19.42,<1.0.0"' in pyproject
+    assert '"dcc-mcp-core>=0.19.45,<1.0.0"' in pyproject
 
 
 def test_packaging_core_floor_matches_pyproject():
@@ -43,4 +43,4 @@ def test_preloaded_core_below_floor_is_rejected():
 def test_preloaded_core_at_floor_is_accepted():
     from dcc_mcp_blender._core_compat import require_compatible_core
 
-    require_compatible_core("0.19.42", module_path="/extension/site-packages/dcc_mcp_core")
+    require_compatible_core("0.19.45", module_path="/extension/site-packages/dcc_mcp_core")

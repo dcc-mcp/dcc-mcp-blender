@@ -6,13 +6,15 @@ Run with:
 
 from __future__ import annotations
 
+from typing import Optional
+
 from dcc_mcp_core.host import BlockingDispatcher
 
 from dcc_mcp_blender.host import BlenderHost
 from dcc_mcp_blender.server import BlenderMcpServer
 
 
-def main(port: int = 18765) -> None:
+def main(port: Optional[int] = None) -> None:
     """Start the MCP server and block while Blender services dispatcher ticks."""
     dispatcher = BlockingDispatcher()
     server = BlenderMcpServer(port=port, dispatcher=dispatcher)

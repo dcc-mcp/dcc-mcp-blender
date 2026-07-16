@@ -12,8 +12,7 @@ import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
-
-DEFAULT_MCP_URL = "http://127.0.0.1:8765/mcp"
+DEFAULT_MCP_URL = "http://127.0.0.1:9765/mcp"
 
 
 def run(command: list[str], cwd: Optional[Path] = None) -> None:

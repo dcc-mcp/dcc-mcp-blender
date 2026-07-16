@@ -213,8 +213,8 @@ try {
 Write-Host ""
 Write-Host "Done. Start Blender $BlenderVersion → Edit → Preferences → Add-ons → Enable 'DCC MCP Blender'." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "MCP (Streamable HTTP, default):" -ForegroundColor Cyan
-Write-Host "   http://127.0.0.1:8765/mcp"
+Write-Host "MCP instance: OS-assigned; inspect the Blender log or run dcc-mcp-cli list" -ForegroundColor Cyan
+Write-Host "Gateway: http://127.0.0.1:9765/mcp" -ForegroundColor Cyan
 Write-Host "Docs: See dcc-mcp-blender docs for Cursor/Bender MCP setup" -ForegroundColor Gray
 
 if ($LaunchBlender) {

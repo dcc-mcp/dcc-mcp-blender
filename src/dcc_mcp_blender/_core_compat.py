@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-MIN_CORE_VERSION = "0.19.42"
+MIN_CORE_VERSION = "0.19.45"
 
 
 def _release_tuple(version: str) -> tuple[int, int, int]:

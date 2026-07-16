@@ -87,7 +87,6 @@ def _start_server_with_host():
     dispatcher = BlenderUiDispatcher()
     try:
         server = start_server(
-            port=_env_port("DCC_MCP_BLENDER_PORT", 8765),
             gateway_port=_env_port("DCC_MCP_GATEWAY_PORT", _DEFAULT_GATEWAY_PORT),
             registry_dir=os.environ.get("DCC_MCP_REGISTRY_DIR") or None,
             dispatcher=dispatcher,
