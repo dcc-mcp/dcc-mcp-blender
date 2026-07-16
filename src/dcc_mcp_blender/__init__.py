@@ -1,6 +1,13 @@
 """dcc-mcp-blender — MCP Streamable HTTP server embedded in Blender."""
 
+# The compatibility gate must run before imports that bind core integrations.
+# ruff: noqa: E402
+
 from __future__ import annotations
+
+from dcc_mcp_blender._core_compat import require_compatible_core
+
+require_compatible_core()
 
 from dcc_mcp_blender.__version__ import __version__
 from dcc_mcp_blender._capability_manifest import (

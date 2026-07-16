@@ -27,8 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    # v0.19.17: align bundled add-on core with the current release train.
-    "dcc-mcp-core>=0.19.17,<1.0.0",
+    # v0.19.42: reserved request metadata is isolated from skill kwargs.
+    "dcc-mcp-core>=0.19.42,<1.0.0",
 ]
 
 [project.optional-dependencies]
