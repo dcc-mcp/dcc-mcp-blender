@@ -185,6 +185,60 @@ tools:
       idempotent_hint: false
       open_world_hint: false
 
+  - name: configure_view_layer
+    description: "Configure one view layer's render-pass selection and collection exclusions for multilayer rendering."
+    source_file: scripts/configure_view_layer.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: View-layer name.
+        scene_name:
+          type: string
+          minLength: 1
+          description: Optional scene name; uses the current scene if omitted.
+        enabled:
+          type: boolean
+          description: Whether Blender should render this view layer.
+        passes:
+          type: array
+          uniqueItems: true
+          description: Passes to enable without disabling existing passes.
+          items:
+            type: string
+            enum: [z, mist, normal, vector, diffuse_direct, diffuse_indirect, diffuse_color, glossy_direct, glossy_indirect, glossy_color, transmission_direct, transmission_indirect, transmission_color, emit, environment, cryptomatte_object, cryptomatte_material, cryptomatte_asset, volume_direct, volume_indirect]
+        exclude_collections:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+          description: Collection names to exclude from this layer.
+        include_collections:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+          description: Collection names to include in this layer.
+        cryptomatte_depth:
+          type: integer
+          minimum: 2
+          maximum: 16
+          description: Cryptomatte manifest depth when Crypto passes are enabled.
+    output_schema: *layer_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: set_active_view_layer
     description: "Set the active view layer."
     source_file: scripts/set_active_view_layer.py

@@ -99,6 +99,79 @@ def test_remove_view_layer_last_one():
     assert result["success"] is False
 
 
+def test_configure_view_layer_passes_and_collections():
+    bpy = make_mock_bpy()
+    scene = _make_scene("Scene")
+    bpy.context.scene = scene
+    layer = MagicMock()
+    layer.use = True
+    layer.use_pass_z = False
+    layer.use_pass_cryptomatte_object = False
+    layer.cycles.use_pass_volume_direct = False
+    layer.pass_cryptomatte_depth = 6
+    root = MagicMock()
+    root.collection.name = "Scene Collection"
+    fx = MagicMock()
+    fx.collection.name = "FX"
+    root.children = [fx]
+    fx.children = []
+    layer.layer_collection = root
+    scene.view_layers.__contains__ = MagicMock(return_value=True)
+    scene.view_layers.__getitem__ = MagicMock(return_value=layer)
+
+    result = load_and_call(
+        "blender-scene-assembly/scripts/configure_view_layer.py",
+        bpy,
+        name="Beauty",
+        passes=["z", "cryptomatte_object", "volume_direct"],
+        exclude_collections=["FX"],
+        cryptomatte_depth=8,
+    )
+
+    assert result["success"] is True
+    assert layer.use_pass_z is True
+    assert layer.use_pass_cryptomatte_object is True
+    assert layer.cycles.use_pass_volume_direct is True
+    assert layer.pass_cryptomatte_depth == 8
+    assert fx.exclude is True
+
+
+def test_configure_view_layer_validates_before_mutation():
+    bpy = make_mock_bpy()
+    scene = _make_scene("Scene")
+    bpy.context.scene = scene
+    layer = MagicMock()
+    layer.use_pass_z = False
+    root = MagicMock()
+    root.collection.name = "Scene Collection"
+    root.children = []
+    layer.layer_collection = root
+    scene.view_layers.__contains__ = MagicMock(return_value=True)
+    scene.view_layers.__getitem__ = MagicMock(return_value=layer)
+
+    result = load_and_call(
+        "blender-scene-assembly/scripts/configure_view_layer.py",
+        bpy,
+        name="Beauty",
+        passes=["z"],
+        exclude_collections=["Missing"],
+    )
+
+    assert result["success"] is False
+    assert layer.use_pass_z is False
+
+
+def test_configure_view_layer_rejects_unknown_pass():
+    bpy = make_mock_bpy()
+    result = load_and_call(
+        "blender-scene-assembly/scripts/configure_view_layer.py",
+        bpy,
+        name="Beauty",
+        passes=["not_a_pass"],
+    )
+    assert result["success"] is False
+
+
 def test_set_active_view_layer():
     bpy = make_mock_bpy()
     scene = _make_scene("Scene")
@@ -136,6 +209,7 @@ def test_tools_yaml_declares_tools():
         "link_from_blend",
         "list_view_layers",
         "create_view_layer",
+        "configure_view_layer",
         "remove_view_layer",
         "set_active_view_layer",
         "list_external_references",

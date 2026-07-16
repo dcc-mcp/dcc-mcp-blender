@@ -46,6 +46,7 @@ and inspecting library references. Mirrors Maya's scene assembly surface.
 | `link_from_blend` | Link data blocks as library references |
 | `list_view_layers` | List view layers in a scene |
 | `create_view_layer` | Create a new view layer |
+| `configure_view_layer` | Configure render passes and collection exclusions |
 | `remove_view_layer` | Remove a view layer |
 | `set_active_view_layer` | Set the active view layer |
 | `list_external_references` | List all external .blend file references |
@@ -55,4 +56,4 @@ and inspecting library references. Mirrors Maya's scene assembly surface.
 - **Scene composition**: `merge_scene` to combine multiple .blend files
 - **Selective import**: `append_from_blend` with targeted data types
 - **Library workflow**: `link_from_blend` for shared assets -> `list_external_references`
-- **Layer management**: `list_view_layers` -> `create_view_layer` / `set_active_view_layer`
+- **Layer management**: `list_view_layers` -> `create_view_layer` -> `configure_view_layer` -> `set_active_view_layer`

@@ -7,6 +7,39 @@ from typing import Any
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+_VIEW_LAYER_PASSES = {
+    "z": ("layer", "use_pass_z"),
+    "mist": ("layer", "use_pass_mist"),
+    "normal": ("layer", "use_pass_normal"),
+    "vector": ("layer", "use_pass_vector"),
+    "diffuse_direct": ("layer", "use_pass_diffuse_direct"),
+    "diffuse_indirect": ("layer", "use_pass_diffuse_indirect"),
+    "diffuse_color": ("layer", "use_pass_diffuse_color"),
+    "glossy_direct": ("layer", "use_pass_glossy_direct"),
+    "glossy_indirect": ("layer", "use_pass_glossy_indirect"),
+    "glossy_color": ("layer", "use_pass_glossy_color"),
+    "transmission_direct": ("layer", "use_pass_transmission_direct"),
+    "transmission_indirect": ("layer", "use_pass_transmission_indirect"),
+    "transmission_color": ("layer", "use_pass_transmission_color"),
+    "emit": ("layer", "use_pass_emit"),
+    "environment": ("layer", "use_pass_environment"),
+    "cryptomatte_object": ("layer", "use_pass_cryptomatte_object"),
+    "cryptomatte_material": ("layer", "use_pass_cryptomatte_material"),
+    "cryptomatte_asset": ("layer", "use_pass_cryptomatte_asset"),
+    "volume_direct": ("cycles", "use_pass_volume_direct"),
+    "volume_indirect": ("cycles", "use_pass_volume_indirect"),
+}
+
+
+def _find_layer_collection(root: Any, name: str) -> Any | None:
+    stack = [root]
+    while stack:
+        item = stack.pop()
+        if item.collection.name == name:
+            return item
+        stack.extend(item.children)
+    return None
+
 
 def _iter_items(data_from: Any, attr: str) -> list[str]:
     try:
@@ -208,6 +241,101 @@ def create_view_layer(name: str, scene_name: str | None = None) -> dict:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to create view layer {name}")
+
+
+def configure_view_layer(
+    name: str,
+    scene_name: str | None = None,
+    enabled: bool | None = None,
+    passes: list[str] | None = None,
+    exclude_collections: list[str] | None = None,
+    include_collections: list[str] | None = None,
+    cryptomatte_depth: int | None = None,
+) -> dict:
+    """Configure render passes and collection visibility for one view layer."""
+    if not name:
+        return skill_error("Invalid name", "name must be a non-empty string.")
+    requested_passes = list(dict.fromkeys(passes or []))
+    unknown_passes = sorted(set(requested_passes) - set(_VIEW_LAYER_PASSES))
+    if unknown_passes:
+        return skill_error(
+            "Unsupported view-layer pass",
+            "Unsupported passes: {}. Supported passes: {}.".format(
+                ", ".join(unknown_passes), ", ".join(sorted(_VIEW_LAYER_PASSES))
+            ),
+        )
+    if cryptomatte_depth is not None and not 2 <= cryptomatte_depth <= 16:
+        return skill_error("Invalid Cryptomatte depth", "cryptomatte_depth must be between 2 and 16.")
+
+    try:
+        import bpy
+
+        scene = bpy.context.scene if scene_name is None else bpy.data.scenes.get(scene_name)
+        if scene is None:
+            return skill_error(f"Scene not found: {scene_name}", f"No scene named '{scene_name}'.")
+        if name not in scene.view_layers:
+            return skill_error(
+                f"View layer not found: {name}",
+                f"Scene '{scene.name}' has no view layer named '{name}'.",
+            )
+        layer = scene.view_layers[name]
+
+        collection_changes: list[tuple[Any, bool]] = []
+        missing_collections: list[str] = []
+        for collection_name, excluded in (
+            *((value, True) for value in (exclude_collections or [])),
+            *((value, False) for value in (include_collections or [])),
+        ):
+            layer_collection = _find_layer_collection(layer.layer_collection, collection_name)
+            if layer_collection is None:
+                missing_collections.append(collection_name)
+            else:
+                collection_changes.append((layer_collection, excluded))
+        if missing_collections:
+            return skill_error(
+                "Collection not found in view layer",
+                "Missing collections: {}.".format(", ".join(sorted(set(missing_collections)))),
+            )
+
+        pass_targets = {
+            pass_name: layer if target_name == "layer" else getattr(layer, "cycles", None)
+            for pass_name, (target_name, _) in _VIEW_LAYER_PASSES.items()
+        }
+        unsupported_in_host = [
+            pass_name
+            for pass_name in requested_passes
+            if pass_targets[pass_name] is None or not hasattr(pass_targets[pass_name], _VIEW_LAYER_PASSES[pass_name][1])
+        ]
+        if unsupported_in_host:
+            return skill_error(
+                "View-layer pass unavailable in this Blender version",
+                "Unavailable passes: {}.".format(", ".join(unsupported_in_host)),
+            )
+
+        if enabled is not None:
+            layer.use = enabled
+        for pass_name in requested_passes:
+            setattr(pass_targets[pass_name], _VIEW_LAYER_PASSES[pass_name][1], True)
+        for layer_collection, excluded in collection_changes:
+            layer_collection.exclude = excluded
+        if cryptomatte_depth is not None:
+            layer.pass_cryptomatte_depth = cryptomatte_depth
+
+        return skill_success(
+            f"Configured view layer {name}",
+            scene_name=scene.name,
+            view_layer_name=name,
+            enabled=getattr(layer, "use", True),
+            enabled_passes=requested_passes,
+            excluded_collections=[item.collection.name for item, excluded in collection_changes if excluded],
+            included_collections=[item.collection.name for item, excluded in collection_changes if not excluded],
+            cryptomatte_depth=getattr(layer, "pass_cryptomatte_depth", None),
+            prompt="Use list_view_layers to inspect layers before rendering a multilayer EXR.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to configure view layer {name}")
 
 
 def remove_view_layer(name: str, scene_name: str | None = None) -> dict:
