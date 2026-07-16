@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 
 try:
     import bpy  # noqa: F401
@@ -22,6 +23,9 @@ def main() -> None:
     host = BlenderHost(dispatcher)
     server = dcc_mcp_blender.start_server(dispatcher=dispatcher)
     print(f"MCP server started at {server.mcp_url}", flush=True)
+
+    url_file = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "mcp_server_url"
+    url_file.write_text(server.mcp_url, encoding="utf-8")
 
     for skill in server.list_skills():
         name = skill.get("name", "")

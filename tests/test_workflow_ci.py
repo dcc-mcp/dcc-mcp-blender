@@ -42,6 +42,18 @@ def test_workflow_server_uses_blender_inprocess_dispatcher():
     assert "host.stop()" in text
 
 
+def test_connectivity_checks_use_the_os_assigned_server_url():
+    workflow = E2E_WORKFLOW.read_text(encoding="utf-8")
+    launcher = START_MCP_SERVER.read_text(encoding="utf-8")
+
+    assert 'Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "mcp_server_url"' in launcher
+    assert "url_file.write_text(server.mcp_url" in launcher
+    assert 'MCP_SERVER_URL="$(<"$MCP_URL_FILE")"' in workflow
+    assert "url = os.environ['MCP_SERVER_URL']" in workflow
+    assert '--http-url "$MCP_SERVER_URL"' in workflow
+    assert "http://127.0.0.1:8765/mcp" not in workflow
+
+
 def test_execute_python_smoke_call_avoids_shell_key_value_assignment():
     text = E2E_WORKFLOW.read_text(encoding="utf-8")
 

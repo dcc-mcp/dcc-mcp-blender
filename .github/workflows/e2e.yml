@@ -278,17 +278,32 @@ jobs:
         shell: bash
         run: |
           # Start Blender MCP server in background
+          MCP_URL_FILE="$RUNNER_TEMP/mcp_server_url"
+          rm -f "$MCP_URL_FILE"
           "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/start_mcp_server.py" &
           SERVER_PID=$!
           echo "Server PID: $SERVER_PID"
 
-          # Wait for the server to become ready (retry with backoff)
-          sleep 15
+          # Wait for Blender to publish the OS-assigned listener URL.
+          for attempt in $(seq 1 60); do
+            if [ -s "$MCP_URL_FILE" ]; then
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Blender exited before publishing the MCP URL" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          test -s "$MCP_URL_FILE"
+          MCP_SERVER_URL="$(<"$MCP_URL_FILE")"
+          export MCP_SERVER_URL
+          echo "MCP server URL: $MCP_SERVER_URL"
 
           # ── 1. Verify MCP initialize handshake ──────────────────────────────
           "$BLENDER_PYTHON" -c "
-          import urllib.request, json, time, sys
-          url = 'http://127.0.0.1:8765/mcp'
+          import os, urllib.request, json, time, sys
+          url = os.environ['MCP_SERVER_URL']
           body = json.dumps({
               'jsonrpc': '2.0', 'id': 0, 'method': 'initialize',
               'params': {'protocolVersion': '2025-03-26', 'capabilities': {},
@@ -312,14 +327,14 @@ jobs:
 
           # ── 2. List all registered tools via mcporter ───────────────────────
           mcporter list \
-            --http-url http://127.0.0.1:8765/mcp \
+            --http-url "$MCP_SERVER_URL" \
             --name blender-ci \
             --allow-http
 
           call_tool() {
             set +e
             output=$(mcporter call \
-              --http-url http://127.0.0.1:8765/mcp \
+              --http-url "$MCP_SERVER_URL" \
               --allow-http \
               "$@" 2>&1)
             status=$?
