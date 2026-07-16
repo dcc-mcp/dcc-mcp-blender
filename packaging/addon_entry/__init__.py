@@ -68,6 +68,13 @@ def _start_server_with_host():
     """Start the MCP server with a Blender main-thread dispatcher attached."""
     global _server_dispatcher, _server_host  # noqa: PLW0603
 
+    # The release ZIP replaces the library package entrypoint with this Blender
+    # add-on entrypoint. Enforce the same compatibility contract here before
+    # importing host/server modules that bind dcc-mcp-core integrations.
+    from dcc_mcp_blender._core_compat import require_compatible_core  # noqa: PLC0415
+
+    require_compatible_core()
+
     from dcc_mcp_blender.host import BlenderUiDispatcher  # noqa: PLC0415
     from dcc_mcp_blender.server import get_server, start_server, stop_server  # noqa: PLC0415
 
