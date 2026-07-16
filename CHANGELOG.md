@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.34...v0.1.35) (2026-07-16)
+
+
+### Bug Fixes
+
+* use OS-assigned MCP instance ports ([#151](https://github.com/dcc-mcp/dcc-mcp-blender/issues/151)) ([030c17f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/030c17faa4458c3e4463f0b17c6ed450bf69200d))
+
 ## [0.1.34](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.33...v0.1.34) (2026-07-16)
 
 
