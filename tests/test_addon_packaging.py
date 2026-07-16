@@ -91,9 +91,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
     start_server = next(
-        node
-        for node in addon_tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_start_server_with_host"
+        node for node in addon_tree.body if isinstance(node, ast.FunctionDef) and node.name == "_start_server_with_host"
     )
     gate_call = next(
         node
