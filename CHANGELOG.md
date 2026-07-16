@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.30...v0.1.31) (2026-07-16)
+
+
+### Bug Fixes
+
+* **addon:** skip autostart in render workers ([#142](https://github.com/dcc-mcp/dcc-mcp-blender/issues/142)) ([a792d6d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a792d6d1c55cff51655b2d662be67b5d8a76cf71))
+
 ## [0.1.30](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.29...v0.1.30) (2026-07-15)
 
 
