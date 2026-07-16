@@ -90,6 +90,22 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert _manifest_wheels(manifest) == ["wheels/dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"]
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
+    start_server = next(
+        node for node in addon_tree.body if isinstance(node, ast.FunctionDef) and node.name == "_start_server_with_host"
+    )
+    gate_call = next(
+        node
+        for node in ast.walk(start_server)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "require_compatible_core"
+    )
+    core_import_lines = [
+        node.lineno
+        for node in ast.walk(start_server)
+        if isinstance(node, ast.ImportFrom) and node.module in {"dcc_mcp_blender.host", "dcc_mcp_blender.server"}
+    ]
+    assert core_import_lines
+    assert gate_call.lineno < min(core_import_lines)
+
 
 def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(monkeypatch):
     """GUI add-on enable must wire the core-backed UI dispatcher before serving tools."""
