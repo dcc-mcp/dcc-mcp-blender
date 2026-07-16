@@ -12,7 +12,7 @@
 **Repo:** https://github.com/dcc-mcp/dcc-mcp-blender
 **Python:** >=3.10 (bundled with Blender)
 **Blender:** 3.6 LTS, 4.2 LTS, 4.3, 4.4
-**Core dep:** `dcc-mcp-core>=0.19.17,<1.0.0`
+**Core dep:** `dcc-mcp-core>=0.19.45,<1.0.0`
 
 ---
 
@@ -20,8 +20,8 @@
 
 ```python
 import dcc_mcp_blender
-handle = dcc_mcp_blender.start_server(port=8765)
-# MCP host → http://127.0.0.1:8765/mcp
+handle = dcc_mcp_blender.start_server()
+# Direct MCP host → handle.mcp_url() (OS-assigned); gateway → http://127.0.0.1:9765/mcp
 handle.shutdown()
 ```
 
@@ -38,7 +38,7 @@ blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
 
 ```python
 start_server(
-    port: int = 8765,
+    port: Optional[int] = None,
     server_name: str = "blender-mcp",
     register_builtins: bool = True,
     extra_skill_paths: Optional[List[str]] = None,
@@ -53,7 +53,7 @@ stop_server() -> None
 
 ```python
 BlenderMcpServer(
-    port: int = 8765,
+    port: Optional[int] = None,
     server_name: str = "blender-mcp",
     server_version: str = "0.1.20",  # x-release-please-version
     enable_gateway_failover: bool = True,
@@ -99,7 +99,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DCC_MCP_BLENDER_PORT` | `8765` | TCP port |
+| `DCC_MCP_BLENDER_PORT` | OS-assigned | Optional fixed instance TCP port |
 | `DCC_MCP_BLENDER_SERVER_NAME` | `blender-mcp` | MCP init name |
 | `DCC_MCP_BLENDER_SKILL_PATHS` | — | Blender skill search roots |
 | `DCC_MCP_SKILL_PATHS` | — | Global fallback skill search roots |

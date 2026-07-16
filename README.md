@@ -53,7 +53,7 @@ The tested interchange chain used baked FBX for the rig, Alembic for animated ef
 │  ├─ JSON-RPC 2.0                │
 │  └─ SSE Streaming               │
 └─────────────────────────────────┘
-         ↓ http://127.0.0.1:8765/mcp
+         ↓ http://127.0.0.1:9765/mcp (stable gateway)
 ┌─────────────────────────────────┐
 │  MCP Host (Claude / etc.)       │
 └─────────────────────────────────┘
@@ -140,7 +140,7 @@ options below are for manual installation.
 2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP.
    (Do **NOT** use **Edit → Preferences → Add-ons → Install** — that legacy path is unsupported.)
 3. Enable **DCC MCP Blender**
-4. The MCP server starts automatically on `http://127.0.0.1:8765`
+4. The MCP server starts on an OS-assigned instance port and registers with the local gateway.
 
 Release ZIPs are Blender 4.2+ Extension packages. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
@@ -185,7 +185,7 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "blender": {
-      "url": "http://127.0.0.1:8765/mcp"
+      "url": "http://127.0.0.1:9765/mcp"
     }
   }
 }
@@ -198,7 +198,7 @@ Make sure the Blender addon is enabled and the server is running, then restart C
 ```python
 import dcc_mcp_blender
 
-# Start the server (default port 8765)
+# Start the server on an OS-assigned instance port
 dcc_mcp_blender.start_server()
 
 # Stop the server

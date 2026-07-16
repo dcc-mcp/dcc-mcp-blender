@@ -59,11 +59,10 @@ import dcc_mcp_blender
 dcc_mcp_blender.start_server()
 ```
 
-Blender uses first-wins auto-gateway on port `8765`, so the MCP server is
-exposed at:
+Blender instances use OS-assigned ports and register with the stable gateway:
 
 ```text
-http://127.0.0.1:8765/mcp
+http://127.0.0.1:9765/mcp
 ```
 
 ## MCP Config
@@ -74,7 +73,7 @@ Use this JSON for Cursor, Claude Desktop, or any MCP Streamable HTTP host:
 {
   "mcpServers": {
     "blender": {
-      "url": "http://127.0.0.1:8765/mcp"
+      "url": "http://127.0.0.1:9765/mcp"
     }
   }
 }

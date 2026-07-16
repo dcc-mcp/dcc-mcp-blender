@@ -84,21 +84,21 @@ python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --blender-p
 
 ## MCP Configuration
 
-Blender uses first-wins auto-gateway on port `8765`. Configure the MCP host
-with:
+Blender instances use OS-assigned ports. Configure the MCP host with the stable
+local gateway:
 
 ```json
 {
   "mcpServers": {
     "blender": {
-      "url": "http://127.0.0.1:8765/mcp"
+      "url": "http://127.0.0.1:9765/mcp"
     }
   }
 }
 ```
 
-When multiple Blender instances run, the first to bind `8765` becomes the
-gateway and later instances register behind it; point your host at `8765`.
+Multiple Blender instances register their exact endpoints automatically; use
+`dcc-mcp-cli list` when a direct URL is required.
 
 When editing an existing MCP config, preserve unrelated servers. Merge only the
 `blender` server entry unless the user asks for a different server name.
@@ -115,7 +115,7 @@ After pip setup and MCP JSON generation, tell the user:
 5. The embedded MCP server starts automatically; use the top-bar
    `DCC MCP > Show Server URLs…` menu to confirm the URL.
 
-The expected URL is `http://127.0.0.1:8765/mcp`.
+The stable gateway URL is `http://127.0.0.1:9765/mcp`.
 
 For pip/CI installs without the add-on, start the server from Blender's Python
 console instead:

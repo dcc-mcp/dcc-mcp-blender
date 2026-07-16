@@ -10,7 +10,7 @@ Usage (inside Blender Python console or startup script)::
 
     import dcc_mcp_blender
 
-    # Start with default port (auto-gateway: first instance wins 8765)
+    # Start with an OS-assigned instance port and discover it through the gateway.
     server = dcc_mcp_blender.start_server()
 
     # Progressive loading — discover skills without loading them immediately
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 SERVER_NAME = "dcc-mcp-blender"
 SERVER_VERSION = __version__
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 0
 
 # Built-in skills directory shipped with this package
 _BUILTIN_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
@@ -82,7 +82,7 @@ def _host_dispatcher_from(dispatcher: Any) -> Any | None:
 class BlenderServerOptions:
     """Adapter-local options collapsed for the dcc-mcp-core 0.17+ server contract."""
 
-    port: int = DEFAULT_PORT
+    port: Optional[int] = None
     extra_skill_paths: Optional[List[str]] = None
     server_name: str = SERVER_NAME
     server_version: str = SERVER_VERSION
@@ -166,10 +166,8 @@ class BlenderMcpServer(DccServerBase):
 
     Multi-instance / gateway
     ------------------------
-    dcc-mcp-core implements an **auto-gateway** with first-wins port competition:
-    the first Blender process to bind the well-known port (8765) becomes the
-    gateway; subsequent instances start on ephemeral ports and register
-    themselves automatically.
+    Each Blender process binds an OS-assigned instance port and registers its
+    exact endpoint with the stable local gateway.
 
     Progressive loading
     -------------------
@@ -186,7 +184,7 @@ class BlenderMcpServer(DccServerBase):
 
     def __init__(
         self,
-        port: int = DEFAULT_PORT,
+        port: Optional[int] = None,
         extra_skill_paths: Optional[List[str]] = None,
         server_name: str = SERVER_NAME,
         server_version: str = SERVER_VERSION,
@@ -641,7 +639,7 @@ _server_instance: Optional[BlenderMcpServer] = None
 
 
 def start_server(
-    port: int = DEFAULT_PORT,
+    port: Optional[int] = None,
     extra_skill_paths: Optional[List[str]] = None,
     register_builtins: bool = True,
     include_bundled: bool = True,
@@ -664,12 +662,10 @@ def start_server(
 
     Multi-instance support (gateway mode)
     --------------------------------------
-    dcc-mcp-core implements first-wins port competition: if port 8765 is already
-    taken by another Blender process, this instance starts on a random port and
-    registers with the gateway automatically.
+    Every instance uses an OS-assigned port and registers with the gateway.
 
     Args:
-        port: Preferred TCP port (default 8765; use 0 for a random port).
+        port: Explicit TCP port, or ``None`` to let core resolve the environment/default.
         extra_skill_paths: Additional skill directories beyond built-ins.
         register_builtins: If ``True``, discover and load all skills.
         include_bundled: Include dcc-mcp-core bundled skills.

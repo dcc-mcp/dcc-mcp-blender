@@ -20,7 +20,7 @@ from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost
 def main() -> None:
     dispatcher = BlenderCallableDispatcher()
     host = BlenderHost(dispatcher)
-    server = dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)
+    server = dcc_mcp_blender.start_server(dispatcher=dispatcher)
     print(f"MCP server started at {server.mcp_url}", flush=True)
 
     for skill in server.list_skills():

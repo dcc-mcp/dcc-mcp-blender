@@ -32,18 +32,21 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
 - [ ] Enable the **DCC MCP Blender** extension
 - [ ] Check Blender console / Info area:
   ```
-  [DCC MCP Blender] Server started — http://127.0.0.1:8765/mcp
+  [DCC MCP Blender] Server started — http://127.0.0.1:<assigned-port>/mcp
   ```
-- [ ] Navigate to `http://127.0.0.1:8765/mcp` in a browser —
+- [ ] Record the exact URL from the log or `dcc-mcp-cli list`; do not assume a
+  fixed instance port.
+- [ ] Navigate to `<instance-url>/mcp` in a browser —
   expect `{"jsonrpc":"2.0","error":...}` (valid MCP endpoint, not a connection error)
-- [ ] Navigate to `http://127.0.0.1:8765/health` — expect HTTP 200
-- [ ] Navigate to `http://127.0.0.1:8765/docs` — expect OpenAPI docs page
+- [ ] Navigate to `<instance-url>/health` — expect HTTP 200
+- [ ] Navigate to `<instance-url>/docs` — expect OpenAPI docs page
 
 ## 3. MCP Initialize Handshake
 
 - [ ] Send an MCP `initialize` request and verify server info:
   ```python
-  import urllib.request, json
+  import os, urllib.request, json
+  base = os.environ["BLENDER_MCP_BASE_URL"].rstrip("/")
   body = json.dumps({
       "jsonrpc": "2.0",
       "id": 0,
@@ -55,7 +58,7 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
       }
   }).encode()
   req = urllib.request.Request(
-      "http://127.0.0.1:8765/mcp", data=body,
+      f"{base}/mcp", data=body,
       headers={"Content-Type": "application/json",
                "Accept": "application/json, text/event-stream"},
       method="POST"
@@ -71,7 +74,7 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
   ```python
   body = json.dumps({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}).encode()
   req = urllib.request.Request(
-      "http://127.0.0.1:8765/mcp", data=body,
+      f"{base}/mcp", data=body,
       headers={"Content-Type": "application/json",
                "Accept": "application/json, text/event-stream"},
       method="POST"
@@ -94,7 +97,7 @@ fail with `THREAD_AFFINITY_UNAVAILABLE`.
       "params": {"name": "get_scene_info", "arguments": {}}
   }).encode()
   req = urllib.request.Request(
-      "http://127.0.0.1:8765/mcp", data=body,
+      f"{base}/mcp", data=body,
       headers={"Content-Type": "application/json",
                "Accept": "application/json, text/event-stream"},
       method="POST"
@@ -114,7 +117,7 @@ fail with `THREAD_AFFINITY_UNAVAILABLE`.
                  "arguments": {"object_type": "cube", "name": "SmokeCube"}}
   }).encode()
   req = urllib.request.Request(
-      "http://127.0.0.1:8765/mcp", data=body,
+      f"{base}/mcp", data=body,
       headers={"Content-Type": "application/json",
                "Accept": "application/json, text/event-stream"},
       method="POST"
@@ -135,7 +138,7 @@ fail with `THREAD_AFFINITY_UNAVAILABLE`.
 
 - [ ] Check `/v1/readyz` returns all-green:
   ```python
-  req = urllib.request.Request("http://127.0.0.1:8765/v1/readyz")
+  req = urllib.request.Request(f"{base}/v1/readyz")
   resp = json.loads(urllib.request.urlopen(req, timeout=5).read())
   print(json.dumps(resp, indent=2))
   assert resp.get("process") is True, "process bit should be True"
@@ -154,7 +157,7 @@ fail with `THREAD_AFFINITY_UNAVAILABLE`.
 ## 7. Graceful Shutdown & Restart
 
 - [ ] Disable the **DCC MCP Blender** extension in Preferences → Extensions
-- [ ] Confirm server port is released (no HTTP response on `http://127.0.0.1:8765`)
+- [ ] Confirm the recorded instance URL no longer responds.
 - [ ] Re-enable the extension and verify server restarts cleanly
 - [ ] Verify `/v1/readyz` goes through the green transition again
 
@@ -165,7 +168,7 @@ If two Blender instances are available:
 - [ ] Start Blender #1 with the extension enabled — verify it becomes gateway
 - [ ] Start Blender #2 with the extension enabled —
   verify it registers on an ephemeral port
-- [ ] Check `http://127.0.0.1:8765/gateway/instances` — both should appear
+- [ ] Run `dcc-mcp-cli list` — both instances and distinct direct URLs should appear
 - [ ] Close Blender #1 — verify Blender #2 takes over gateway port
 
 ---
@@ -176,9 +179,9 @@ Save as `smoke_test.py` and run against a running Blender instance:
 
 ```python
 """Quick MCP smoke test — requires requests: pip install requests"""
-import json, sys, requests
+import json, os, sys, requests
 
-BASE = "http://127.0.0.1:8765"
+BASE = os.environ["BLENDER_MCP_BASE_URL"].rstrip("/")
 HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",

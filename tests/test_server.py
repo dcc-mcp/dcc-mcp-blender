@@ -30,6 +30,12 @@ class TestBlenderMcpServerBasic:
         server = BlenderMcpServer()
         assert server.port == DEFAULT_PORT
 
+    def test_explicit_zero_port_overrides_environment(self, monkeypatch):
+        from dcc_mcp_blender.server import BlenderServerOptions
+
+        monkeypatch.setenv("DCC_MCP_BLENDER_PORT", "18765")
+        assert BlenderServerOptions(port=0).to_core_options().port == 0
+
     def test_custom_port(self):
         from dcc_mcp_blender.server import BlenderMcpServer
 

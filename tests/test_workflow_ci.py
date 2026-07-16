@@ -37,7 +37,7 @@ def test_workflow_server_uses_blender_inprocess_dispatcher():
     assert ".github/scripts/start_mcp_server.py" in workflow
     assert "from dcc_mcp_blender.host import BlenderCallableDispatcher, BlenderHost" in text
     assert "dispatcher = BlenderCallableDispatcher()" in text
-    assert "dcc_mcp_blender.start_server(port=8765, dispatcher=dispatcher)" in text
+    assert "dcc_mcp_blender.start_server(dispatcher=dispatcher)" in text
     assert "host.run_headless(stop_event=stop_event)" in text
     assert "host.stop()" in text
 

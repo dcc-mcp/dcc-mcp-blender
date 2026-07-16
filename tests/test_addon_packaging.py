@@ -156,7 +156,7 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
     monkeypatch.setattr(server_mod, "get_server", lambda: None)
     monkeypatch.setattr(server_mod, "start_server", _start_server)
     monkeypatch.setattr(server_mod, "stop_server", lambda: calls.append(("stop_server", None)))
-    monkeypatch.setenv("DCC_MCP_BLENDER_PORT", "0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_PORT", "18765")
     monkeypatch.setenv("DCC_MCP_GATEWAY_PORT", "19765")
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", "/tmp/dcc-mcp-registry")
 
@@ -166,7 +166,6 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
     assert len(menu_callbacks) == 1
     assert [call[0] for call in calls] == ["start_server", "dispatcher.start"]
     assert calls[0][1] == {
-        "port": 0,
         "gateway_port": 19765,
         "registry_dir": "/tmp/dcc-mcp-registry",
         "dispatcher": calls[1][1],
