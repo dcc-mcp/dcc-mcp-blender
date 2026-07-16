@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.31...v0.1.32) (2026-07-16)
+
+
+### Bug Fixes
+
+* reject incompatible preloaded core ([#144](https://github.com/dcc-mcp/dcc-mcp-blender/issues/144)) ([9f82863](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9f8286379e7f281a9b6504d060bfc2668185970c))
+
 ## [0.1.31](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.30...v0.1.31) (2026-07-16)
 
 
