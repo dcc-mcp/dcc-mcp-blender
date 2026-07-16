@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.32...v0.1.33) (2026-07-16)
+
+
+### Bug Fixes
+
+* enforce core gate in addon entry ([#146](https://github.com/dcc-mcp/dcc-mcp-blender/issues/146)) ([546e48e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/546e48e42e12090a36eaff1b7aca4f7294173406))
+
 ## [0.1.32](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.31...v0.1.32) (2026-07-16)
 
 
