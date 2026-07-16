@@ -41,6 +41,7 @@ bl_info = {
 }
 
 _DEFAULT_GATEWAY_PORT = 9765
+_BACKGROUND_RENDER_ENV = "DCC_MCP_BACKGROUND_RENDER"
 
 _draw_handlers: List[Tuple[str, object]] = []
 _server_dispatcher: Any = None
@@ -331,6 +332,10 @@ def register() -> None:
         _draw_handlers.append(("TOPBAR_MT_blender", _draw_topbar_menu))
     else:
         logger.warning("TOPBAR_MT_blender missing — DCC MCP top-bar menu not attached")
+
+    if os.environ.get(_BACKGROUND_RENDER_ENV, "").strip().lower() in {"1", "true", "yes", "on"}:
+        print("[DCC MCP Blender] Background render worker detected; server autostart skipped")
+        return
 
     try:
         srv = _start_server_with_host()
