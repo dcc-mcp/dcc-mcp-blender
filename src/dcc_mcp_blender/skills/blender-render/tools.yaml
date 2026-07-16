@@ -97,3 +97,80 @@ tools:
     read_only: false
     destructive: false
     idempotent: false
+  - name: start_render_job
+    description: "Save the current .blend and start an isolated background animation render to multi-layer OpenEXR; optionally render only missing frames."
+    source_file: scripts/start_render_job.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [output_pattern, start_frame, end_frame]
+      properties:
+        output_pattern:
+          type: string
+          minLength: 1
+          description: "Absolute output pattern containing # placeholders, for example C:/renders/beauty_####. Blender appends .exr."
+        start_frame:
+          type: integer
+          minimum: 0
+        end_frame:
+          type: integer
+          minimum: 0
+        step:
+          type: integer
+          minimum: 1
+          default: 1
+        resume_missing:
+          type: boolean
+          default: true
+          description: "Skip existing non-empty EXR files and render only missing frames."
+        device:
+          type: string
+          enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
+          default: OPTIX
+        save_before_render:
+          type: boolean
+          default: true
+        factory_startup:
+          type: boolean
+          default: false
+          description: "Disable user preferences and add-ons in the worker. Enable only after proving the scene has no external add-on dependency."
+    next-tools:
+      on-success: [blender_render__get_render_job]
+      on-failure: [dcc_diagnostics__process_status]
+  - name: get_render_job
+    description: "Return bounded frame progress, process status, and log paths for an owned background render job."
+    source_file: scripts/get_render_job.py
+    execution: sync
+    affinity: any
+    read_only: true
+    destructive: false
+    idempotent: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          minLength: 1
+  - name: cancel_render_job
+    description: "Cancel the owned background Blender process tree for a render job; repeated cancellation is safe."
+    source_file: scripts/cancel_render_job.py
+    execution: sync
+    affinity: any
+    read_only: false
+    destructive: true
+    idempotent: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          minLength: 1

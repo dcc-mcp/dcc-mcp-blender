@@ -184,6 +184,39 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
     ]
 
 
+def test_addon_register_does_not_start_server_in_background_render_worker(monkeypatch):
+    registered_classes = []
+
+    class _Menu:
+        @staticmethod
+        def append(_fn):
+            pass
+
+        @staticmethod
+        def remove(_fn):
+            pass
+
+    fake_bpy = SimpleNamespace(
+        types=SimpleNamespace(Operator=object, Menu=object, TOPBAR_MT_blender=_Menu),
+        utils=SimpleNamespace(
+            register_class=lambda cls: registered_classes.append(cls),
+            unregister_class=lambda cls: registered_classes.remove(cls),
+        ),
+    )
+    spec = importlib.util.spec_from_file_location("addon_entry_background_render_test", str(ADDON_ENTRY))
+    mod = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    spec.loader.exec_module(mod)
+    starts = []
+    monkeypatch.setattr(mod, "_start_server_with_host", lambda: starts.append(True))
+    monkeypatch.setenv("DCC_MCP_BACKGROUND_RENDER", "1")
+
+    mod.register()
+
+    assert registered_classes == list(mod._CLASSES)
+    assert starts == []
+
+
 def test_addon_register_skips_server_autostart_in_background_render_worker(monkeypatch):
     """Isolated render workers must not claim the interactive MCP endpoint."""
     registered_classes = []
