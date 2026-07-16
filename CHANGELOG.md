@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.34](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.33...v0.1.34) (2026-07-16)
+
+
+### Features
+
+* add observable Blender render jobs ([#150](https://github.com/dcc-mcp/dcc-mcp-blender/issues/150)) ([c42a319](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c42a3194274064940a4bfe9ee1075ae53f76dc8a))
+* configure Blender view-layer render passes ([#148](https://github.com/dcc-mcp/dcc-mcp-blender/issues/148)) ([be979df](https://github.com/dcc-mcp/dcc-mcp-blender/commit/be979dfbd80c691ea09cc3152fbe60772a048d3b))
+
 ## [0.1.33](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.32...v0.1.33) (2026-07-16)
 
 
