@@ -480,6 +480,36 @@ class TestRigidBodyConstraints:
 
 
 class TestForceFields:
+    def test_adds_force_field_with_read_only_active_object_context(self):
+        bpy = make_mock_bpy()
+        obj = _make_obj()
+        obj.field = SimpleNamespace(type="FORCE", strength=1.0, falloff_power=2.0)
+        bpy.data.objects.get.return_value = obj
+
+        class ReadOnlyActiveObjectContext:
+            def __init__(self, view_layer):
+                self.view_layer = view_layer
+
+            @property
+            def active_object(self):
+                return None
+
+            @active_object.setter
+            def active_object(self, _value):
+                raise AttributeError('Context property "active_object" is read-only')
+
+        bpy.context = ReadOnlyActiveObjectContext(bpy.context.view_layer)
+
+        result = load_and_call(
+            "blender-physics/scripts/add_force_field.py",
+            bpy,
+            object_name="Cube",
+            field_type="TURBULENCE",
+        )
+
+        assert result["success"] is True, result
+        assert bpy.context.view_layer.objects.active is obj
+
     def test_adds_force_field(self):
         bpy = make_mock_bpy()
         obj = _make_obj()

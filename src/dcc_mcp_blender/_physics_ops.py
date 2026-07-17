@@ -53,7 +53,6 @@ def _activate_object(bpy, obj) -> None:
     except Exception:
         pass
     bpy.context.view_layer.objects.active = obj
-    bpy.context.active_object = obj
 
 
 def _objects(bpy) -> Iterable[Any]:
