@@ -12,10 +12,18 @@
 [![GitHub release downloads](https://img.shields.io/github/downloads/dcc-mcp/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
-[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.19.17-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.19.45-blue.svg)](https://github.com/loonghao/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![Cinematic Milky Way rendered through dcc-mcp-blender](docs/images/dcc-mcp-blender-showcase.webp)
+
+*Built through live `dcc-mcp-blender` calls with 801,400 particles, a baked
+Mantaflow gas cache, native PBR materials, four Cycles view layers, and Blender
+Compositor finishing. The scene incorporates the NASA 3D Resources
+[Crab Nebula model](https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Printing/Crab%20Nebula);
+NASA identifier and endorsement guidelines apply.*
 
 ---
 
