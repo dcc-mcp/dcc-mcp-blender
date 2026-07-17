@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.35...v0.1.36) (2026-07-17)
+
+
+### Bug Fixes
+
+* **physics:** activate objects through view layer ([#153](https://github.com/dcc-mcp/dcc-mcp-blender/issues/153)) ([927fc18](https://github.com/dcc-mcp/dcc-mcp-blender/commit/927fc18bdaf198b16a4c1097d93a3312f68713b7))
+
 ## [0.1.35](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.34...v0.1.35) (2026-07-16)
 
 
