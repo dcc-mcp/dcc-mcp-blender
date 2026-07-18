@@ -202,7 +202,7 @@ class TestGetObjectInfo:
         obj.material_slots = []
         bpy.data.objects.get.return_value = obj
 
-        result = load_and_call("blender-objects/scripts/get_object_info.py", bpy, name="Cube")
+        result = load_and_call("blender-objects/scripts/get_object_info.py", bpy, object_name="Cube")
         assert result["success"] is True
         ctx = result["context"]
         assert ctx["vertex_count"] == 8

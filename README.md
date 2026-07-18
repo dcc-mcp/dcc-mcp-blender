@@ -59,6 +59,25 @@ observe [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/ima
 
 ---
 
+## Showcase: rain-soaked PBR LookDev
+
+![Blender MCP rain sports car LookDev](docs/showcase/rain-sports-car-lookdev.gif)
+
+This live Blender 4.2 test moves from the imported mesh wireframe to a Cycles
+PBR beauty render, then rotates an HDRI and three-point light rig through 360°
+while a heavy particle rain simulation interacts with the sports car and wet
+ground. It exercises asset import, clearcoat and transmission materials,
+particle instancing and collision, depth of field, atmosphere, color
+management, lighting, animation, and final rendering through MCP.
+
+Showcase assets: [Car Concept](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)
+by Darmstadt Graphics Group GmbH / Eric Chadwick (CC BY 4.0; Khronos logo
+trademark terms apply), [Beach Parking](https://polyhaven.com/a/beach_parking)
+HDRI by Poly Haven (CC0), and
+[Easy Clouds](https://extensions.blender.org/add-ons/easy-clouds/) (GPL-3.0-or-later).
+
+---
+
 ## Features
 
 - **Embedded MCP server** — no external gateway needed; the server runs inside Blender's Python interpreter
