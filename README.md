@@ -17,13 +17,18 @@
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Cinematic Milky Way rendered through dcc-mcp-blender](docs/images/dcc-mcp-blender-showcase.webp)
+<p align="center">
+  <img src="docs/images/dcc-mcp-blender-showcase.webp"
+       alt="Blender MCP production proof showing a Cycles-rendered galaxy built with Mantaflow nebula volumes, Geometry Nodes particles, PBR materials, render layers, and Compositor finishing"
+       width="960"
+       loading="lazy" />
+</p>
 
-*Built through live `dcc-mcp-blender` calls with 801,400 particles, a baked
-Mantaflow gas cache, native PBR materials, four Cycles view layers, and Blender
-Compositor finishing. The scene incorporates the NASA 3D Resources
-[Crab Nebula model](https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Printing/Crab%20Nebula);
-NASA identifier and endorsement guidelines apply.*
+*Built through live `dcc-mcp-blender` calls with a baked Mantaflow/OpenVDB
+nebula, Geometry Nodes particles, native PBR materials, four Cycles view layers,
+and Blender Compositor finishing. The subtle Crab Nebula-derived point pass uses
+[NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Printing/Crab%20Nebula);
+observe [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/).*
 
 ---
 
