@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.37](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.36...v0.1.37) (2026-07-18)
+
+
+### Documentation
+
+* feature cinematic galaxy showcase ([#155](https://github.com/dcc-mcp/dcc-mcp-blender/issues/155)) ([ad2b408](https://github.com/dcc-mcp/dcc-mcp-blender/commit/ad2b408496b04f389add8f7df65d4ffb3d123cdb))
+* feature final Blender galaxy showcase ([f9f5dbb](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f9f5dbb05d79955ab95ea808c546213e9eecd42a))
+* refine cinematic galaxy showcase ([#157](https://github.com/dcc-mcp/dcc-mcp-blender/issues/157)) ([6e1dd22](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6e1dd22a7804e28424679eb086593d2297286c02))
+* remove six-DCC showcase ([#158](https://github.com/dcc-mcp/dcc-mcp-blender/issues/158)) ([a0c9070](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a0c9070a26d7a440c249b8ab611d385621a1dc87))
+
 ## [0.1.36](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.35...v0.1.36) (2026-07-17)
 
 
