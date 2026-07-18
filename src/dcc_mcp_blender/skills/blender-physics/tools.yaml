@@ -881,6 +881,13 @@ tools:
         lifetime:
           type: number
           description: "Particle lifetime in frames."
+        instance_object_name:
+          type: string
+          minLength: 1
+          description: "Scene object to render for each particle; selects OBJECT render type."
+        show_emitter:
+          type: boolean
+          description: "Whether the emitter mesh remains visible in renders."
         settings:
           type: object
           additionalProperties: true
@@ -921,6 +928,13 @@ tools:
         modifier_name:
           type: string
           minLength: 1
+        instance_object_name:
+          type: string
+          minLength: 1
+          description: "Scene object to render for each particle; selects OBJECT render type."
+        show_emitter:
+          type: boolean
+          description: "Whether the emitter mesh remains visible in renders."
         settings:
           type: object
           additionalProperties: true

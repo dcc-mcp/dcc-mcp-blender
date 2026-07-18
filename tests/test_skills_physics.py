@@ -34,6 +34,7 @@ class _ModifierCollection(list):
 
     def new(self, name, type):
         cache = SimpleNamespace(frame_start=1, frame_end=250, is_baked=False, use_disk_cache=False)
+        particle_system = None
         if type == "CLOTH":
             settings = SimpleNamespace(
                 quality=5,
@@ -48,10 +49,26 @@ class _ModifierCollection(list):
                 friction=5.0,
                 use_culling=False,
             )
+        elif type == "PARTICLE_SYSTEM":
+            settings = SimpleNamespace(
+                count=1000,
+                frame_start=1.0,
+                frame_end=50.0,
+                lifetime=30.0,
+                physics_type="NEWTON",
+                emit_from="FACE",
+                render_type="HALO",
+                instance_object=None,
+            )
+            particle_system = SimpleNamespace(name=name, settings=settings, point_cache=cache)
         else:
             settings = SimpleNamespace(point_cache=cache)
         modifier = SimpleNamespace(
-            name=name, type=type, settings=settings, point_cache=getattr(settings, "point_cache", None)
+            name=name,
+            type=type,
+            settings=settings,
+            point_cache=getattr(settings, "point_cache", None),
+            particle_system=particle_system,
         )
         self.append(modifier)
         return modifier
@@ -571,7 +588,9 @@ class TestForceFields:
 class TestParticleSystems:
     def test_adds_particle_system(self):
         cube = _make_obj()
-        bpy = _bpy_with_objects(cube)
+        drop = _make_obj("RainDrop")
+        cube.show_instancer_for_render = True
+        bpy = _bpy_with_objects(cube, drop)
 
         result = load_and_call(
             "blender-physics/scripts/add_particle_system.py",
@@ -582,12 +601,36 @@ class TestParticleSystems:
             frame_start=1,
             frame_end=120,
             lifetime=50,
+            instance_object_name="RainDrop",
+            show_emitter=False,
+            settings={"emit_from": "FACE"},
         )
 
         assert result["success"] is True
         modifier = cube.modifiers.get("Sparks")
         assert modifier is not None
         assert modifier.type == "PARTICLE_SYSTEM"
+        assert modifier.particle_system.settings.instance_object is drop
+        assert modifier.particle_system.settings.render_type == "OBJECT"
+        assert modifier.particle_system.settings.emit_from == "FACE"
+        assert cube.show_instancer_for_render is False
+
+    def test_particle_cache_is_read_from_particle_system(self):
+        cube = _make_obj()
+        modifier = cube.modifiers.new("HeavyRain", "PARTICLE_SYSTEM")
+        modifier.point_cache = None
+        modifier.settings = SimpleNamespace()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/get_simulation_status.py",
+            bpy,
+            object_name="Cube",
+        )
+
+        assert result["success"] is True
+        modifier_context = result["context"]["modifiers"][0]
+        assert modifier_context["cache"]["frame_end"] == 250
 
     def test_add_particle_system_requires_mesh(self):
         lamp = _make_obj("Lamp")
@@ -603,6 +646,20 @@ class TestParticleSystems:
         assert result["success"] is False
         assert "not a mesh" in result["message"].lower()
 
+    def test_missing_particle_instance_does_not_create_modifier(self):
+        cube = _make_obj()
+        bpy = _bpy_with_objects(cube)
+
+        result = load_and_call(
+            "blender-physics/scripts/add_particle_system.py",
+            bpy,
+            object_name="Cube",
+            instance_object_name="MissingDrop",
+        )
+
+        assert result["success"] is False
+        assert cube.modifiers == []
+
     def test_set_particle_system_settings_no_modifier_returns_error(self):
         cube = _make_obj()
         bpy = _bpy_with_objects(cube)
@@ -616,6 +673,27 @@ class TestParticleSystems:
         )
 
         assert result["success"] is False
+
+    def test_sets_particle_render_options(self):
+        cube = _make_obj()
+        drop = _make_obj("RainDrop")
+        cube.show_instancer_for_render = True
+        modifier = cube.modifiers.new("HeavyRain", "PARTICLE_SYSTEM")
+        bpy = _bpy_with_objects(cube, drop)
+
+        result = load_and_call(
+            "blender-physics/scripts/set_particle_system_settings.py",
+            bpy,
+            object_name="Cube",
+            modifier_name="HeavyRain",
+            instance_object_name="RainDrop",
+            show_emitter=False,
+        )
+
+        assert result["success"] is True
+        assert modifier.particle_system.settings.instance_object is drop
+        assert modifier.particle_system.settings.render_type == "OBJECT"
+        assert cube.show_instancer_for_render is False
 
     def test_lists_particle_systems(self):
         cube = _make_obj()

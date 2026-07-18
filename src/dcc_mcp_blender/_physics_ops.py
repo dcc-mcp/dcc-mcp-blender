@@ -115,7 +115,12 @@ def _modifier_settings(modifier: Any) -> Any:
 
 def _modifier_point_cache(modifier: Any) -> Any:
     settings = getattr(modifier, "settings", None)
-    return getattr(modifier, "point_cache", None) or getattr(settings, "point_cache", None)
+    particle_system = getattr(modifier, "particle_system", None)
+    return (
+        getattr(modifier, "point_cache", None)
+        or getattr(particle_system, "point_cache", None)
+        or getattr(settings, "point_cache", None)
+    )
 
 
 def _modifier_context(modifier: Any) -> Dict[str, Any]:
@@ -966,8 +971,56 @@ PARTICLE_SYSTEM_NUMERIC = {
     "frame_start",
     "frame_end",
     "lifetime",
-    "emit_from",
 }
+
+
+def _resolve_particle_instance_object(
+    bpy: Any, instance_object_name: Optional[str]
+) -> Tuple[Any, Optional[dict]]:
+    if instance_object_name is None:
+        return None, None
+    instance_object = _object_named(bpy, instance_object_name)
+    if instance_object is None:
+        return None, skill_error(
+            f"Object not found: {instance_object_name}",
+            f"No particle instance object named '{instance_object_name}'.",
+        )
+    return instance_object, None
+
+
+def _apply_particle_render_options(
+    obj: Any,
+    psettings: Any,
+    instance_object_name: Optional[str],
+    instance_object: Any,
+    show_emitter: Optional[bool],
+) -> Tuple[Dict[str, Any], List[str]]:
+    applied: Dict[str, Any] = {}
+    skipped: List[str] = []
+    if instance_object_name is not None:
+        if not hasattr(psettings, "instance_object"):
+            skipped.append("instance_object_name")
+        else:
+            psettings.instance_object = instance_object
+            applied["instance_object_name"] = instance_object_name
+            if hasattr(psettings, "render_type"):
+                psettings.render_type = "OBJECT"
+                applied["render_type"] = "OBJECT"
+
+    if show_emitter is not None:
+        visible = bool(show_emitter)
+        supported = False
+        if hasattr(psettings, "use_render_emitter"):
+            psettings.use_render_emitter = visible
+            supported = True
+        if hasattr(obj, "show_instancer_for_render"):
+            obj.show_instancer_for_render = visible
+            supported = True
+        if supported:
+            applied["show_emitter"] = visible
+        else:
+            skipped.append("show_emitter")
+    return applied, skipped
 
 
 def add_particle_system(
@@ -977,6 +1030,8 @@ def add_particle_system(
     frame_start: Optional[int] = None,
     frame_end: Optional[int] = None,
     lifetime: Optional[float] = None,
+    instance_object_name: Optional[str] = None,
+    show_emitter: Optional[bool] = None,
     settings: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """Add a particle system modifier to a mesh object.
@@ -993,6 +1048,11 @@ def add_particle_system(
         Emission frame range.
     lifetime:
         Particle lifetime in frames.
+    instance_object_name:
+        Optional scene object rendered for each particle. This also selects
+        Blender's ``OBJECT`` particle render type.
+    show_emitter:
+        Whether the source mesh is visible in renders.
     settings:
         Additional particle settings properties.
     """
@@ -1004,12 +1064,17 @@ def add_particle_system(
             return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
         if getattr(obj, "type", None) != "MESH":
             return skill_error(f"{object_name} is not a mesh", "Particle systems require a mesh object.")
+        instance_object, error = _resolve_particle_instance_object(bpy, instance_object_name)
+        if error:
+            return error
 
         _activate_object(bpy, obj)
         modifier = obj.modifiers.new(name, "PARTICLE_SYSTEM")
         ps = getattr(modifier, "particle_system", None)
         psettings = getattr(ps, "settings", None) if ps else None
 
+        applied: Dict[str, Any] = {}
+        skipped: List[str] = []
         if psettings is not None:
             if count is not None:
                 psettings.count = int(count)
@@ -1020,7 +1085,16 @@ def add_particle_system(
             if lifetime is not None:
                 psettings.lifetime = float(lifetime)
             if settings:
-                _apply_settings(psettings, settings, PARTICLE_SYSTEM_NUMERIC)
+                settings_applied, settings_skipped = _apply_settings(
+                    psettings, settings, PARTICLE_SYSTEM_NUMERIC
+                )
+                applied.update(settings_applied)
+                skipped.extend(settings_skipped)
+            render_applied, render_skipped = _apply_particle_render_options(
+                obj, psettings, instance_object_name, instance_object, show_emitter
+            )
+            applied.update(render_applied)
+            skipped.extend(render_skipped)
 
         return skill_success(
             f"Added particle system '{name}' to {object_name}",
@@ -1030,6 +1104,8 @@ def add_particle_system(
             frame_start=getattr(psettings, "frame_start", None) if psettings else None,
             frame_end=getattr(psettings, "frame_end", None) if psettings else None,
             lifetime=getattr(psettings, "lifetime", None) if psettings else None,
+            applied=applied,
+            skipped=skipped,
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
@@ -1040,6 +1116,8 @@ def add_particle_system(
 def set_particle_system_settings(
     object_name: str,
     modifier_name: Optional[str] = None,
+    instance_object_name: Optional[str] = None,
+    show_emitter: Optional[bool] = None,
     settings: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """Update particle settings on an existing particle system modifier."""
@@ -1060,8 +1138,16 @@ def set_particle_system_settings(
         psettings = getattr(ps, "settings", None) if ps else None
         if psettings is None:
             return skill_error("Particle settings unavailable", "Could not access particle system settings.")
+        instance_object, error = _resolve_particle_instance_object(bpy, instance_object_name)
+        if error:
+            return error
 
         applied, skipped = _apply_settings(psettings, settings, PARTICLE_SYSTEM_NUMERIC)
+        render_applied, render_skipped = _apply_particle_render_options(
+            obj, psettings, instance_object_name, instance_object, show_emitter
+        )
+        applied.update(render_applied)
+        skipped.extend(render_skipped)
         return skill_success(
             f"Updated particle system settings on {object_name}",
             object_name=object_name,
