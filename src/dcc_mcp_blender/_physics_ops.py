@@ -974,9 +974,7 @@ PARTICLE_SYSTEM_NUMERIC = {
 }
 
 
-def _resolve_particle_instance_object(
-    bpy: Any, instance_object_name: Optional[str]
-) -> Tuple[Any, Optional[dict]]:
+def _resolve_particle_instance_object(bpy: Any, instance_object_name: Optional[str]) -> Tuple[Any, Optional[dict]]:
     if instance_object_name is None:
         return None, None
     instance_object = _object_named(bpy, instance_object_name)
@@ -1085,9 +1083,7 @@ def add_particle_system(
             if lifetime is not None:
                 psettings.lifetime = float(lifetime)
             if settings:
-                settings_applied, settings_skipped = _apply_settings(
-                    psettings, settings, PARTICLE_SYSTEM_NUMERIC
-                )
+                settings_applied, settings_skipped = _apply_settings(psettings, settings, PARTICLE_SYSTEM_NUMERIC)
                 applied.update(settings_applied)
                 skipped.extend(settings_skipped)
             render_applied, render_skipped = _apply_particle_render_options(
