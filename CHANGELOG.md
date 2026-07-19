@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.38...v0.1.39) (2026-07-19)
+
+
+### Features
+
+* add animated HDRI LookDev controls ([#164](https://github.com/dcc-mcp/dcc-mcp-blender/issues/164)) ([866d36b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/866d36b66b26ae8c059f730ef3aa82b768f09095))
+
 ## [0.1.38](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.37...v0.1.38) (2026-07-19)
 
 
