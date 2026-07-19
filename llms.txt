@@ -135,7 +135,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-render | `render_scene`, `set_render_settings`, `capture_viewport` |
 | blender-render-farm | `submit_render_job`, `get_render_job_status`, `cancel_render_job` |
 | blender-animation | `set_keyframe`, `set_frame_range`, `bake_animation` |
-| blender-lighting / blender-light-rig | `create_light`, `create_three_point_light_rig`, `create_hdri_world` |
+| blender-lighting / blender-light-rig | `create_light`, `create_three_point_light_rig`, `create_hdri_world`, `animate_hdri_rotation` |
 | blender-camera | `create_camera`, `set_active_camera`, `set_camera_properties` |
 | blender-physics | `add_rigid_body`, `add_cloth_modifier`, `add_force_field`, `bake_simulation` |
 | blender-geometry-nodes | `create_geometry_node_group`, `set_geometry_node_modifier_input` |
