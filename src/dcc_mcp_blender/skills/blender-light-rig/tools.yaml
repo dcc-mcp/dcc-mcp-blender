@@ -113,6 +113,55 @@ tools:
       idempotent_hint: true
       open_world_hint: true
 
+  - name: animate_hdri_rotation
+    description: "Animate the existing HDRI environment rotation for a fixed-camera LookDev lighting pass."
+    source_file: scripts/animate_hdri_rotation.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [frame_start, frame_end]
+      properties:
+        frame_start:
+          type: integer
+          description: "First animation frame."
+        frame_end:
+          type: integer
+          description: "Last animation frame; must be greater than frame_start."
+        start_rotation:
+          type: number
+          default: 0.0
+          description: "Starting HDRI rotation in degrees."
+        end_rotation:
+          type: number
+          default: 360.0
+          description: "Ending HDRI rotation in degrees."
+        interpolation:
+          type: string
+          enum: [LINEAR, BEZIER, CONSTANT]
+          default: LINEAR
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    next-tools:
+      on-failure: [blender_light_rig__get_lighting_summary]
+    call_examples:
+      - arguments:
+          frame_start: 1
+          frame_end: 120
+          start_rotation: 0.0
+          end_rotation: 360.0
+          interpolation: LINEAR
+        note: "Create one full linear HDRI lighting rotation while the camera stays fixed"
+
   - name: list_light_rigs
     description: "List grouped light rigs created by this skill."
     source_file: scripts/list_light_rigs.py

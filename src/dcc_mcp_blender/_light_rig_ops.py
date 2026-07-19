@@ -11,6 +11,10 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 RIG_PROP = "dcc_mcp_light_rig"
 ORIGINAL_ENERGY_PROP = "dcc_mcp_original_energy"
+HDRI_ENV_NODE = "DCC MCP HDRI"
+HDRI_MAPPING_NODE = "DCC MCP Mapping"
+HDRI_TEXCOORD_NODE = "DCC MCP Texture Coordinate"
+HDRI_ROTATION_INTERPOLATIONS = {"BEZIER", "CONSTANT", "LINEAR"}
 
 
 def _iter_collection(collection: Any) -> List[Any]:
@@ -192,11 +196,44 @@ def _aim_at(light: Any, target: Any) -> None:
 def _world_info(world: Any) -> Dict[str, Any]:
     if world is None:
         return {}
-    return {
+    info = {
         "name": getattr(world, "name", None),
         "color": list(getattr(world, "color", []) or []),
         "use_nodes": bool(getattr(world, "use_nodes", False)),
     }
+    node_tree = getattr(world, "node_tree", None)
+    nodes = getattr(node_tree, "nodes", None)
+    env = _collection_get(nodes, HDRI_ENV_NODE) if nodes is not None else None
+    mapping = _collection_get(nodes, HDRI_MAPPING_NODE) if nodes is not None else None
+    if env is None or mapping is None:
+        return info
+    background = _collection_get(nodes, "Background")
+    strength_socket = _collection_get(getattr(background, "inputs", {}), "Strength")
+    coordinate_output = None
+    for link in _iter_collection(getattr(node_tree, "links", [])):
+        to_node_name = getattr(getattr(link, "to_node", None), "name", None)
+        to_socket_name = getattr(getattr(link, "to_socket", None), "name", None)
+        if to_node_name == getattr(mapping, "name", None) and to_socket_name == "Vector":
+            coordinate_output = getattr(getattr(link, "from_socket", None), "name", None)
+            break
+    image = getattr(env, "image", None)
+    hdri = {
+        "image_path": getattr(image, "filepath", None) or getattr(image, "filepath_raw", None),
+        "strength": getattr(strength_socket, "default_value", None),
+        "rotation": _custom_get(world, "dcc_mcp_hdri_rotation", None),
+        "coordinate_output": coordinate_output,
+    }
+    frame_start = _custom_get(world, "dcc_mcp_hdri_animation_frame_start", None)
+    if frame_start is not None:
+        hdri["animation"] = {
+            "frame_start": frame_start,
+            "frame_end": _custom_get(world, "dcc_mcp_hdri_animation_frame_end", None),
+            "start_rotation": _custom_get(world, "dcc_mcp_hdri_animation_start_rotation", None),
+            "end_rotation": _custom_get(world, "dcc_mcp_hdri_animation_end_rotation", None),
+            "interpolation": _custom_get(world, "dcc_mcp_hdri_animation_interpolation", None),
+        }
+    info["hdri"] = hdri
+    return info
 
 
 def _view_settings_info(view_settings: Any) -> Dict[str, Any]:
@@ -217,6 +254,52 @@ def _set_vector_socket_value(socket: Any, values: List[float]) -> None:
             default_value[index] = float(value)
         except Exception:
             return
+
+
+def _set_socket_keyframe_interpolation(
+    node_tree: Any,
+    socket: Any,
+    frames: List[int],
+    interpolation: str,
+) -> None:
+    animation_data = getattr(node_tree, "animation_data", None)
+    action = getattr(animation_data, "action", None)
+    fcurves = getattr(action, "fcurves", None)
+    if fcurves is None:
+        return
+    data_path = None
+    path_from_id = getattr(socket, "path_from_id", None)
+    if callable(path_from_id):
+        try:
+            data_path = path_from_id("default_value")
+        except Exception:
+            data_path = None
+    fcurve = None
+    finder = getattr(fcurves, "find", None)
+    if data_path and callable(finder):
+        try:
+            fcurve = finder(data_path, index=2)
+        except Exception:
+            fcurve = None
+    if fcurve is None:
+        for candidate in _iter_collection(fcurves):
+            candidate_path = str(getattr(candidate, "data_path", ""))
+            if HDRI_MAPPING_NODE in candidate_path and getattr(candidate, "array_index", None) == 2:
+                fcurve = candidate
+                break
+    if fcurve is None:
+        return
+    expected_frames = {int(frame) for frame in frames}
+    for point in _iter_collection(getattr(fcurve, "keyframe_points", [])):
+        coordinates = getattr(point, "co", None)
+        if coordinates is None:
+            continue
+        try:
+            frame = int(round(float(coordinates[0])))
+        except Exception:
+            continue
+        if frame in expected_frames:
+            point.interpolation = interpolation
 
 
 def create_three_point_light_rig(
@@ -317,17 +400,17 @@ def create_hdri_world(image_path: str, strength: float = 1.0, rotation: float = 
         if background is None:
             background = nodes.new(type="ShaderNodeBackground")
             background.name = "Background"
-        env = _collection_get(nodes, "DCC MCP HDRI") or nodes.new(type="ShaderNodeTexEnvironment")
-        env.name = "DCC MCP HDRI"
+        env = _collection_get(nodes, HDRI_ENV_NODE) or nodes.new(type="ShaderNodeTexEnvironment")
+        env.name = HDRI_ENV_NODE
         env.image = bpy.data.images.load(str(path), check_existing=True)
-        texcoord = _collection_get(nodes, "DCC MCP Texture Coordinate") or nodes.new(type="ShaderNodeTexCoord")
-        texcoord.name = "DCC MCP Texture Coordinate"
-        mapping = _collection_get(nodes, "DCC MCP Mapping") or nodes.new(type="ShaderNodeMapping")
-        mapping.name = "DCC MCP Mapping"
+        texcoord = _collection_get(nodes, HDRI_TEXCOORD_NODE) or nodes.new(type="ShaderNodeTexCoord")
+        texcoord.name = HDRI_TEXCOORD_NODE
+        mapping = _collection_get(nodes, HDRI_MAPPING_NODE) or nodes.new(type="ShaderNodeMapping")
+        mapping.name = HDRI_MAPPING_NODE
         rotation_socket = _collection_get(getattr(mapping, "inputs", {}), "Rotation")
         if rotation_socket is not None:
             _set_vector_socket_value(rotation_socket, [0.0, 0.0, math.radians(float(rotation))])
-        texcoord_output = _collection_get(getattr(texcoord, "outputs", {}), "Generated") or _collection_get(
+        texcoord_output = _collection_get(getattr(texcoord, "outputs", {}), "Normal") or _collection_get(
             getattr(texcoord, "outputs", {}), "Vector"
         )
         mapping_input = _collection_get(getattr(mapping, "inputs", {}), "Vector")
@@ -361,12 +444,100 @@ def create_hdri_world(image_path: str, strength: float = 1.0, rotation: float = 
             image_path=str(path),
             strength=float(strength),
             rotation=float(rotation),
+            coordinate_output=getattr(texcoord_output, "name", None),
             world=_world_info(world),
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message="Failed to create HDRI world")
+
+
+def animate_hdri_rotation(
+    frame_start: int,
+    frame_end: int,
+    start_rotation: float = 0.0,
+    end_rotation: float = 360.0,
+    interpolation: str = "LINEAR",
+) -> dict:
+    """Animate the existing HDRI mapping rotation for a fixed-camera LookDev pass."""
+    try:
+        import bpy
+
+        start = int(frame_start)
+        end = int(frame_end)
+        if end <= start:
+            return skill_error("Invalid frame range", "frame_end must be greater than frame_start.")
+        mode = str(interpolation or "LINEAR").strip().upper()
+        if mode not in HDRI_ROTATION_INTERPOLATIONS:
+            supported = ", ".join(sorted(HDRI_ROTATION_INTERPOLATIONS))
+            return skill_error("Unsupported interpolation", f"Use one of: {supported}.")
+        start_degrees = float(start_rotation)
+        end_degrees = float(end_rotation)
+        if not math.isfinite(start_degrees) or not math.isfinite(end_degrees):
+            return skill_error("Invalid HDRI rotation", "Rotation values must be finite numbers in degrees.")
+
+        scene = bpy.context.scene
+        world = getattr(scene, "world", None)
+        if world is None or not getattr(world, "use_nodes", False):
+            return skill_error("HDRI world not found", "Call create_hdri_world before animating HDRI rotation.")
+        node_tree = getattr(world, "node_tree", None)
+        nodes = getattr(node_tree, "nodes", None)
+        mapping = _collection_get(nodes, HDRI_MAPPING_NODE) if nodes is not None else None
+        if mapping is None:
+            return skill_error("HDRI mapping not found", "Call create_hdri_world before animating HDRI rotation.")
+        rotation_socket = _collection_get(getattr(mapping, "inputs", {}), "Rotation")
+        if rotation_socket is None or getattr(rotation_socket, "default_value", None) is None:
+            return skill_error("HDRI rotation unavailable", "The HDRI mapping node has no Rotation input.")
+        insert_keyframe = getattr(rotation_socket, "keyframe_insert", None)
+        if not callable(insert_keyframe):
+            return skill_error("HDRI rotation cannot be animated", "The Rotation input does not support keyframes.")
+
+        original_frame = int(getattr(scene, "frame_current", start))
+        keyframes = [
+            {"frame": start, "rotation": start_degrees},
+            {"frame": end, "rotation": end_degrees},
+        ]
+        try:
+            for keyframe in keyframes:
+                _set_vector_socket_value(
+                    rotation_socket,
+                    [0.0, 0.0, math.radians(float(keyframe["rotation"]))],
+                )
+                inserted = insert_keyframe(data_path="default_value", index=2, frame=keyframe["frame"])
+                if inserted is False:
+                    return skill_error(
+                        "Failed to keyframe HDRI rotation",
+                        f"Blender rejected the keyframe at frame {keyframe['frame']}.",
+                    )
+            _set_socket_keyframe_interpolation(
+                node_tree,
+                rotation_socket,
+                [start, end],
+                mode,
+            )
+        finally:
+            frame_set = getattr(scene, "frame_set", None)
+            if callable(frame_set):
+                frame_set(original_frame)
+
+        _custom_set(world, "dcc_mcp_hdri_animation_frame_start", start)
+        _custom_set(world, "dcc_mcp_hdri_animation_frame_end", end)
+        _custom_set(world, "dcc_mcp_hdri_animation_start_rotation", start_degrees)
+        _custom_set(world, "dcc_mcp_hdri_animation_end_rotation", end_degrees)
+        _custom_set(world, "dcc_mcp_hdri_animation_interpolation", mode)
+        return skill_success(
+            "HDRI rotation animated",
+            keyframes=keyframes,
+            interpolation=mode,
+            mapping_node=HDRI_MAPPING_NODE,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except (TypeError, ValueError) as exc:
+        return skill_error("Invalid HDRI animation option", str(exc))
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to animate HDRI rotation")
 
 
 def list_light_rigs() -> dict:
