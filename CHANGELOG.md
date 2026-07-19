@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.38](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.37...v0.1.38) (2026-07-19)
+
+
+### Features
+
+* add Blender particle render controls and rain LookDev showcase ([#160](https://github.com/dcc-mcp/dcc-mcp-blender/issues/160)) ([b357a6b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b357a6b45c9178be91c283066637ec53142a94f3))
+
+
+### Documentation
+
+* align agent workflow and branding ([7f183f2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7f183f211bf0b86a11cd39c24061d9a2abb6b003))
+* document CLI install and updates ([fb53658](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fb53658fda4b3f82e75d55a43c70582aca897b79))
+
 ## [0.1.37](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.36...v0.1.37) (2026-07-18)
 
 
