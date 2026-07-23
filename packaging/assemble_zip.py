@@ -214,18 +214,14 @@ def validate_core_wheel(wheel_path: pathlib.Path) -> None:
             removed_members = [
                 name
                 for name in archive.namelist()
-                if pathlib.PurePosixPath(name.replace("\\", "/")).name.lower()
-                == REMOVED_CAPTURE_HELPER
+                if pathlib.PurePosixPath(name.replace("\\", "/")).name.lower() == REMOVED_CAPTURE_HELPER
             ]
     except zipfile.BadZipFile as exc:
         raise RuntimeError(f"Invalid dcc-mcp-core wheel: {wheel_path.name}") from exc
 
     if removed_members:
         members = ", ".join(sorted(removed_members))
-        raise RuntimeError(
-            "Refusing to bundle dcc-mcp-core wheel containing the removed "
-            f"capture helper ({members})"
-        )
+        raise RuntimeError(f"Refusing to bundle dcc-mcp-core wheel containing the removed capture helper ({members})")
 
 
 def extract_wheel(wheel_path: pathlib.Path, dest_dir: pathlib.Path) -> None:
