@@ -10,6 +10,8 @@ import sys
 import zipfile
 from types import SimpleNamespace
 
+import pytest
+
 ROOT = pathlib.Path(__file__).parent.parent
 ADDON_ENTRY = ROOT / "packaging" / "addon_entry" / "__init__.py"
 
@@ -38,6 +40,13 @@ def _manifest_wheels(manifest: str):
     return re.findall(r'"\.\/(wheels\/dcc_mcp_core-[^"]+\.whl)"', manifest)
 
 
+def _write_fake_core_wheel(path: pathlib.Path, members: tuple[str, ...] = ()) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("dcc_mcp_core/__init__.py", "")
+        for member in members:
+            archive.writestr(member, b"MZ")
+
+
 def test_addon_entry_bl_info_version_is_static_tuple_literal():
     """Blender parses ``bl_info`` via AST, so version must not be computed."""
     tree = ast.parse(ADDON_ENTRY.read_text(encoding="utf-8"))
@@ -56,7 +65,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     """The add-on package root must directly contain ``server.py`` and skills."""
     assemble_zip = _load_assemble_zip_module()
     fake_wheel = tmp_path / "dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"
-    fake_wheel.write_bytes(b"fake wheel")
+    _write_fake_core_wheel(fake_wheel)
 
     monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.19.17": "0.19.17")
     monkeypatch.setattr(assemble_zip, "download_core_wheel", lambda version, platform, dest_dir: fake_wheel)
@@ -105,6 +114,47 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     ]
     assert core_import_lines
     assert gate_call.lineno < min(core_import_lines)
+
+
+def test_validate_core_wheel_rejects_removed_capture_helper(tmp_path):
+    assemble_zip = _load_assemble_zip_module()
+    wheel = tmp_path / "dcc_mcp_core-0.19.63-cp38-abi3-win_amd64.whl"
+    _write_fake_core_wheel(
+        wheel,
+        ("dcc_mcp_core/bin/dcc-mcp-capture-helper.exe",),
+    )
+
+    with pytest.raises(RuntimeError, match="removed capture helper"):
+        assemble_zip.validate_core_wheel(wheel)
+
+
+def test_validate_core_wheel_accepts_current_ui_control_host(tmp_path):
+    assemble_zip = _load_assemble_zip_module()
+    wheel = tmp_path / "dcc_mcp_core-0.19.69-cp38-abi3-win_amd64.whl"
+    _write_fake_core_wheel(
+        wheel,
+        ("dcc_mcp_core/bin/dcc-mcp-ui-control-host.exe",),
+    )
+
+    assemble_zip.validate_core_wheel(wheel)
+
+
+def test_assemble_rejects_core_wheel_with_removed_capture_helper(tmp_path, monkeypatch):
+    assemble_zip = _load_assemble_zip_module()
+    wheel = tmp_path / "dcc_mcp_core-0.19.63-cp38-abi3-win_amd64.whl"
+    _write_fake_core_wheel(
+        wheel,
+        ("dcc_mcp_core/bin/dcc-mcp-capture-helper.exe",),
+    )
+    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda: "0.19.63")
+    monkeypatch.setattr(
+        assemble_zip,
+        "download_core_wheel",
+        lambda version, platform, dest_dir: wheel,
+    )
+
+    with pytest.raises(RuntimeError, match="removed capture helper"):
+        assemble_zip.assemble(platform="win64", output_dir=tmp_path)
 
 
 def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(monkeypatch):

@@ -27,8 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    # v0.19.45: instance ports default to operating-system assignment.
-    "dcc-mcp-core>=0.19.45,<1.0.0",
+    # v0.19.63: the retired standalone capture helper is no longer bundled.
+    "dcc-mcp-core>=0.19.63,<1.0.0",
 ]
 
 [project.optional-dependencies]
