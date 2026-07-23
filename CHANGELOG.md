@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.40](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.39...v0.1.40) (2026-07-23)
+
+
+### Bug Fixes
+
+* apply ruff format to packaging/assemble_zip.py ([744f983](https://github.com/dcc-mcp/dcc-mcp-blender/commit/744f9834c0b06e87a7401adb5871b9e06a172116))
+* reject retired capture helper bundles ([22073de](https://github.com/dcc-mcp/dcc-mcp-blender/commit/22073deb30c5bdb9f153daa5f58eae9484cb0c18))
+
 ## [0.1.39](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.38...v0.1.39) (2026-07-19)
 
 
