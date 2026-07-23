@@ -16,6 +16,16 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
   python packaging/assemble_zip.py --platform win64 --output-dir dist_addon/
   ```
 
+## 0. Windows Security Gate
+
+- [ ] Confirm the nested Core wheel does not contain the retired
+  `dcc-mcp-capture-helper.exe`. The package assembler enforces this
+  automatically and must fail closed if the file is present.
+- [ ] Scan the final Windows release ZIP on a clean, Defender-enabled Windows
+  host and record the Defender engine/signature versions with the result.
+- [ ] Do not publish when Defender reports a detection. Preserve the exact ZIP
+  and nested member path for false-positive submission and investigation.
+
 ## 1. Extension Install from Disk
 
 - [ ] Open Blender with a clean profile
