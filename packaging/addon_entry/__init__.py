@@ -360,6 +360,7 @@ class DCCMCP_OT_server_info(bpy.types.Operator):
         # Gather versions
         try:
             import bpy as _bpy
+
             blender_version = _bpy.app.version_string
         except Exception:
             blender_version = "unknown"
