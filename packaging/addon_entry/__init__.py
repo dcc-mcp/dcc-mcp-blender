@@ -294,13 +294,152 @@ class DCCMCP_OT_toggle_hot_reload(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class DCCMCP_OT_copy_instance_id(bpy.types.Operator):
+    bl_idname = "dcc_mcp.copy_instance_id"
+    bl_label = "Copy Instance ID"
+    bl_description = "Copy the DCC instance UUID to the clipboard"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return _running_server() is not None
+
+    def execute(self, context):
+        srv = _running_server()
+        instance_id = None
+        if srv is not None:
+            # Resolve instance_id following the same chain as _extract_instance_id
+            instance_id = getattr(srv, "instance_id", None)
+            if not instance_id:
+                cfg = getattr(srv, "_config", None)
+                instance_id = getattr(cfg, "instance_id", None) if cfg is not None else None
+            if not instance_id:
+                handle = getattr(srv, "_handle", None)
+                instance_id = getattr(handle, "instance_id", None) if handle is not None else None
+        if instance_id:
+            bpy.context.window_manager.clipboard = str(instance_id)
+            self.report({"INFO"}, f"Instance ID copied: {instance_id}")
+        else:
+            self.report({"WARNING"}, "Instance ID not available — is the server fully started?")
+        return {"FINISHED"}
+
+
+class DCCMCP_OT_server_info(bpy.types.Operator):
+    bl_idname = "dcc_mcp.show_server_info"
+    bl_label = "Server Info"
+    bl_description = "Show DCC MCP server status and connection details"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        srv = _running_server()
+
+        # Gather instance identity
+        instance_id = None
+        if srv is not None:
+            instance_id = getattr(srv, "instance_id", None)
+            if not instance_id:
+                cfg = getattr(srv, "_config", None)
+                instance_id = getattr(cfg, "instance_id", None) if cfg is not None else None
+            if not instance_id:
+                handle = getattr(srv, "_handle", None)
+                instance_id = getattr(handle, "instance_id", None) if handle is not None else None
+
+        # Gather URLs
+        mcp_url = _mcp_url() or "<not running>"
+        gw = None
+        if srv is not None:
+            gw = getattr(srv, "gateway_url", None)
+        gateway_url = gw or "<no gateway>"
+
+        # Gather ports
+        server_port = None
+        if srv is not None:
+            server_port = getattr(srv, "port", None)
+        gateway_port = os.environ.get("DCC_MCP_GATEWAY_PORT", str(_DEFAULT_GATEWAY_PORT)).strip()
+
+        # Gather versions
+        try:
+            import bpy as _bpy
+            blender_version = _bpy.app.version_string
+        except Exception:
+            blender_version = "unknown"
+
+        core_version = None
+        try:
+            from dcc_mcp_core.server_base import _package_version
+
+            core_version = _package_version()
+        except Exception:
+            core_version = "unknown"
+
+        lines: List[str] = [
+            f"Instance ID:  {instance_id or '<not available>'}",
+            f"Blender:      {blender_version}",
+            f"Core:         {core_version}",
+            f"MCP URL:      {mcp_url}",
+            f"Gateway:      {gateway_url}",
+        ]
+        if server_port is not None:
+            lines.insert(4, f"Server Port:  {server_port}")
+        lines.insert(6, f"Gateway Port: {gateway_port}")
+
+        def draw(menu, ctx):
+            col = menu.layout.column(align=True)
+            for line in lines:
+                col.label(text=line)
+
+        context.window_manager.popup_menu(draw, title="DCC MCP Server Info")
+        return {"FINISHED"}
+
+
+class DCCMCP_OT_about(bpy.types.Operator):
+    bl_idname = "dcc_mcp.about"
+    bl_label = "About DCC MCP"
+    bl_description = "Show DCC MCP version and project information"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        addon_version = ".".join(str(x) for x in bl_info["version"])
+
+        # Try to resolve dcc-mcp-core version
+        core_version = None
+        try:
+            from dcc_mcp_core.server_base import _package_version
+
+            core_version = _package_version()
+        except Exception:
+            core_version = "unknown"
+
+        lines: List[str] = [
+            f"Add-on:   dcc-mcp-blender {addon_version}",
+            f"Core:     dcc-mcp-core {core_version}",
+            f"Protocol: MCP Streamable HTTP (2025-03-26)",
+            "",
+            f"Author:   {bl_info['author']}",
+            f"Docs:     {bl_info['doc_url']}",
+        ]
+
+        def draw(menu, ctx):
+            col = menu.layout.column(align=True)
+            for line in lines:
+                if line:
+                    col.label(text=line)
+                else:
+                    col.separator()
+
+        context.window_manager.popup_menu(draw, title="About DCC MCP")
+        return {"FINISHED"}
+
+
 class DCCMCP_MT_main_menu(bpy.types.Menu):
     bl_label = "DCC MCP"
     bl_idname = "DCCMCP_MT_main_menu"
 
     def draw(self, context):
         layout = self.layout.column(align=True)
-        layout.operator("dcc_mcp.show_server_urls", icon="INFO")
+        layout.operator("dcc_mcp.copy_instance_id", icon="COPYDOWN")
+        layout.separator()
+        layout.operator("dcc_mcp.show_server_info", icon="INFO")
         layout.separator()
         layout.operator("dcc_mcp.open_mcp_endpoint", icon="URL")
         layout.operator("dcc_mcp.open_openapi_docs", icon="DOCUMENTS")
@@ -310,6 +449,8 @@ class DCCMCP_MT_main_menu(bpy.types.Menu):
         layout.separator()
         layout.operator("dcc_mcp.restart_server", icon="FILE_REFRESH")
         layout.operator("dcc_mcp.toggle_hot_reload", icon="FILE_CACHE")
+        layout.separator()
+        layout.operator("dcc_mcp.about", icon="BLANK1")
 
 
 def _draw_topbar_menu(self, context):
@@ -324,6 +465,9 @@ _CLASSES = (
     DCCMCP_OT_show_urls,
     DCCMCP_OT_restart,
     DCCMCP_OT_toggle_hot_reload,
+    DCCMCP_OT_copy_instance_id,
+    DCCMCP_OT_server_info,
+    DCCMCP_OT_about,
     DCCMCP_MT_main_menu,
 )
 
