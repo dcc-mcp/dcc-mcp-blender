@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.41](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.40...v0.1.41) (2026-07-24)
+
+
+### Features
+
+* **blender:** add unified menu structure with Copy Instance ID, Server Info, and About ([fb6ef6f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fb6ef6f9cead58f72e3dee32c91e744b5036e2fd))
+
+
+### Bug Fixes
+
+* **blender:** remove extraneous f-string prefix causing ruff F541 lint failure ([3222c7c](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3222c7c5e9bdb9be0069627bf103fe231d3fb880))
+
 ## [0.1.40](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.39...v0.1.40) (2026-07-23)
 
 
