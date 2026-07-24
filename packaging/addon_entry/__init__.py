@@ -413,7 +413,7 @@ class DCCMCP_OT_about(bpy.types.Operator):
         lines: List[str] = [
             f"Add-on:   dcc-mcp-blender {addon_version}",
             f"Core:     dcc-mcp-core {core_version}",
-            f"Protocol: MCP Streamable HTTP (2025-03-26)",
+            "Protocol: MCP Streamable HTTP (2025-03-26)",
             "",
             f"Author:   {bl_info['author']}",
             f"Docs:     {bl_info['doc_url']}",
