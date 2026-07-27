@@ -49,6 +49,21 @@ class BlenderTimerPump:
         """Return whether a timer callback is currently registered."""
         return self._registered_fn is not None
 
+    def verify_installed(self) -> bool:
+        """Check with Blender's timer API whether the callback is still registered.
+
+        After ``bpy.ops.wm.read_factory_settings(use_empty=True)`` Blender wipes all
+        registered timers without notifying our Python objects.  This method queries
+        ``bpy.app.timers.is_registered`` directly so health checks can distinguish
+        "port open but dispatcher dead" from fully functional.
+        """
+        tick_fn = self._registered_fn
+        if tick_fn is None:
+            return False
+        import bpy
+
+        return bpy.app.timers.is_registered(tick_fn)
+
     def install(self, tick_fn: TickFn) -> None:
         """Register ``tick_fn`` with Blender's timer API."""
         if self._registered_fn is not None:

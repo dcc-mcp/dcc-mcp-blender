@@ -159,6 +159,28 @@ class ReadinessBinder:
         if value:
             logger.info("[blender] readiness: dcc-ready — main thread is pumping")
 
+    def revalidate_dispatcher(self) -> bool:
+        """Re-probe the dispatcher after a scene reset that may have wiped timers.
+
+        Resets the ``dcc`` readiness bit and schedules a new main-thread probe.
+        Callers (e.g. ``new_scene``) should have already re-registered the timer
+        pump before invoking this.
+
+        Returns:
+            ``True`` if a probe was scheduled, ``False`` if no dispatcher is bound.
+        """
+        if self.bound_dispatcher is None:
+            return False
+        # Mark dcc as not ready until the new probe completes.
+        self.mark_dcc_ready(False)
+        try:
+            self.dcc_scheduled = bool(self.probe_scheduler(self.bound_dispatcher, self.mark_dcc_ready))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[blender] readiness: revalidate probe scheduler raised: %s", exc)
+            self.mark_dcc_ready()
+            self.dcc_scheduled = True
+        return self.dcc_scheduled
+
 
 def install_readiness(
     server: Any,
