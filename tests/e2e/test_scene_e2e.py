@@ -109,8 +109,7 @@ class TestSceneSkillsE2E:
                     pump = getattr(dispatcher, "pump", None)
                     if pump is not None and hasattr(pump, "verify_installed"):
                         assert pump.verify_installed(), (
-                            "Dispatcher timer is not registered with bpy.app.timers "
-                            "after new_scene"
+                            "Dispatcher timer is not registered with bpy.app.timers after new_scene"
                         )
         except ImportError:
             pass  # server module not importable in --background without addon
