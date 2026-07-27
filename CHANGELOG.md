@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.42](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.41...v0.1.42) (2026-07-27)
+
+
+### Bug Fixes
+
+* preserve MCP dispatcher timer after new_scene factory reset ([62db4e8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/62db4e86fcb122bf6b243ec6ea7063ff579b349b)), closes [#133](https://github.com/dcc-mcp/dcc-mcp-blender/issues/133)
+
 ## [0.1.41](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.40...v0.1.41) (2026-07-24)
 
 
