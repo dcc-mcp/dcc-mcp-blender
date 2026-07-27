@@ -75,6 +75,46 @@ class TestSceneSkillsE2E:
         # Scene should be empty
         assert len(bpy.data.objects) == 0
 
+    def test_new_scene_preserves_dispatcher(self):
+        """Regression: new_scene must not wipe the MCP main-thread dispatcher.
+
+        After ``read_factory_settings(use_empty=True)`` the dispatcher timer
+        is re-registered so subsequent main-thread tool calls succeed without
+        restarting Blender.  Failure mode: second call hangs or times out.
+        """
+        # Prime: create an object so we have something to query.
+        bpy.ops.mesh.primitive_cube_add()
+
+        # Step 1 — new_scene (this internally calls read_factory_settings +
+        # the dispatcher preservation logic).
+        mod_scene = load_skill("blender-scene", "new_scene")
+        result = mod_scene.new_scene()
+        assert result["success"] is True
+
+        # Step 2 — immediate main-thread tool call (must NOT hang).
+        mod_list = load_skill("blender-scene", "list_objects")
+        result2 = mod_list.list_objects()
+        assert result2["success"] is True
+        # Factory-reset scene has zero objects.
+        assert result2["context"]["count"] == 0
+
+        # Step 3 — verify the dispatcher timer is actually installed.
+        try:
+            from dcc_mcp_blender.server import get_server
+
+            server = get_server()
+            if server is not None:
+                dispatcher = getattr(server, "_blender_dispatcher", None)
+                if dispatcher is not None:
+                    pump = getattr(dispatcher, "pump", None)
+                    if pump is not None and hasattr(pump, "verify_installed"):
+                        assert pump.verify_installed(), (
+                            "Dispatcher timer is not registered with bpy.app.timers "
+                            "after new_scene"
+                        )
+        except ImportError:
+            pass  # server module not importable in --background without addon
+
     def test_get_scene_info_structure(self):
         bpy.ops.mesh.primitive_cube_add()
         mod = load_skill("blender-scene", "get_scene_info")
