@@ -263,6 +263,8 @@ tools:
       type: object
       additionalProperties: false
       properties:
+        display_device:
+          type: string
         view_transform:
           type: string
         look:

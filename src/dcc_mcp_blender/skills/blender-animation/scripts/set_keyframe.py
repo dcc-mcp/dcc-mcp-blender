@@ -13,6 +13,7 @@ def set_keyframe(
     object_name: str,
     frame: Optional[int] = None,
     data_paths: Optional[List[str]] = None,
+    interpolation: Optional[str] = None,
 ) -> dict:
     """Insert keyframes on an object.
 
@@ -37,17 +38,29 @@ def set_keyframe(
             scene.frame_set(frame)
         actual_frame = scene.frame_current
 
+        mode = interpolation.upper() if interpolation else None
+        if mode not in {None, "BEZIER", "LINEAR", "CONSTANT"}:
+            return skill_error("Unsupported interpolation", "Use BEZIER, LINEAR, or CONSTANT.")
+        preferences = getattr(getattr(bpy.context, "preferences", None), "edit", None)
+        previous_mode = getattr(preferences, "keyframe_new_interpolation_type", None)
         paths = data_paths or ["location", "rotation_euler", "scale"]
         inserted = []
-        for path in paths:
-            obj.keyframe_insert(data_path=path, frame=actual_frame)
-            inserted.append(path)
+        try:
+            if mode is not None and preferences is not None:
+                preferences.keyframe_new_interpolation_type = mode
+            for path in paths:
+                obj.keyframe_insert(data_path=path, frame=actual_frame)
+                inserted.append(path)
+        finally:
+            if previous_mode is not None:
+                preferences.keyframe_new_interpolation_type = previous_mode
 
         return skill_success(
             f"Keyframe set on {object_name} at frame {actual_frame}",
             object_name=object_name,
             frame=actual_frame,
             data_paths=inserted,
+            interpolation=mode,
             prompt="Keyframe inserted. Use set_current_frame to navigate the timeline.",
         )
     except ImportError:

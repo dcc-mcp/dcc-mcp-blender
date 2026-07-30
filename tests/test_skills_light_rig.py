@@ -84,6 +84,7 @@ class _FakeScene:
         self.world = None
         self.frame_current = 1
         self.view_settings = SimpleNamespace(view_transform="AgX", look="None", exposure=0.0, gamma=1.0)
+        self.display_settings = SimpleNamespace(display_device="sRGB")
 
     def frame_set(self, frame):
         self.frame_current = frame
@@ -424,10 +425,12 @@ class TestLightRig:
         result = load_and_call(
             "blender-light-rig/scripts/set_render_view_transform.py",
             bpy,
+            display_device="Rec.1886 Rec.709 - Display",
             view_transform="Standard",
             exposure=0.25,
         )
 
         assert result["success"] is True
+        assert result["context"]["current"]["display_device"] == "Rec.1886 Rec.709 - Display"
         assert result["context"]["current"]["view_transform"] == "Standard"
         assert result["context"]["current"]["exposure"] == 0.25

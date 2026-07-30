@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._color_management_ops import apply_color_management, color_management_info
+
 RIG_PROP = "dcc_mcp_light_rig"
 ORIGINAL_ENERGY_PROP = "dcc_mcp_original_energy"
 HDRI_ENV_NODE = "DCC MCP HDRI"
@@ -234,15 +236,6 @@ def _world_info(world: Any) -> Dict[str, Any]:
         }
     info["hdri"] = hdri
     return info
-
-
-def _view_settings_info(view_settings: Any) -> Dict[str, Any]:
-    return {
-        "view_transform": getattr(view_settings, "view_transform", None),
-        "look": getattr(view_settings, "look", None),
-        "exposure": getattr(view_settings, "exposure", None),
-        "gamma": getattr(view_settings, "gamma", None),
-    }
 
 
 def _set_vector_socket_value(socket: Any, values: List[float]) -> None:
@@ -640,6 +633,7 @@ def group_lights(light_names: List[str], collection_name: str) -> dict:
 
 
 def set_render_view_transform(
+    display_device: Optional[str] = None,
     view_transform: Optional[str] = None,
     look: Optional[str] = None,
     exposure: Optional[float] = None,
@@ -649,21 +643,18 @@ def set_render_view_transform(
     try:
         import bpy
 
-        view_settings = getattr(bpy.context.scene, "view_settings", None)
-        if view_settings is None:
-            return skill_error("Render view settings unavailable", "Scene view_settings is not available.")
         try:
-            if view_transform is not None:
-                view_settings.view_transform = view_transform
-            if look is not None:
-                view_settings.look = look
-            if exposure is not None:
-                view_settings.exposure = float(exposure)
-            if gamma is not None:
-                view_settings.gamma = float(gamma)
+            current = apply_color_management(
+                bpy.context.scene,
+                display_device=display_device,
+                view_transform=view_transform,
+                look=look,
+                exposure=exposure,
+                gamma=gamma,
+            )
         except Exception as exc:
             return skill_error("Unsupported render view setting", str(exc))
-        return skill_success("Render view transform updated", current=_view_settings_info(view_settings))
+        return skill_success("Render view transform updated", current=current)
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
@@ -685,7 +676,7 @@ def get_lighting_summary() -> dict:
             light_count=len(lights),
             rigs=rigs.get("context", {}).get("rigs", []),
             world=_world_info(getattr(bpy.context.scene, "world", None)),
-            view_settings=_view_settings_info(getattr(bpy.context.scene, "view_settings", None)),
+            view_settings=color_management_info(bpy.context.scene),
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")

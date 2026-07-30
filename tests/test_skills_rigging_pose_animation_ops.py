@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import yaml
@@ -187,6 +188,13 @@ class FakeKeyframe:
 class FakeKeyframes(list):
     def remove(self, point, fast=False):
         super().remove(point)
+
+
+class TailOnlyKeyframes(FakeKeyframes):
+    def remove(self, point, fast=False):
+        if point is not self[-1]:
+            raise RuntimeError("stale keyframe proxy")
+        super().remove(point, fast=fast)
 
 
 class FakeFcurve:
@@ -424,3 +432,17 @@ def test_get_delete_and_bake_animation_keyframes():
     assert baked["success"] is True
     assert baked["context"]["inserted_count"] == 2
     assert obj.keyframe_insert.call_count == 2
+
+
+def test_delete_keyframes_removes_points_back_to_front():
+    obj = FakeMeshObject("Cube")
+    obj.animation_data = MagicMock()
+    fcurve = FakeFcurve("rotation_euler", 2, [])
+    fcurve.keyframe_points = TailOnlyKeyframes([FakeKeyframe(1), FakeKeyframe(361)])
+    obj.animation_data.action = SimpleNamespace(name="Action", fcurves=[fcurve])
+    bpy = _bpy_with_objects([obj])
+
+    result = load_and_call("blender-animation/scripts/delete_keyframes.py", bpy, object_name="Cube")
+
+    assert result["success"] is True
+    assert result["context"]["deleted_count"] == 2

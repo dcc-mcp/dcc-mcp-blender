@@ -14,6 +14,7 @@ def set_render_settings(
     resolution_x: Optional[int] = None,
     resolution_y: Optional[int] = None,
     resolution_percentage: Optional[int] = None,
+    fps: Optional[int] = None,
     samples: Optional[int] = None,
     output_path: Optional[str] = None,
     file_format: Optional[str] = None,
@@ -53,6 +54,10 @@ def set_render_settings(
             render.resolution_y = resolution_y
         if resolution_percentage is not None:
             render.resolution_percentage = resolution_percentage
+        if fps is not None:
+            if fps <= 0:
+                return skill_error("Invalid frame rate", "fps must be greater than zero")
+            render.fps = fps
         if output_path:
             render.filepath = output_path
         if file_format:
@@ -72,6 +77,7 @@ def set_render_settings(
             resolution_x=render.resolution_x,
             resolution_y=render.resolution_y,
             resolution_percentage=render.resolution_percentage,
+            fps=render.fps,
             output_path=render.filepath,
             prompt="Settings applied. Use render_scene to render.",
         )
