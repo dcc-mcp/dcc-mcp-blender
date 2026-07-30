@@ -21,6 +21,7 @@ def test_render_tools_publish_ci_safe_input_contracts():
     settings = tools["set_render_settings"]["input_schema"]["properties"]
     assert "CYCLES" in settings["engine"]["enum"]
     assert settings["resolution_percentage"]["maximum"] == 100
+    assert settings["fps"]["minimum"] == 1
     assert settings["samples"]["minimum"] == 1
 
     capture = tools["capture_viewport"]["input_schema"]
@@ -75,6 +76,12 @@ class TestSetRenderSettings:
         assert result["success"] is True
         assert bpy.context.scene.render.resolution_x == 2560
         assert bpy.context.scene.render.resolution_y == 1440
+
+    def test_set_fps(self):
+        bpy = make_mock_bpy()
+        result = load_and_call("blender-render/scripts/set_render_settings.py", bpy, fps=30)
+        assert result["success"] is True
+        assert result["context"]["fps"] == 30
 
     def test_invalid_engine_returns_error(self):
         bpy = make_mock_bpy()

@@ -110,7 +110,7 @@ def delete_keyframes(
                 if not _fcurve_matches(fcurve, data_path):
                     continue
                 removed_on_curve = 0
-                for point in list(getattr(fcurve, "keyframe_points", [])):
+                for point in reversed(list(getattr(fcurve, "keyframe_points", []))):
                     frame = _frame_from_keyframe(point)
                     if start is not None and (frame < start or frame > end):
                         continue

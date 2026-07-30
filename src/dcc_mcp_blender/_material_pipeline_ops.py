@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._color_management_ops import apply_color_management, color_management_info
 from dcc_mcp_blender._node_graph_ops import (
     _collection_get,
     _ensure_material_nodes,
@@ -263,15 +264,6 @@ def _image_info(image: Any) -> Dict[str, Any]:
         "size": size_value,
         "colorspace": colorspace,
         "source": getattr(image, "source", None),
-    }
-
-
-def _view_settings_info(view_settings: Any) -> Dict[str, Any]:
-    return {
-        "view_transform": getattr(view_settings, "view_transform", None),
-        "look": getattr(view_settings, "look", None),
-        "exposure": getattr(view_settings, "exposure", None),
-        "gamma": getattr(view_settings, "gamma", None),
     }
 
 
@@ -662,10 +654,9 @@ def list_color_spaces() -> dict:
     try:
         import bpy
 
-        view_settings = getattr(bpy.context.scene, "view_settings", None)
         return skill_success(
             "Color management options listed",
-            current=_view_settings_info(view_settings) if view_settings is not None else {},
+            current=color_management_info(bpy.context.scene),
             view_transforms=["AgX", "Filmic", "Standard", "Raw"],
             looks=["None", "Medium High Contrast", "High Contrast", "Medium Low Contrast"],
             image_color_spaces=["sRGB", "Linear", "Non-Color", "Raw"],
@@ -677,6 +668,7 @@ def list_color_spaces() -> dict:
 
 
 def set_color_management(
+    display_device: Optional[str] = None,
     view_transform: Optional[str] = None,
     look: Optional[str] = None,
     exposure: Optional[float] = None,
@@ -686,18 +678,15 @@ def set_color_management(
     try:
         import bpy
 
-        view_settings = getattr(bpy.context.scene, "view_settings", None)
-        if view_settings is None:
-            return skill_error("Color management unavailable", "Scene view_settings is not available.")
-        if view_transform is not None:
-            view_settings.view_transform = view_transform
-        if look is not None:
-            view_settings.look = look
-        if exposure is not None:
-            view_settings.exposure = float(exposure)
-        if gamma is not None:
-            view_settings.gamma = float(gamma)
-        return skill_success("Color management updated", current=_view_settings_info(view_settings))
+        current = apply_color_management(
+            bpy.context.scene,
+            display_device=display_device,
+            view_transform=view_transform,
+            look=look,
+            exposure=exposure,
+            gamma=gamma,
+        )
+        return skill_success("Color management updated", current=current)
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:

@@ -7,6 +7,24 @@ tools:
     read_only: false
     destructive: false
     idempotent: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        frame:
+          type: integer
+        data_paths:
+          type: array
+          items:
+            type: string
+            enum: [location, rotation_euler, scale, hide_viewport, hide_render]
+        interpolation:
+          type: string
+          enum: [BEZIER, LINEAR, CONSTANT]
   - name: set_frame_range
     description: "Set the animation frame range (start and end frames)"
     source_file: scripts/set_frame_range.py

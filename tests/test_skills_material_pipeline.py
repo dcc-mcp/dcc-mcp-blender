@@ -132,6 +132,7 @@ class _FakeScene(dict):
         super().__init__()
         self.render = SimpleNamespace(engine="CYCLES")
         self.view_settings = SimpleNamespace(view_transform="AgX", look="None", exposure=0.0, gamma=1.0)
+        self.display_settings = SimpleNamespace(display_device="sRGB")
 
     def get(self, key, default=None):
         return dict.get(self, key, default)
@@ -286,12 +287,14 @@ class TestMaterialLibrary:
         updated = load_and_call(
             "blender-material-library/scripts/set_color_management.py",
             bpy,
+            display_device="Rec.1886 Rec.709 - Display",
             view_transform="Standard",
             exposure=0.5,
         )
 
         assert listed["success"] is True
         assert updated["success"] is True
+        assert updated["context"]["current"]["display_device"] == "Rec.1886 Rec.709 - Display"
         assert updated["context"]["current"]["view_transform"] == "Standard"
         assert updated["context"]["current"]["exposure"] == 0.5
 

@@ -45,6 +45,10 @@ tools:
           minimum: 1
           maximum: 100
           description: Output resolution percentage.
+        fps:
+          type: integer
+          minimum: 1
+          description: Output frame rate.
         samples:
           type: integer
           minimum: 1

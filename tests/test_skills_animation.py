@@ -29,6 +29,7 @@ class TestSetKeyframe:
         bpy = make_mock_bpy()
         obj = MagicMock()
         bpy.data.objects.get.return_value = obj
+        bpy.context.preferences.edit.keyframe_new_interpolation_type = "BEZIER"
 
         result = load_and_call(
             "blender-animation/scripts/set_keyframe.py",
@@ -36,9 +37,12 @@ class TestSetKeyframe:
             object_name="Cube",
             frame=10,
             data_paths=["location"],
+            interpolation="LINEAR",
         )
         assert result["success"] is True
         assert obj.keyframe_insert.call_count == 1
+        assert result["context"]["interpolation"] == "LINEAR"
+        assert bpy.context.preferences.edit.keyframe_new_interpolation_type == "BEZIER"
 
     def test_object_not_found(self):
         bpy = make_mock_bpy()
