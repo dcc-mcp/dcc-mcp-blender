@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -43,6 +44,27 @@ class TestSetKeyframe:
         assert obj.keyframe_insert.call_count == 1
         assert result["context"]["interpolation"] == "LINEAR"
         assert bpy.context.preferences.edit.keyframe_new_interpolation_type == "BEZIER"
+
+    def test_applies_interpolation_to_inserted_key(self):
+        bpy = make_mock_bpy()
+        key = SimpleNamespace(co=(10.0, 1.0), interpolation="BEZIER")
+        curve = SimpleNamespace(data_path="location", keyframe_points=[key])
+        obj = MagicMock()
+        obj.animation_data = SimpleNamespace(action=SimpleNamespace(fcurves=[curve]))
+        bpy.data.objects.get.return_value = obj
+        bpy.context.scene.frame_current = 10
+
+        result = load_and_call(
+            "blender-animation/scripts/set_keyframe.py",
+            bpy,
+            object_name="Cube",
+            frame=10,
+            data_paths=["location"],
+            interpolation="LINEAR",
+        )
+
+        assert result["success"] is True
+        assert key.interpolation == "LINEAR"
 
     def test_object_not_found(self):
         bpy = make_mock_bpy()

@@ -379,6 +379,7 @@ class TestLightRig:
             {"frame": 1, "rotation": 0.0},
             {"frame": 61, "rotation": 360.0},
         ]
+        assert animated["context"]["replace_existing"] is True
         mapping = bpy.context.scene.world.node_tree.nodes.get("DCC MCP Mapping")
         rotation_socket = mapping.inputs.get("Rotation")
         assert [keyframe["frame"] for keyframe in rotation_socket.keyframes] == [1, 61]
