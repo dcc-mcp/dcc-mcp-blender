@@ -50,6 +50,16 @@ def set_keyframe(
                 preferences.keyframe_new_interpolation_type = mode
             for path in paths:
                 obj.keyframe_insert(data_path=path, frame=actual_frame)
+                if mode is not None:
+                    action = getattr(getattr(obj, "animation_data", None), "action", None)
+                    for fcurve in getattr(action, "fcurves", []):
+                        if getattr(fcurve, "data_path", None) != path:
+                            continue
+                        for key in getattr(fcurve, "keyframe_points", []):
+                            co = getattr(key, "co", ())
+                            key_frame = float(co.x if hasattr(co, "x") else co[0])
+                            if abs(key_frame - actual_frame) < 1e-4:
+                                key.interpolation = mode
                 inserted.append(path)
         finally:
             if previous_mode is not None:

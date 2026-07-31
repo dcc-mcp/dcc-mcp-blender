@@ -249,17 +249,12 @@ def _set_vector_socket_value(socket: Any, values: List[float]) -> None:
             return
 
 
-def _set_socket_keyframe_interpolation(
-    node_tree: Any,
-    socket: Any,
-    frames: List[int],
-    interpolation: str,
-) -> None:
+def _find_socket_fcurve(node_tree: Any, socket: Any) -> Any:
     animation_data = getattr(node_tree, "animation_data", None)
     action = getattr(animation_data, "action", None)
     fcurves = getattr(action, "fcurves", None)
     if fcurves is None:
-        return
+        return None
     data_path = None
     path_from_id = getattr(socket, "path_from_id", None)
     if callable(path_from_id):
@@ -280,6 +275,26 @@ def _set_socket_keyframe_interpolation(
             if HDRI_MAPPING_NODE in candidate_path and getattr(candidate, "array_index", None) == 2:
                 fcurve = candidate
                 break
+    return fcurve
+
+
+def _remove_socket_animation(node_tree: Any, socket: Any) -> None:
+    fcurve = _find_socket_fcurve(node_tree, socket)
+    animation_data = getattr(node_tree, "animation_data", None)
+    action = getattr(animation_data, "action", None)
+    fcurves = getattr(action, "fcurves", None)
+    remover = getattr(fcurves, "remove", None)
+    if fcurve is not None and callable(remover):
+        remover(fcurve)
+
+
+def _set_socket_keyframe_interpolation(
+    node_tree: Any,
+    socket: Any,
+    frames: List[int],
+    interpolation: str,
+) -> None:
+    fcurve = _find_socket_fcurve(node_tree, socket)
     if fcurve is None:
         return
     expected_frames = {int(frame) for frame in frames}
@@ -452,6 +467,7 @@ def animate_hdri_rotation(
     start_rotation: float = 0.0,
     end_rotation: float = 360.0,
     interpolation: str = "LINEAR",
+    replace_existing: bool = True,
 ) -> dict:
     """Animate the existing HDRI mapping rotation for a fixed-camera LookDev pass."""
     try:
@@ -492,6 +508,8 @@ def animate_hdri_rotation(
             {"frame": end, "rotation": end_degrees},
         ]
         try:
+            if replace_existing:
+                _remove_socket_animation(node_tree, rotation_socket)
             for keyframe in keyframes:
                 _set_vector_socket_value(
                     rotation_socket,
@@ -523,6 +541,7 @@ def animate_hdri_rotation(
             "HDRI rotation animated",
             keyframes=keyframes,
             interpolation=mode,
+            replace_existing=bool(replace_existing),
             mapping_node=HDRI_MAPPING_NODE,
         )
     except ImportError:
