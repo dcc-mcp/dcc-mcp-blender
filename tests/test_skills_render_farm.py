@@ -87,6 +87,20 @@ def _load_with_urllib_mock(
 class TestFlamencoEndpoints:
     """Verify that the right Flamenco v3 API URLs and HTTP verbs are used."""
 
+    def test_flamenco_respects_blender_online_access(self):
+        urllib_mock = MagicMock()
+        disabled_bpy = types.SimpleNamespace(app=types.SimpleNamespace(online_access=False))
+
+        result = _load_with_urllib_mock(
+            "blender-render-farm/scripts/render_farm_status.py",
+            urllib_mock,
+            bpy_mock=disabled_bpy,
+        )
+
+        assert result["success"] is False
+        assert "Online access is disabled" in result["message"]
+        urllib_mock.urlopen.assert_not_called()
+
     def test_render_farm_status_hits_status_and_workers_endpoints(self):
         """GET /api/v3/status and GET /api/v3/worker-mgt/workers (not /workers)."""
         urllib_mock = MagicMock()

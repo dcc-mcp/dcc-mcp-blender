@@ -7,7 +7,7 @@ schema_version = "1.0.0"
 id = "dcc_mcp_blender"
 version = "0.1.42"
 name = "DCC MCP Blender"
-tagline = "MCP Streamable HTTP server inside Blender for AI-driven workflows"
+tagline = "MCP HTTP server inside Blender for AI-driven workflows"
 maintainer = "Long Hao <hal.long@outlook.com>"
 type = "add-on"
 
@@ -16,7 +16,10 @@ tags = ["System", "Pipeline", "Animation"]
 # Minimum Blender version for the Extensions + wheels workflow (see Blender manual).
 blender_version_min = "4.2.0"
 
-license = ["SPDX:MIT"]
+# The source repository remains MIT. Blender Extensions accepts add-ons under
+# GPL-compatible terms, so the assembled marketplace archive is GPL-3.0-or-later
+# and retains the bundled MIT notice.
+license = ["SPDX:GPL-3.0-or-later"]
 
 location = "Top Bar > DCC MCP"
 description = "Embeds an MCP HTTP server (2025-03-26) for Claude, Cursor, and other MCP clients."

@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 from dcc_mcp_core import DccServerOptions, HostExecutionBridge
 from dcc_mcp_core.server_base import DccServerBase
 
-from dcc_mcp_blender import (
+from . import (
     _capability_manifest,
     _env,
     _project_tools,
@@ -38,9 +38,9 @@ from dcc_mcp_blender import (
     _resources,
     _semantic_index,
 )
-from dcc_mcp_blender.__version__ import __version__
-from dcc_mcp_blender.context_snapshot import BlenderContextSnapshotProvider
-from dcc_mcp_blender.host import BlenderInlineCallableDispatcher
+from .__version__ import __version__
+from .context_snapshot import BlenderContextSnapshotProvider
+from .host import BlenderInlineCallableDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class BlenderMcpServer(DccServerBase):
                 # Default to a UI or standalone dispatcher if none provided
                 # (essential for workers started via CLI)
                 try:
-                    from dcc_mcp_blender.dispatcher import create_dispatcher
+                    from .dispatcher import create_dispatcher
 
                     dispatcher = create_dispatcher(ui_mode=not self.is_background())
                 except Exception as exc:  # noqa: BLE001

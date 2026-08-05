@@ -22,7 +22,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from dcc_mcp_blender import _env
+from . import _env
 
 logger = logging.getLogger(__name__)
 

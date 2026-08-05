@@ -6,7 +6,7 @@ from typing import Any
 
 from dcc_mcp_core import PyPumpedDispatcher
 
-from dcc_mcp_blender.host import BlenderTimerPump, BlenderUiDispatcher
+from ..host import BlenderTimerPump, BlenderUiDispatcher
 
 DEFAULT_BUDGET_MS = 200
 OVERRUN_MULTIPLIER = 1.0
@@ -23,7 +23,7 @@ def create_dispatcher(
     if ui_mode:
         return BlenderUiDispatcher(timeout_ms=timeout_ms)
 
-    from dcc_mcp_blender.dispatcher.standalone import BlenderStandaloneDispatcher
+    from .standalone import BlenderStandaloneDispatcher
 
     return BlenderStandaloneDispatcher(timeout_ms=timeout_ms)
 

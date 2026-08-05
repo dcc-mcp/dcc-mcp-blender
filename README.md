@@ -51,6 +51,14 @@ attach a stable session id with `--meta-json`, query `dcc-mcp-cli stats --range 
 
 > Blender addon for the [DCC Model Context Protocol (MCP)](https://github.com/dcc-mcp/dcc-mcp-core) ecosystem — embeds a Streamable HTTP MCP server directly inside Blender, letting any MCP-compatible AI client drive your 3D workflow.
 
+## Blender Extensions distribution
+
+The source repository and PyPI package are MIT licensed. The ZIP submitted to
+[Blender Extensions](https://extensions.blender.org/) is GPL-3.0-or-later, as
+required for add-ons listed there; it also retains the bundled MIT notice.
+Download the platform-specific ZIP from the GitHub Release and install it with
+**Preferences → Get Extensions → Install from Disk**.
+
 [![PyPI version](https://badge.fury.io/py/dcc-mcp-blender.svg)](https://badge.fury.io/py/dcc-mcp-blender)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/)
 [![PyPI - Wheel](https://img.shields.io/pypi/wheel/dcc-mcp-blender.svg)](https://pypi.org/project/dcc-mcp-blender/#files)
@@ -210,7 +218,7 @@ options below are for manual installation.
 
 Release ZIPs are Blender 4.2+ Extension packages. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
-The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
+The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. Build locally with `just blender-addon-zip` for the host platform, or `just blender-addon-zip win64 dist_addon` (replace `win64` with `linux` or `macos`) for an explicit target. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
 
 ### Option 2 — Install via pip (for scripts / CI)
 

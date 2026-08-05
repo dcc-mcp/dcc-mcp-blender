@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import pathlib
 import re
 import sys
 import zipfile
-from types import SimpleNamespace
+from http.client import IncompleteRead
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -61,6 +63,44 @@ def test_addon_entry_bl_info_version_is_static_tuple_literal():
     assert ast.literal_eval(version_node) == _parse_version_tuple(_get_addon_version())
 
 
+def test_manifest_tagline_meets_blender_extensions_limit():
+    manifest = (ROOT / "packaging" / "addon_entry" / "blender_manifest.toml").read_text(encoding="utf-8")
+    tagline = re.search(r'^tagline\s*=\s*"([^"]+)"', manifest, re.MULTILINE)
+
+    assert tagline is not None
+    assert len(tagline.group(1)) <= 64
+
+
+def test_extension_namespace_import_does_not_create_top_level_alias(monkeypatch):
+    """Extension startup must keep its bundled modules in Blender's namespace."""
+    extension_name = "bl_ext.user_default.dcc_mcp_blender"
+    source_root = ROOT / "src" / "dcc_mcp_blender"
+    fake_bpy = SimpleNamespace(types=SimpleNamespace(Operator=object, Menu=object))
+
+    for package in ("bl_ext", "bl_ext.user_default"):
+        module = ModuleType(package)
+        module.__path__ = []
+        monkeypatch.setitem(sys.modules, package, module)
+    for name in tuple(sys.modules):
+        if name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender."):
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+
+    spec = importlib.util.spec_from_file_location(
+        extension_name,
+        ADDON_ENTRY,
+        submodule_search_locations=[str(source_root)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, extension_name, module)
+    spec.loader.exec_module(module)
+
+    server = module._addon_module("server")
+
+    assert server.__name__ == f"{extension_name}.server"
+    assert not any(name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender.") for name in sys.modules)
+
+
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
     """The add-on package root must directly contain ``server.py`` and skills."""
     assemble_zip = _load_assemble_zip_module()
@@ -69,6 +109,11 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
 
     monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda min_version="0.19.17": "0.19.17")
     monkeypatch.setattr(assemble_zip, "download_core_wheel", lambda version, platform, dest_dir: fake_wheel)
+    monkeypatch.setattr(
+        assemble_zip,
+        "download_gpl_distribution_license",
+        lambda path: path.write_text("GNU GENERAL PUBLIC LICENSE", encoding="utf-8"),
+    )
 
     zip_path = assemble_zip.assemble(platform="win64", output_dir=tmp_path)
 
@@ -81,6 +126,8 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "server.py" in names
     assert "host.py" in names
     assert "skills/blender-scene/SKILL.md" in names
+    assert "COPYING" in names
+    assert "LICENSE-MIT" in names
     assert not any(name.startswith("dcc_mcp_blender/") for name in names)
     assert [name for name in sorted(names) if name.startswith("wheels/dcc_mcp_core-")] == [
         "wheels/dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"
@@ -97,23 +144,78 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert isinstance(addon_version_node, ast.Tuple)
     assert ast.literal_eval(addon_version_node) == _parse_version_tuple(_get_addon_version())
     assert _manifest_wheels(manifest) == ["wheels/dcc_mcp_core-0.19.17-cp38-abi3-win_amd64.whl"]
+    assert 'license = ["SPDX:GPL-3.0-or-later"]' in manifest
+    assert 'platforms = ["windows-x64"]' in manifest
     assert manifest.index("wheels = [") < manifest.index("[permissions]")
 
     start_server = next(
         node for node in addon_tree.body if isinstance(node, ast.FunctionDef) and node.name == "_start_server_with_host"
     )
-    gate_call = next(
-        node
-        for node in ast.walk(start_server)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "require_compatible_core"
+    start_source = ast.get_source_segment(addon_init, start_server)
+    assert start_source.index('_addon_module("_core_compat").require_compatible_core()') < start_source.index(
+        '_addon_module("host")'
     )
-    core_import_lines = [
-        node.lineno
-        for node in ast.walk(start_server)
-        if isinstance(node, ast.ImportFrom) and node.module in {"dcc_mcp_blender.host", "dcc_mcp_blender.server"}
+    assert "dcc_mcp_blender.host" not in start_source
+    assert "dcc_mcp_blender.server" not in start_source
+
+
+def test_manifest_platforms_follow_the_selected_wheel():
+    assemble_zip = _load_assemble_zip_module()
+
+    assert assemble_zip._manifest_platforms_for_wheel("core-cp38-abi3-win_amd64.whl") == ["windows-x64"]
+    assert assemble_zip._manifest_platforms_for_wheel("core-cp38-abi3-manylinux_2_17_x86_64.whl") == ["linux-x64"]
+    assert assemble_zip._manifest_platforms_for_wheel("core-cp38-abi3-macosx_11_0_universal2.whl") == [
+        "macos-x64",
+        "macos-arm64",
     ]
-    assert core_import_lines
-    assert gate_call.lineno < min(core_import_lines)
+
+
+def test_distribution_license_rejects_unexpected_download(tmp_path, monkeypatch):
+    assemble_zip = _load_assemble_zip_module()
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read():
+            return b"unexpected"
+
+    monkeypatch.setattr(assemble_zip.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(RuntimeError, match="SHA-256"):
+        assemble_zip.download_gpl_distribution_license(tmp_path / "COPYING")
+
+
+def test_distribution_license_retries_incomplete_download(tmp_path, monkeypatch):
+    assemble_zip = _load_assemble_zip_module()
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read():
+            return b"complete"
+
+    class IncompleteResponse(Response):
+        @staticmethod
+        def read():
+            raise IncompleteRead(b"partial", 8)
+
+    responses = iter((IncompleteResponse(), Response()))
+    monkeypatch.setattr(assemble_zip.urllib.request, "urlopen", lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr(assemble_zip, "GPL_3_0_SHA256", hashlib.sha256(b"complete").hexdigest())
+
+    destination = tmp_path / "COPYING"
+    assemble_zip.download_gpl_distribution_license(destination)
+    assert destination.read_bytes() == b"complete"
 
 
 def test_validate_core_wheel_rejects_removed_capture_helper(tmp_path):
