@@ -1,5 +1,7 @@
 # dcc-mcp-blender
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fdcc-mcp%2Fdcc-mcp-blender.svg)](https://mcptoplist.com/server/glama%2Fdcc-mcp%2Fdcc-mcp-blender)
+
 <p align="center">
   <img src="docs/assets/dcc-mcp-blender.svg" alt="DCC-MCP · BLENDER" width="600">
 </p>
