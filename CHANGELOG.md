@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.43](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.42...v0.1.43) (2026-08-05)
+
+
+### Features
+
+* add ocio turntable controls ([a93c989](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a93c9897e517733026b024c76f30e3cdb5a92f46))
+
+
+### Bug Fixes
+
+* prepare Blender Extensions distribution ([4c0887b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/4c0887bdb5e8b94b7780bf2db4f3af3dbf9ca0f5))
+* preserve native lookdev animation curves ([bdf0636](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bdf0636cea6e4e589274e103d6d9c3e21aae19d2))
+
 ## [0.1.42](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.41...v0.1.42) (2026-07-27)
 
 
