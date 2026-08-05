@@ -24,7 +24,7 @@ bl_info = {
     "version": (
         0,  # x-release-please-major
         1,  # x-release-please-minor
-        42,  # x-release-please-patch
+        43,  # x-release-please-patch
     ),
     "blender": (4, 2, 0),
     "location": "Top Bar > DCC MCP",
@@ -520,4 +520,4 @@ def unregister() -> None:
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
 
 
-__addon_version__ = "0.1.42"  # x-release-please-version
+__addon_version__ = "0.1.43"  # x-release-please-version
