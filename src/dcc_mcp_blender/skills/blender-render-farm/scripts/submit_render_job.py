@@ -14,6 +14,14 @@ from typing import Optional
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _online_access_enabled() -> bool:
+    try:
+        import bpy  # noqa: PLC0415
+    except ImportError:
+        return True
+    return bool(getattr(bpy.app, "online_access", True))
+
+
 def submit_render_job(
     farm: str = "flamenco",
     job_name: Optional[str] = None,
@@ -244,6 +252,8 @@ def _submit_to_flamenco(
 
         server_url = flamenco_server_url or os.environ.get("FLAMENCO_SERVER_URL", "http://localhost:8080")
         server_url = server_url.rstrip("/")
+        if not _online_access_enabled():
+            return skill_error("Online access is disabled", "Enable Allow Online Access in Blender Preferences.")
 
         check_dcc_cancelled()
 

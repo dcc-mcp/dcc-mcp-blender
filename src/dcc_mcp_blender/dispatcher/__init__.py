@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 # Import local modules
-from dcc_mcp_blender.dispatcher.cancel import check_blender_cancelled
-from dcc_mcp_blender.dispatcher.job import DEFAULT_JOB_TIMEOUT_MS, _current_job, _JobEntry
-from dcc_mcp_blender.dispatcher.pump import (
+from .cancel import check_blender_cancelled
+from .job import DEFAULT_JOB_TIMEOUT_MS, _current_job, _JobEntry
+from .pump import (
     DEFAULT_BUDGET_MS,
     OVERRUN_MULTIPLIER,
     BlenderTimerPump,
@@ -15,8 +15,8 @@ from dcc_mcp_blender.dispatcher.pump import (
     create_dispatcher,
     create_pumped_dispatcher,
 )
-from dcc_mcp_blender.dispatcher.standalone import BlenderStandaloneDispatcher
-from dcc_mcp_blender.dispatcher.ui import BlenderUiDispatcher
+from .standalone import BlenderStandaloneDispatcher
+from .ui import BlenderUiDispatcher
 
 __all__ = [
     # Cancellation

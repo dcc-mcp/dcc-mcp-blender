@@ -8,7 +8,8 @@ This script:
    ``blender_manifest.toml`` under ``wheels = [...]`` so Blender installs it into
    the extension's isolated ``site-packages`` (no ``sys.path`` hacks, no loose
    ``dcc_mcp_core/`` tree — required for Blender 4.2+ extensions policy).
-4. Bundles the adapter modules and skills directly in the add-on package root.
+4. Bundles the adapter modules, skills, and required distribution licenses at
+   the add-on package root.
 5. Produces ``dcc_mcp_blender_addon_{platform}_v{version}.zip`` — install via
    **Edit → Preferences → Extensions → Install from Disk** (recommended) or
    Blender's extension package installer.
@@ -16,8 +17,8 @@ This script:
 Version strings in ``pyproject.toml``, ``src/dcc_mcp_blender/__version__.py``, and
 ``packaging/addon_entry/blender_manifest.toml`` are maintained by **release-please**
 only; this script reads ``pyproject.toml`` for the ZIP filename, copies the manifest
-from ``addon_entry/``, then appends the ``wheels = [...]`` entry for the downloaded
-``dcc-mcp-core`` wheel basename.
+from ``addon_entry/``, then appends the ``wheels = [...]`` and ``platforms = [...]``
+entries for the downloaded ``dcc-mcp-core`` wheel basename.
 
 Usage::
 
@@ -29,12 +30,15 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import pathlib
 import re
 import shutil
 import tempfile
 import urllib.request
 import zipfile
+from http.client import IncompleteRead
+from urllib.error import URLError
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
@@ -53,6 +57,8 @@ REMOVED_CAPTURE_HELPER = "dcc-mcp-capture-helper.exe"
 # Match platform first, then prefer stable abi3 builds.
 
 PYPI_URL = "https://pypi.org/pypi/{package}/json"
+GPL_3_0_URL = "https://raw.githubusercontent.com/spdx/license-list-data/60fbd82486310a2d0d70dd4d2cca1165c14d59b5/text/GPL-3.0-only.txt"
+GPL_3_0_SHA256 = "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0"
 
 # Never bundle mistaken local trees (e.g. accidental wheel extracts under src/).
 _SKIPPED_TOP_LEVEL_NAMES = frozenset({"dcc_mcp_blender", "dcc_mcp_core", "__pycache__", "__init__.py"})
@@ -144,9 +150,9 @@ def _wheel_matches_platform(filename: str, platform: str) -> bool:
     if not filename.endswith(".whl"):
         return False
     if platform == "win64":
-        return "win_amd64" in filename or "win32" in filename
+        return "win_amd64" in filename
     if platform == "linux":
-        return "linux" in filename and ("x86_64" in filename or "aarch64" in filename)
+        return "linux" in filename and "x86_64" in filename
     if platform == "macos":
         return "macosx" in filename
     return False
@@ -222,6 +228,37 @@ def validate_core_wheel(wheel_path: pathlib.Path) -> None:
     if removed_members:
         members = ", ".join(sorted(removed_members))
         raise RuntimeError(f"Refusing to bundle dcc-mcp-core wheel containing the removed capture helper ({members})")
+
+
+def _manifest_platforms_for_wheel(filename: str) -> list[str]:
+    """Return the Blender Extension platforms supported by a wheel filename."""
+    if "win_amd64" in filename:
+        return ["windows-x64"]
+    if "linux" in filename and "x86_64" in filename:
+        return ["linux-x64"]
+    if "macosx" in filename:
+        platforms = []
+        if "universal2" in filename or "x86_64" in filename:
+            platforms.append("macos-x64")
+        if "universal2" in filename or "arm64" in filename:
+            platforms.append("macos-arm64")
+        return platforms
+    raise RuntimeError(f"Unsupported wheel platform for Blender Extensions: {filename}")
+
+
+def download_gpl_distribution_license(dest_path: pathlib.Path) -> None:
+    """Download the GPL text that must accompany the marketplace archive."""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(GPL_3_0_URL, timeout=30) as response:  # noqa: S310
+                license_text = response.read()
+            break
+        except (IncompleteRead, URLError):
+            if attempt == 2:
+                raise
+    if hashlib.sha256(license_text).hexdigest() != GPL_3_0_SHA256:
+        raise RuntimeError("Downloaded GPL-3.0 text did not match its expected SHA-256")
+    dest_path.write_bytes(license_text)
 
 
 def extract_wheel(wheel_path: pathlib.Path, dest_dir: pathlib.Path) -> None:
@@ -303,6 +340,7 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         # 3) Stage add-on root: ``__init__.py`` + ``blender_manifest.toml`` (4.2+ extensions)
         _stage_addon_entry(addon_dir, version=version)
         _inject_wheels_into_manifest(addon_dir / "blender_manifest.toml", [wheel.name])
+        _inject_platforms_into_manifest(addon_dir / "blender_manifest.toml", _manifest_platforms_for_wheel(wheel.name))
 
         # 4) Zip the extension package contents at archive root. Blender's
         # extension installer expects ``blender_manifest.toml`` at ZIP root.
@@ -326,6 +364,19 @@ def _inject_wheels_into_manifest(manifest_path: pathlib.Path, wheel_basenames: l
     text = re.sub(r"\n+wheels\s*=\s*\[.*?\]\s*", "\n", text, flags=re.DOTALL)
     lines = [f'    "./wheels/{name}"' for name in wheel_basenames]
     block = "\nwheels = [\n" + ",\n".join(lines) + ",\n]\n"
+    first_table = re.search(r"\n\[[^\]]+\]", text)
+    if first_table is None:
+        rendered = text.rstrip() + block
+    else:
+        rendered = text[: first_table.start()].rstrip() + block + text[first_table.start() :]
+    manifest_path.write_text(rendered, encoding="utf-8")
+
+
+def _inject_platforms_into_manifest(manifest_path: pathlib.Path, platforms: list[str]) -> None:
+    """Write the exact Blender Extension platforms supplied by bundled wheels."""
+    text = manifest_path.read_text(encoding="utf-8")
+    text = re.sub(r"\n+platforms\s*=\s*\[.*?\]\s*", "\n", text, flags=re.DOTALL)
+    block = "\nplatforms = [" + ", ".join(f'"{platform}"' for platform in platforms) + "]\n"
     first_table = re.search(r"\n\[[^\]]+\]", text)
     if first_table is None:
         rendered = text.rstrip() + block
@@ -362,6 +413,8 @@ def _stage_addon_entry(addon_dir: pathlib.Path, *, version: str) -> None:
     shutil.copy2(init_src, addon_dir / "__init__.py")
     _render_static_bl_info_version(addon_dir / "__init__.py", version)
     shutil.copy2(manifest_src, addon_dir / "blender_manifest.toml")
+    download_gpl_distribution_license(addon_dir / "COPYING")
+    shutil.copy2(PACKAGE_ROOT / "LICENSE", addon_dir / "LICENSE-MIT")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────

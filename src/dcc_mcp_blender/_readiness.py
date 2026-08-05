@@ -28,7 +28,7 @@ from typing import Any, Callable, Optional
 
 from dcc_mcp_core.readiness import AdapterReadinessBinder
 
-from dcc_mcp_blender import _env
+from . import _env
 
 logger = logging.getLogger(__name__)
 

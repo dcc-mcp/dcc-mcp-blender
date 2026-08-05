@@ -279,10 +279,11 @@ _blender-addons-dir := _blender-scripts-dir + "/addons"
 @blender-link-win:
     powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-link-win.ps1 -BlenderVersion {{ blender-version }}
 
-# Build a Blender-installable addon ZIP (bundles dcc-mcp-core from PyPI). Output: dist_addon/
-# Pick platform from host OS — run with explicit platform: `python packaging/assemble_zip.py --platform win64`
-blender-addon-zip:
-    python packaging/assemble_zip.py --platform {{ if os() == "windows" { "win64" } else if os() == "macos" { "macos" } else { "linux" } }} --output-dir dist_addon/
+# Build a Blender-installable addon ZIP (bundles dcc-mcp-core from PyPI).
+# Usage: `just blender-addon-zip [platform] [output_dir]`.
+blender-addon-platform := if os() == "windows" { "win64" } else if os() == "macos" { "macos" } else { "linux" }
+blender-addon-zip platform=blender-addon-platform output_dir="dist_addon":
+    python packaging/assemble_zip.py --platform {{ platform }} --output-dir {{ output_dir }}
 
 # Remove dev symlinks and addon files
 @blender-unlink:

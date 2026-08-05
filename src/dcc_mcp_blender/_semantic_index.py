@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any, List, Optional, Sequence
 
-from dcc_mcp_blender import _env
+from . import _env
 
 logger = logging.getLogger(__name__)
 

@@ -7,20 +7,14 @@ extension manifest for Blender 4.2+ extension workflows.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
-import sys
 import webbrowser
 from contextlib import suppress
 from typing import Any, List, Tuple
 
 import bpy
-
-# Do not mutate sys.path — Blender extensions forbid injecting the add-on root into
-# sys.path (policy violation). Dependencies are loaded via blender_manifest.toml wheels.
-_self_module = sys.modules.get(__name__)
-if __name__ != "dcc_mcp_blender" and globals().get("__path__") is not None and _self_module is not None:
-    sys.modules.setdefault("dcc_mcp_blender", _self_module)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +42,12 @@ _server_dispatcher: Any = None
 _server_host: Any = None
 
 
+def _addon_module(name: str):
+    """Import a bundled module through the active add-on package namespace."""
+    package = __package__ if (__package__ or "").startswith("bl_ext.") else "dcc_mcp_blender"
+    return importlib.import_module(f"{package}.{name}")
+
+
 def _env_port(name: str, default: int) -> int:
     """Read a TCP port while preserving zero as the random-port request."""
     raw = os.environ.get(name, "").strip()
@@ -71,12 +71,13 @@ def _start_server_with_host():
     # The release ZIP replaces the library package entrypoint with this Blender
     # add-on entrypoint. Enforce the same compatibility contract here before
     # importing host/server modules that bind dcc-mcp-core integrations.
-    from dcc_mcp_blender._core_compat import require_compatible_core  # noqa: PLC0415
-
-    require_compatible_core()
-
-    from dcc_mcp_blender.host import BlenderUiDispatcher  # noqa: PLC0415
-    from dcc_mcp_blender.server import get_server, start_server, stop_server  # noqa: PLC0415
+    _addon_module("_core_compat").require_compatible_core()
+    host = _addon_module("host")
+    server_module = _addon_module("server")
+    BlenderUiDispatcher = host.BlenderUiDispatcher
+    get_server = server_module.get_server
+    start_server = server_module.start_server
+    stop_server = server_module.stop_server
 
     existing = get_server()
     if existing is not None and getattr(existing, "is_running", False):
@@ -110,9 +111,7 @@ def _stop_server_with_host() -> None:
 
     host = _server_host
     try:
-        from dcc_mcp_blender.server import stop_server  # noqa: PLC0415
-
-        stop_server()
+        _addon_module("server").stop_server()
     finally:
         if host is not None:
             with suppress(Exception):
@@ -123,9 +122,7 @@ def _stop_server_with_host() -> None:
 
 def _running_server():
     try:
-        from dcc_mcp_blender.server import get_server  # noqa: PLC0415
-
-        return get_server()
+        return _addon_module("server").get_server()
     except Exception as exc:  # noqa: BLE001
         logger.debug("get_server failed: %s", exc)
         return None

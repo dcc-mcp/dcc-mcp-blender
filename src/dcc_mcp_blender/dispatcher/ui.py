@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from dcc_mcp_blender.host import BlenderUiDispatcher
+from ..host import BlenderUiDispatcher
 
 __all__ = ["BlenderUiDispatcher"]
