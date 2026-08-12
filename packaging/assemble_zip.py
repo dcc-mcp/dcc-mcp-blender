@@ -48,10 +48,9 @@ ADDON_ENTRY_DIR = PACKAGE_ROOT / "packaging" / "addon_entry"
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 
 # Must stay in sync with ``pyproject.toml`` dependency floor.
-MIN_CORE_VERSION = "0.19.63"
+MIN_CORE_VERSION = "0.20.0"
 CORE_PACKAGE = "dcc-mcp-core"
 ADDON_PLATFORMS = ("win64", "linux", "macos")
-REMOVED_CAPTURE_HELPER = "dcc-mcp-capture-helper.exe"
 
 # PyPI ships ``cp38-abi3-*`` wheels (stable ABI) for win/linux/macos — not cp311-tagged wheels.
 # Match platform first, then prefer stable abi3 builds.
@@ -213,23 +212,6 @@ def download_core_wheel(version: str, platform: str, dest_dir: pathlib.Path) -> 
     return dest
 
 
-def validate_core_wheel(wheel_path: pathlib.Path) -> None:
-    """Reject Core wheels containing the retired standalone capture helper."""
-    try:
-        with zipfile.ZipFile(wheel_path) as archive:
-            removed_members = [
-                name
-                for name in archive.namelist()
-                if pathlib.PurePosixPath(name.replace("\\", "/")).name.lower() == REMOVED_CAPTURE_HELPER
-            ]
-    except zipfile.BadZipFile as exc:
-        raise RuntimeError(f"Invalid dcc-mcp-core wheel: {wheel_path.name}") from exc
-
-    if removed_members:
-        members = ", ".join(sorted(removed_members))
-        raise RuntimeError(f"Refusing to bundle dcc-mcp-core wheel containing the removed capture helper ({members})")
-
-
 def _manifest_platforms_for_wheel(filename: str) -> list[str]:
     """Return the Blender Extension platforms supported by a wheel filename."""
     if "win_amd64" in filename:
@@ -330,7 +312,6 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         core_version = resolve_core_version()
         wheels_dir = tmp_dir / "wheels"
         wheel = download_core_wheel(core_version, platform, wheels_dir)
-        validate_core_wheel(wheel)
         wheels_out = addon_dir / "wheels"
         wheels_out.mkdir(parents=True, exist_ok=True)
         staged_wheel = wheels_out / wheel.name

@@ -218,47 +218,6 @@ def test_distribution_license_retries_incomplete_download(tmp_path, monkeypatch)
     assert destination.read_bytes() == b"complete"
 
 
-def test_validate_core_wheel_rejects_removed_capture_helper(tmp_path):
-    assemble_zip = _load_assemble_zip_module()
-    wheel = tmp_path / "dcc_mcp_core-0.19.63-cp38-abi3-win_amd64.whl"
-    _write_fake_core_wheel(
-        wheel,
-        ("dcc_mcp_core/bin/dcc-mcp-capture-helper.exe",),
-    )
-
-    with pytest.raises(RuntimeError, match="removed capture helper"):
-        assemble_zip.validate_core_wheel(wheel)
-
-
-def test_validate_core_wheel_accepts_current_ui_control_host(tmp_path):
-    assemble_zip = _load_assemble_zip_module()
-    wheel = tmp_path / "dcc_mcp_core-0.19.69-cp38-abi3-win_amd64.whl"
-    _write_fake_core_wheel(
-        wheel,
-        ("dcc_mcp_core/bin/dcc-mcp-ui-control-host.exe",),
-    )
-
-    assemble_zip.validate_core_wheel(wheel)
-
-
-def test_assemble_rejects_core_wheel_with_removed_capture_helper(tmp_path, monkeypatch):
-    assemble_zip = _load_assemble_zip_module()
-    wheel = tmp_path / "dcc_mcp_core-0.19.63-cp38-abi3-win_amd64.whl"
-    _write_fake_core_wheel(
-        wheel,
-        ("dcc_mcp_core/bin/dcc-mcp-capture-helper.exe",),
-    )
-    monkeypatch.setattr(assemble_zip, "resolve_core_version", lambda: "0.19.63")
-    monkeypatch.setattr(
-        assemble_zip,
-        "download_core_wheel",
-        lambda version, platform, dest_dir: wheel,
-    )
-
-    with pytest.raises(RuntimeError, match="removed capture helper"):
-        assemble_zip.assemble(platform="win64", output_dir=tmp_path)
-
-
 def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(monkeypatch):
     """GUI add-on enable must wire the core-backed UI dispatcher before serving tools."""
     registered_classes = []

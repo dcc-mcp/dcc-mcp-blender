@@ -18,9 +18,8 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
 
 ## 0. Windows Security Gate
 
-- [ ] Confirm the nested Core wheel does not contain the retired
-  `dcc-mcp-capture-helper.exe`. The package assembler enforces this
-  automatically and must fail closed if the file is present.
+- [ ] Confirm native UI Control resolves standalone `dcc-cua` 0.4.0 or newer;
+  the Blender ZIP must not bundle a separate capture or input helper.
 - [ ] Scan the final Windows release ZIP on a clean, Defender-enabled Windows
   host and record the Defender engine/signature versions with the result.
 - [ ] Do not publish when Defender reports a detection. Preserve the exact ZIP

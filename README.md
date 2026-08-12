@@ -69,7 +69,7 @@ Download the platform-specific ZIP from the GitHub Release and install it with
 [![GitHub release downloads](https://img.shields.io/github/downloads/dcc-mcp/dcc-mcp-blender/total.svg?label=release%20downloads)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
-[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.19.63-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-core)
+[![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.20.0-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-core)
 [![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -219,6 +219,10 @@ options below are for manual installation.
 Release ZIPs are Blender 4.2+ Extension packages. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
 The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. Build locally with `just blender-addon-zip` for the host platform, or `just blender-addon-zip win64 dist_addon` (replace `win64` with `linux` or `macos`) for an explicit target. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
+
+Native UI Control requires standalone `dcc-cua` 0.4.0 or newer on `PATH` (or
+`DCC_MCP_CUA_BINARY`). Core owns the `ui_control__*` contract; the Blender ZIP
+does not bundle a second capture or input helper.
 
 ### Option 2 — Install via pip (for scripts / CI)
 
