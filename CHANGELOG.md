@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.43...v0.2.0) (2026-08-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* migrate UI Control to dcc-cua 0.4.0 ([#179](https://github.com/dcc-mcp/dcc-mcp-blender/issues/179))
+
+### Features
+
+* migrate UI Control to dcc-cua 0.4.0 ([#179](https://github.com/dcc-mcp/dcc-mcp-blender/issues/179)) ([7b66034](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7b66034ee7de489f3b91c2b50806f1b14ae8305b))
+
 ## [0.1.43](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.42...v0.1.43) (2026-08-05)
 
 
