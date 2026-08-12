@@ -27,8 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    # v0.19.63: the retired standalone capture helper is no longer bundled.
-    "dcc-mcp-core>=0.19.63,<1.0.0",
+    # v0.20.0: native UI Control is provided by standalone dcc-cua 0.4.0+.
+    "dcc-mcp-core>=0.20.0,<1.0.0",
 ]
 
 [project.optional-dependencies]
