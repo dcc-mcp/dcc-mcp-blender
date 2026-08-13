@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.0...v0.2.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* harden Blender extension runtime lifecycle ([#181](https://github.com/dcc-mcp/dcc-mcp-blender/issues/181)) ([e9f7ac8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e9f7ac84203c3447fc4c8657c599e2d4a717023f))
+
 ## [0.2.0](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.1.43...v0.2.0) (2026-08-12)
 
 
