@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import importlib.util
+import os
 import pathlib
 import re
 import sys
@@ -100,6 +101,93 @@ def test_extension_namespace_import_does_not_create_top_level_alias(monkeypatch)
     assert server.__name__ == f"{extension_name}.server"
     assert not any(name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender.") for name in sys.modules)
 
+    module._install_runtime_import_aliases()
+    try:
+        public_server = importlib.import_module("dcc_mcp_blender.server")
+        assert public_server.get_server is server.get_server
+        assert public_server is not server
+        assert public_server._dcc_mcp_alias_target is server
+
+        lifecycle_calls = []
+        fake_bpy.ops = SimpleNamespace(
+            wm=SimpleNamespace(read_factory_settings=lambda **kwargs: lifecycle_calls.append(("reset", kwargs)))
+        )
+        dispatcher = SimpleNamespace(start_pump=lambda: lifecycle_calls.append(("start_pump", None)))
+        readiness = SimpleNamespace(
+            revalidate_dispatcher=lambda: lifecycle_calls.append(("revalidate_dispatcher", None))
+        )
+        monkeypatch.setattr(
+            server,
+            "get_server",
+            lambda: SimpleNamespace(_blender_dispatcher=dispatcher, readiness=readiness),
+        )
+        script_path = source_root / "skills" / "blender-scene" / "scripts" / "new_scene.py"
+        script_spec = importlib.util.spec_from_file_location("extension_new_scene_script", script_path)
+        script = importlib.util.module_from_spec(script_spec)
+        script_spec.loader.exec_module(script)
+
+        result = script.new_scene()
+
+        assert result["success"] is True
+        assert lifecycle_calls == [
+            ("reset", {"use_empty": True}),
+            ("start_pump", None),
+            ("revalidate_dispatcher", None),
+        ]
+    finally:
+        module._remove_runtime_import_aliases()
+
+    assert not any(name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender.") for name in sys.modules)
+
+
+def test_extension_startup_failure_removes_public_import_bridge(monkeypatch):
+    """A failed enable must not leave a finder or public facade installed."""
+    extension_name = "bl_ext.user_default.dcc_mcp_blender_failure"
+    source_root = ROOT / "src" / "dcc_mcp_blender"
+    fake_bpy = SimpleNamespace(types=SimpleNamespace(Operator=object, Menu=object))
+
+    for package in ("bl_ext", "bl_ext.user_default"):
+        module = ModuleType(package)
+        module.__path__ = []
+        monkeypatch.setitem(sys.modules, package, module)
+    for name in tuple(sys.modules):
+        if name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender."):
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    monkeypatch.delenv("DCC_MCP_UI_CONTROL_PROCESS_ID", raising=False)
+
+    spec = importlib.util.spec_from_file_location(
+        extension_name,
+        ADDON_ENTRY,
+        submodule_search_locations=[str(source_root)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, extension_name, module)
+    spec.loader.exec_module(module)
+    original_addon_module = module._addon_module
+
+    def addon_module(name):
+        if name == "_core_compat":
+
+            def reject_core():
+                raise RuntimeError("incompatible core")
+
+            return SimpleNamespace(require_compatible_core=reject_core)
+        return original_addon_module(name)
+
+    monkeypatch.setattr(module, "_addon_module", addon_module)
+
+    with pytest.raises(RuntimeError, match="incompatible core"):
+        module._start_server_with_host()
+
+    assert module._runtime_import_aliases is None
+    assert not any(
+        getattr(finder, "canonical_package", None) == extension_name
+        and getattr(finder, "public_package", None) == "dcc_mcp_blender"
+        for finder in sys.meta_path
+    )
+    assert not any(name == "dcc_mcp_blender" or name.startswith("dcc_mcp_blender.") for name in sys.modules)
+
 
 def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monkeypatch):
     """The add-on package root must directly contain ``server.py`` and skills."""
@@ -125,6 +213,7 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "__init__.py" in names
     assert "server.py" in names
     assert "host.py" in names
+    assert "_extension_imports.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert "COPYING" in names
     assert "LICENSE-MIT" in names
@@ -270,6 +359,7 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
     monkeypatch.setenv("DCC_MCP_BLENDER_PORT", "18765")
     monkeypatch.setenv("DCC_MCP_GATEWAY_PORT", "19765")
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", "/tmp/dcc-mcp-registry")
+    monkeypatch.delenv("DCC_MCP_UI_CONTROL_PROCESS_ID", raising=False)
 
     mod.register()
 
@@ -281,6 +371,7 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
         "registry_dir": "/tmp/dcc-mcp-registry",
         "dispatcher": calls[1][1],
     }
+    assert os.environ["DCC_MCP_UI_CONTROL_PROCESS_ID"] == str(os.getpid())
 
     mod.unregister()
 
@@ -292,6 +383,21 @@ def test_addon_register_starts_server_with_core_backed_blender_ui_dispatcher(mon
         "stop_server",
         "dispatcher.stop",
     ]
+
+
+def test_addon_rejects_ui_control_binding_to_another_process(monkeypatch):
+    spec = importlib.util.spec_from_file_location("addon_entry_ui_scope_test", str(ADDON_ENTRY))
+    mod = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(
+        sys.modules,
+        "bpy",
+        SimpleNamespace(types=SimpleNamespace(Operator=object, Menu=object)),
+    )
+    spec.loader.exec_module(mod)
+    monkeypatch.setenv("DCC_MCP_UI_CONTROL_PROCESS_ID", str(os.getpid() + 1))
+
+    with pytest.raises(RuntimeError, match="must identify the current Blender process"):
+        mod._bind_ui_control_to_host_process()
 
 
 def test_addon_register_does_not_start_server_in_background_render_worker(monkeypatch):

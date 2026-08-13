@@ -36,16 +36,53 @@ bl_info = {
 
 _DEFAULT_GATEWAY_PORT = 9765
 _BACKGROUND_RENDER_ENV = "DCC_MCP_BACKGROUND_RENDER"
+_UI_CONTROL_PROCESS_ID_ENV = "DCC_MCP_UI_CONTROL_PROCESS_ID"
 
 _draw_handlers: List[Tuple[str, object]] = []
 _server_dispatcher: Any = None
 _server_host: Any = None
+_runtime_import_aliases: Any = None
 
 
 def _addon_module(name: str):
     """Import a bundled module through the active add-on package namespace."""
     package = __package__ if (__package__ or "").startswith("bl_ext.") else "dcc_mcp_blender"
     return importlib.import_module(f"{package}.{name}")
+
+
+def _install_runtime_import_aliases() -> None:
+    """Expose public skill imports without mutating Blender's ``sys.path``."""
+    global _runtime_import_aliases  # noqa: PLW0603
+    package = __package__ or ""
+    if not package.startswith("bl_ext.") or _runtime_import_aliases is not None:
+        return
+    installer = _addon_module("_extension_imports").install_extension_import_aliases
+    _runtime_import_aliases = installer(package)
+
+
+def _remove_runtime_import_aliases() -> None:
+    global _runtime_import_aliases  # noqa: PLW0603
+    aliases = _runtime_import_aliases
+    _runtime_import_aliases = None
+    if aliases is not None:
+        aliases.uninstall()
+
+
+def _bind_ui_control_to_host_process() -> None:
+    """Fail closed unless UI control is scoped to this Blender process."""
+    current_process_id = os.getpid()
+    configured = os.environ.get(_UI_CONTROL_PROCESS_ID_ENV, "").strip()
+    if configured:
+        try:
+            configured_process_id = int(configured, 10)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid {_UI_CONTROL_PROCESS_ID_ENV}={configured!r}") from exc
+        if configured_process_id != current_process_id:
+            raise RuntimeError(
+                f"{_UI_CONTROL_PROCESS_ID_ENV} must identify the current Blender process "
+                f"({current_process_id}), got {configured_process_id}"
+            )
+    os.environ[_UI_CONTROL_PROCESS_ID_ENV] = str(current_process_id)
 
 
 def _env_port(name: str, default: int) -> int:
@@ -68,41 +105,47 @@ def _start_server_with_host():
     """Start the MCP server with a Blender main-thread dispatcher attached."""
     global _server_dispatcher, _server_host  # noqa: PLW0603
 
-    # The release ZIP replaces the library package entrypoint with this Blender
-    # add-on entrypoint. Enforce the same compatibility contract here before
-    # importing host/server modules that bind dcc-mcp-core integrations.
-    _addon_module("_core_compat").require_compatible_core()
-    host = _addon_module("host")
-    server_module = _addon_module("server")
-    BlenderUiDispatcher = host.BlenderUiDispatcher
-    get_server = server_module.get_server
-    start_server = server_module.start_server
-    stop_server = server_module.stop_server
-
-    existing = get_server()
-    if existing is not None and getattr(existing, "is_running", False):
-        if _server_host is not None:
-            return existing
-        stop_server()
-
-    dispatcher = BlenderUiDispatcher()
+    _bind_ui_control_to_host_process()
+    _install_runtime_import_aliases()
     try:
-        server = start_server(
-            gateway_port=_env_port("DCC_MCP_GATEWAY_PORT", _DEFAULT_GATEWAY_PORT),
-            registry_dir=os.environ.get("DCC_MCP_REGISTRY_DIR") or None,
-            dispatcher=dispatcher,
-        )
-        dispatcher.start()
-    except Exception:
-        with suppress(Exception):
-            stop_server()
-        with suppress(Exception):
-            dispatcher.stop()
-        raise
+        # The release ZIP replaces the library package entrypoint with this
+        # Blender add-on entrypoint. Enforce the same compatibility contract
+        # before importing host/server modules that bind dcc-mcp-core.
+        _addon_module("_core_compat").require_compatible_core()
+        host = _addon_module("host")
+        server_module = _addon_module("server")
+        BlenderUiDispatcher = host.BlenderUiDispatcher
+        get_server = server_module.get_server
+        start_server = server_module.start_server
+        stop_server = server_module.stop_server
 
-    _server_dispatcher = dispatcher
-    _server_host = dispatcher
-    return server
+        existing = get_server()
+        if existing is not None and getattr(existing, "is_running", False):
+            if _server_host is not None:
+                return existing
+            stop_server()
+
+        dispatcher = BlenderUiDispatcher()
+        try:
+            server = start_server(
+                gateway_port=_env_port("DCC_MCP_GATEWAY_PORT", _DEFAULT_GATEWAY_PORT),
+                registry_dir=os.environ.get("DCC_MCP_REGISTRY_DIR") or None,
+                dispatcher=dispatcher,
+            )
+            dispatcher.start()
+        except Exception:
+            with suppress(Exception):
+                stop_server()
+            with suppress(Exception):
+                dispatcher.stop()
+            raise
+
+        _server_dispatcher = dispatcher
+        _server_host = dispatcher
+        return server
+    except Exception:
+        _remove_runtime_import_aliases()
+        raise
 
 
 def _stop_server_with_host() -> None:
@@ -518,6 +561,8 @@ def unregister() -> None:
         print("[DCC MCP Blender] Server stopped")
     except Exception as exc:  # noqa: BLE001
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
+    finally:
+        _remove_runtime_import_aliases()
 
 
 __addon_version__ = "0.2.0"  # x-release-please-version

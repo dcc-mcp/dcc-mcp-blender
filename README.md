@@ -222,7 +222,9 @@ The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the l
 
 Native UI Control requires standalone `dcc-cua` 0.4.0 or newer on `PATH` (or
 `DCC_MCP_CUA_BINARY`). Core owns the `ui_control__*` contract; the Blender ZIP
-does not bundle a second capture or input helper.
+does not bundle a second capture or input helper. At startup, the extension
+binds UI Control to the current Blender process ID and refuses a conflicting
+process binding, so a request cannot widen the adapter to another window.
 
 ### Option 2 — Install via pip (for scripts / CI)
 
