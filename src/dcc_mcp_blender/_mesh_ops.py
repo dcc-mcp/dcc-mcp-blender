@@ -316,15 +316,21 @@ def extract_faces(object_name: str, face_indices: Sequence[int], new_name: str |
         obj, error = _mesh_object(bpy, object_name)
         if error:
             return error
-        polygons = list(obj.data.polygons)
+        mesh = obj.data
+        polygons = list(mesh.polygons)
         invalid = [index for index in face_indices if index < 0 or index >= len(polygons)]
         if invalid:
             return skill_error("Invalid face index", f"Out-of-range face index/indices: {invalid}")
 
         before_names = {obj.name for obj in bpy.data.objects}
         _select_active(bpy, obj)
+        for vertex in mesh.vertices:
+            vertex.select = False
+        for edge in mesh.edges:
+            edge.select = False
+        selected_faces = {int(index) for index in face_indices}
         for poly in polygons:
-            poly.select = int(poly.index) in set(face_indices)
+            poly.select = int(poly.index) in selected_faces
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.separate(type="SELECTED")
         _return_object_mode(bpy)

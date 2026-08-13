@@ -71,8 +71,8 @@ class FakeCollections(list):
 class FakeMesh:
     def __init__(self, name="Mesh", polygon_vertices=None):
         self.name = name
-        self.vertices = [object()] * 4
-        self.edges = [object()] * 4
+        self.vertices = [FakeSelectable() for _ in range(4)]
+        self.edges = [FakeSelectable() for _ in range(4)]
         self.loops = [object()] * 4
         self.polygons = [
             FakePolygon(index, vertices) for index, vertices in enumerate(polygon_vertices or [(0, 1, 2, 3)])
@@ -87,6 +87,11 @@ class FakePolygon:
         self.vertices = vertices
         self.material_index = 0
         self.select = False
+
+
+class FakeSelectable:
+    def __init__(self, selected=True):
+        self.select = selected
 
 
 class FakeObject:
@@ -336,3 +341,23 @@ def test_mesh_combine_extract_mirror_select_material_and_invalid_modes():
     )
     assert selected["success"] is True
     assert cube.data.polygons[0].select is True
+
+
+def test_extract_faces_clears_vertex_and_edge_selection_before_edit_mode():
+    mesh = FakeMesh("Sphere", [(0, 1, 2), (0, 2, 3)])
+    for polygon in mesh.polygons:
+        polygon.select = True
+    sphere = FakeObject("Sphere", mesh=mesh)
+    bpy = _bpy_for_objects([sphere])
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/extract_faces.py",
+        bpy,
+        object_name="Sphere",
+        face_indices=[1],
+    )
+
+    assert result["success"] is True
+    assert [vertex.select for vertex in mesh.vertices] == [False] * 4
+    assert [edge.select for edge in mesh.edges] == [False] * 4
+    assert [polygon.select for polygon in mesh.polygons] == [False, True]
