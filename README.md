@@ -116,6 +116,32 @@ observe [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/ima
 
 ---
 
+## Showcase: stylized reference reconstruction
+
+![Blender MCP stylized red swings beauty and mesh evidence](docs/showcase/stylized-red-swings-reference-reconstruction.png)
+
+This reference-guided Blender scene was refined through a long render-and-compare
+loop rather than replaced with a painted image. The final frame preserves editable
+seat, suspension, chain, and tiled-floor geometry while matching the reference's
+flattened red materials, projected support shadow, restrained floor gradient,
+subtle bloom, and cinematic letterboxing. The split view pairs the finished render
+with a same-camera wireframe generated from the evaluated scene geometry.
+
+Reusable prompt: Use the dcc-mcp Skill to connect to Blender and reconstruct the
+supplied stylized swing reference as a fully editable 3D scene. Match the two
+parallel seats, suspension arcs and flattened chain links, overhead support and
+its continuous projected shadow, tiled floor, orthographic composition, red
+material treatment, directional lower-right seat gradient, distant overexposure,
+subtle bloom, and cinematic letterboxing. Work in an iterative render-reference
+comparison loop: after every preview, measure silhouette, screen-space alignment,
+shadow angle and continuity, tile visibility, highlight falloff, and material
+flatness; correct geometry, lighting, materials, and compositor settings without
+replacing the scene with a painted image. Preserve a real mesh scene, save the
+`.blend`, render the final 16:9 frame, and report validation evidence and output
+paths.
+
+---
+
 ## Showcase: rain-soaked PBR LookDev
 
 ![Blender MCP rain sports car LookDev](docs/showcase/rain-sports-car-lookdev.gif)
