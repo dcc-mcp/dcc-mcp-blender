@@ -2,9 +2,8 @@
 name: dcc-mcp-blender-setup
 description: |-
   Set up dcc-mcp-blender for an agent or operator: install Blender Python
-  dependencies with Blender's bundled interpreter, generate MCP host
-  configuration, guide the user through enabling the Blender add-on, and run a
-  first live-tool smoke prompt.
+  dependencies with Blender's bundled interpreter, install a startup bridge,
+  generate MCP host configuration, and run a first live-tool smoke prompt.
 license: MIT
 allowed-tools: Bash Read
 metadata:
@@ -37,11 +36,9 @@ root `install.md` first, then follow this skill.
 End with:
 
 - `dcc-mcp-blender` and its pip dependencies installed into the target Blender
-  bundled-Python environment (or available via the add-on ZIP's isolated
-  wheels).
+  bundled-Python environment.
 - An MCP host config snippet that points to the Blender MCP server.
-- The user guided to enable the **DCC MCP Blender** add-on so the embedded
-  server starts.
+- A Blender 5.x-compatible startup bridge that starts the embedded server.
 - A live smoke prompt that proves the agent can discover and call Blender tools.
 
 ## Fast Path
@@ -62,7 +59,10 @@ The script:
    `dcc-mcp-blender` ships no optional extras, so the package is installed
    plainly and `dcc-mcp-core` is resolved transitively.
 3. Verifies `import dcc_mcp_blender`.
-4. Writes a reusable MCP JSON snippet and smoke prompt under
+4. Writes a Blender 5.x-compatible `dcc_mcp_blender_startup.py` with
+   `register()` / `unregister()` hooks into the per-user `scripts/startup`
+   directory.
+5. Writes a reusable MCP JSON snippet and smoke prompt under
    `.dcc-mcp/agent-setup/`.
 
 Use PyPI instead of the local checkout when setting up an end-user machine:
@@ -77,10 +77,24 @@ If discovery fails, ask the user for the full Blender Python path and re-run:
 python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --blender-python "C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\bin\python.exe"
 ```
 
-> Blender 4.2+ add-on installs (Option 1 in `README.md`) bundle the
-> `dcc-mcp-core` wheel inside the extension's isolated environment, so a manual
-> pip step into Blender's Python is only required for pip/CI scenarios or older
-> Blender add-on layouts.
+If Blender's bundled `site-packages` is read-only, select the user-site fallback:
+
+```bash
+python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --source pypi --user
+```
+
+Then launch Blender with the required matching flag:
+
+```bash
+blender --python-use-system-env
+```
+
+Do not omit `--python-use-system-env`: Blender otherwise ignores packages
+installed by pip with `--user`.
+
+> Blender 4.2+ Extension ZIP installs (Option 1 in `README.md`) are an
+> alternative path. They bundle `dcc-mcp-core` in an isolated environment and
+> must not be combined with this pip/startup-script setup.
 
 ## MCP Configuration
 
@@ -103,22 +117,17 @@ Multiple Blender instances register their exact endpoints automatically; use
 When editing an existing MCP config, preserve unrelated servers. Merge only the
 `blender` server entry unless the user asks for a different server name.
 
-## User Hand-Off: Enable the Blender Add-on
+## User Hand-Off: Start Blender
 
 After pip setup and MCP JSON generation, tell the user:
 
-1. Open Blender (4.2+ recommended).
-2. Go to `Edit > Preferences > Extensions > Install from Disk…`.
-3. Select the release ZIP
-   (`dcc_mcp_blender_addon_<platform>_vX.Y.Z.zip` from the Releases page).
-4. Enable **DCC MCP Blender**.
-5. The embedded MCP server starts automatically; use the top-bar
-   `DCC MCP > Show Server URLs…` menu to confirm the URL.
+1. Open Blender with the launch command printed by the setup script.
+2. The installed `dcc_mcp_blender_startup.py` starts the server automatically.
+3. Use `dcc-mcp-cli list` to confirm the Blender instance and exact URL.
 
 The stable gateway URL is `http://127.0.0.1:9765/mcp`.
 
-For pip/CI installs without the add-on, start the server from Blender's Python
-console instead:
+For a manual troubleshooting start from Blender's Python console:
 
 ```python
 import dcc_mcp_blender
@@ -133,8 +142,7 @@ blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
 
 ## First Live Smoke Prompt
 
-Ask the MCP host to run this prompt after Blender is open and the add-on is
-enabled:
+Ask the MCP host to run this prompt after Blender is open and registered:
 
 ```text
 Use the Blender MCP server. First call dcc_capability_manifest with loaded_only=false.
@@ -162,5 +170,6 @@ Expected behavior:
   the embedded server has not started yet.
 - Tool missing: call `dcc_capability_manifest` or `search_skills`, then
   `load_skill("<skill-name>")`.
-- Add-on enabled but no server: check Blender's system console for
-  `[DCC MCP Blender]` startup lines, and verify firewall/localhost rules.
+- No server after launch: verify the startup script under the per-user
+  `scripts/startup` directory, check Blender's system console, and verify
+  firewall/localhost rules.
