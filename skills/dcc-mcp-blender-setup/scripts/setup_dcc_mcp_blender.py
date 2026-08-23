@@ -13,6 +13,52 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 DEFAULT_MCP_URL = "http://127.0.0.1:9765/mcp"
+STARTUP_SCRIPT_NAME = "dcc_mcp_blender_startup.py"
+STARTUP_SCRIPT = '''"""Auto-start dcc-mcp-blender from Blender's startup registry."""
+
+from __future__ import annotations
+
+_server = None
+_owns_server = False
+
+
+def register():
+    """Start the MCP server once Blender has loaded this startup script."""
+    global _owns_server, _server
+    if _server is not None and getattr(_server, "is_running", True):
+        return _server
+
+    from dcc_mcp_blender import get_server, start_server
+
+    existing = get_server()
+    if existing is not None and getattr(existing, "is_running", False):
+        _server = existing
+        _owns_server = False
+        return _server
+
+    _server = start_server()
+    _owns_server = True
+    return _server
+
+
+def unregister():
+    """Stop the server started by this startup script."""
+    global _owns_server, _server
+    if _server is None:
+        return
+
+    try:
+        if not _owns_server:
+            return
+
+        from dcc_mcp_blender import get_server, stop_server
+
+        if get_server() is _server:
+            stop_server()
+    finally:
+        _server = None
+        _owns_server = False
+'''
 
 
 def run(command: list[str], cwd: Optional[Path] = None) -> None:
@@ -110,22 +156,83 @@ def find_repo_root() -> Path:
     return Path.cwd()
 
 
-def install_package(blender_python: Path, source: str, repo_root: Path, skip_install: bool) -> None:
+def install_package(
+    blender_python: Path,
+    source: str,
+    repo_root: Path,
+    skip_install: bool,
+    user_install: bool = False,
+) -> None:
     if skip_install:
         print("Skipping pip install because --skip-install was passed.")
         return
 
-    run([str(blender_python), "-m", "ensurepip", "--upgrade"])
-    run([str(blender_python), "-m", "pip", "install", "--upgrade", "pip"])
+    ensurepip_command = [str(blender_python), "-m", "ensurepip", "--upgrade"]
+    pip_upgrade_command = [str(blender_python), "-m", "pip", "install", "--upgrade", "pip"]
+    if user_install:
+        ensurepip_command.append("--user")
+        pip_upgrade_command.append("--user")
+    run(ensurepip_command)
+    run(pip_upgrade_command)
 
     # dcc-mcp-blender ships no optional install extras (no `[sidecar]`); install
     # the package plainly. The dcc-mcp-core dependency is resolved transitively.
+    install_command = [str(blender_python), "-m", "pip", "install"]
+    if user_install:
+        install_command.append("--user")
     if source == "local":
-        run([str(blender_python), "-m", "pip", "install", "-e", "."], cwd=repo_root)
+        run(install_command + ["-e", "."], cwd=repo_root)
     elif source == "pypi":
-        run([str(blender_python), "-m", "pip", "install", "--upgrade", "dcc-mcp-blender"])
+        run(install_command + ["--upgrade", "dcc-mcp-blender"])
     else:
         raise SystemExit("Unknown source: %s" % source)
+
+
+def _blender_version_from_python(blender_python: Path) -> str:
+    """Return ``major.minor`` from Blender's ``<version>/python/bin`` layout."""
+    version = blender_python.parent.parent.parent.name
+    if not version or not version[0].isdigit():
+        raise SystemExit("Could not infer Blender version from %s; pass --startup-scripts-dir." % blender_python)
+    return version
+
+
+def resolve_blender_scripts_dir(blender_python: Path, explicit: Optional[str]) -> Path:
+    """Resolve Blender's writable per-user scripts directory."""
+    if explicit:
+        return Path(explicit).expanduser()
+
+    configured = os.environ.get("BLENDER_USER_SCRIPTS")
+    if configured:
+        return Path(configured).expanduser()
+
+    version = _blender_version_from_python(blender_python)
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if not appdata:
+            raise SystemExit("APPDATA is unavailable; pass --startup-scripts-dir.")
+        return Path(appdata) / "Blender Foundation" / "Blender" / version / "scripts"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Blender" / version / "scripts"
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return config_home / "blender" / version / "scripts"
+
+
+def install_startup_script(blender_python: Path, explicit_scripts_dir: Optional[str] = None) -> Path:
+    """Install the Blender 5.x-registerable bridge into the user startup directory."""
+    startup_dir = resolve_blender_scripts_dir(blender_python, explicit_scripts_dir) / "startup"
+    startup_dir.mkdir(parents=True, exist_ok=True)
+    startup_path = startup_dir / STARTUP_SCRIPT_NAME
+    startup_path.write_text(STARTUP_SCRIPT, encoding="utf-8")
+    print("Wrote %s" % startup_path)
+    return startup_path
+
+
+def blender_launch_command(executable: str, user_install: bool = False) -> list[str]:
+    """Return the launch command required for the selected pip install scope."""
+    command = [executable]
+    if user_install:
+        command.append("--python-use-system-env")
+    return command
 
 
 def verify_import(blender_python: Path) -> None:
@@ -192,6 +299,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Only verify imports and write MCP snippets.",
     )
+    parser.add_argument(
+        "--user",
+        dest="user_install",
+        action="store_true",
+        help="Install into the user site; launch Blender with --python-use-system-env.",
+    )
+    parser.add_argument(
+        "--startup-scripts-dir",
+        help="Override Blender's per-user scripts directory (the parent of startup/).",
+    )
     return parser.parse_args(argv)
 
 
@@ -205,17 +322,26 @@ def main(argv: list[str]) -> int:
     print("Blender Python: %s" % blender_python)
     print("MCP URL: %s" % args.mcp_url)
 
-    install_package(blender_python, args.source, repo_root, args.skip_install)
+    install_package(
+        blender_python,
+        args.source,
+        repo_root,
+        args.skip_install,
+        user_install=args.user_install,
+    )
     if not args.skip_install:
         verify_import(blender_python)
+    startup_path = install_startup_script(blender_python, args.startup_scripts_dir)
     write_mcp_snippets(out_dir, args.server_name, args.mcp_url)
 
     print("")
     print("Next:")
-    print("1. Open Blender.")
-    print("2. Edit > Preferences > Extensions > Install from Disk (the release ZIP), then enable 'DCC MCP Blender'.")
+    launch_command = " ".join(blender_launch_command("blender", user_install=args.user_install))
+    print("1. Open Blender with: %s" % launch_command)
+    print("2. The installed startup script starts DCC MCP Blender automatically.")
     print("3. Configure the MCP host with %s." % (out_dir / "mcp-streamable-http.json"))
     print("4. Run the smoke prompt in %s." % (out_dir / "smoke-prompt.txt"))
+    print("Startup script: %s" % startup_path)
     return 0
 
 
