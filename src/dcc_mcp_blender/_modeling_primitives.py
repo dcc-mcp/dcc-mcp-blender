@@ -15,8 +15,10 @@ from dcc_mcp_blender._modeling_common import (
     duplicate_mesh,
     mesh_counts,
     mesh_object,
+    object_identity,
     object_mode,
     object_mode_if_available,
+    operator_finished,
     remove_object,
     select_object,
     vector,
@@ -68,6 +70,7 @@ def create_primitive(
 
         if bpy.data.objects.get(name) is not None:
             return skill_error(f"Object already exists: {name}", "Choose a unique semantic object name.")
+        before_identities = {object_identity(existing) for existing in bpy.data.objects}
         rotation_radians = [math.radians(component) for component in rotation_value]
         kwargs = {"location": location_value, "rotation": rotation_radians}
         if kind in {"cube", "plane"}:
@@ -80,10 +83,20 @@ def create_primitive(
             kwargs.update({"radius1": size_value / 2.0, "depth": size_value})
         elif kind == "torus":
             kwargs.update({"major_radius": size_value / 2.0, "minor_radius": size_value / 8.0})
-        getattr(bpy.ops.mesh, _PRIMITIVE_OPERATORS[kind])(**kwargs)
+        operator_result = getattr(bpy.ops.mesh, _PRIMITIVE_OPERATORS[kind])(**kwargs)
         obj = active_object(bpy)
-        if obj is None or getattr(obj, "type", None) != "MESH":
+        if obj is None or object_identity(obj) in before_identities or getattr(obj, "type", None) != "MESH":
             return skill_error("Primitive creation failed", "Blender did not expose the created mesh as active.")
+        if not operator_finished(operator_result):
+            remove_object(bpy, obj)
+            remaining_identities = {object_identity(existing) for existing in bpy.data.objects}
+            return skill_error(
+                "Primitive creation failed",
+                "Blender did not report a finished primitive operation.",
+                mutation_applied=True,
+                rollback_attempted=True,
+                rollback_verified=object_identity(obj) not in remaining_identities,
+            )
         obj.name = name
         if getattr(obj, "data", None) is not None:
             obj.data.name = name
@@ -91,14 +104,17 @@ def create_primitive(
         actual_location = coords(obj.location)
         actual_rotation = [math.degrees(component) for component in coords(obj.rotation_euler)]
         actual_scale = coords(obj.scale)
+        counts = mesh_counts(obj)
         verified = (
             obj.name == name
             and getattr(obj, "type", None) == "MESH"
+            and counts["vertex_count"] > 0
             and close(actual_location, location_value)
             and close(actual_rotation, rotation_value)
             and close(actual_scale, scale_value)
         )
         if not verified:
+            remove_object(bpy, obj)
             return skill_error(
                 f"Primitive readback failed: {name}", "Blender state did not match the requested transform."
             )
@@ -118,6 +134,7 @@ def create_primitive(
                 "rotation": actual_rotation,
                 "scale": actual_scale,
                 "type": obj.type,
+                **counts,
                 "verified": True,
             },
             prompt="Use get_poly_count or get_bounding_box to inspect the primitive.",
@@ -141,7 +158,7 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
     try:
         import bpy
 
-        if bpy.data.objects.get(target_name) is not None and target_name not in sections:
+        if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
         sources = []
         vertex_counts = set()
@@ -238,7 +255,7 @@ def lathe_profile(
             return skill_error(
                 f"Invalid profile: {profile}", "A lathe profile needs at least two vertices and one edge."
             )
-        if bpy.data.objects.get(target_name) is not None and target_name != profile:
+        if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
         duplicate = duplicate_mesh(bpy, source, target_name)
         select_object(bpy, duplicate)

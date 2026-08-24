@@ -108,6 +108,9 @@ def test_create_primitive_sets_name_and_transform_with_exact_readback() -> None:
     bpy = make_mock_bpy()
     bpy.data.objects.get.return_value = None
     mesh = MagicMock(name="RotorMesh")
+    mesh.vertices = [MagicMock() for _ in range(8)]
+    mesh.edges = [MagicMock() for _ in range(12)]
+    mesh.polygons = [MagicMock() for _ in range(6)]
     obj = MagicMock()
     obj.name = "Cube"
     obj.type = "MESH"
@@ -141,8 +144,59 @@ def test_create_primitive_sets_name_and_transform_with_exact_readback() -> None:
         "rotation": [0.0, 0.0, 90.0],
         "scale": [2.0, 1.0, 0.5],
         "type": "MESH",
+        "vertex_count": 8,
+        "edge_count": 12,
+        "face_count": 6,
         "verified": True,
     }
+
+
+def test_create_primitive_rejects_a_preexisting_active_object_replay() -> None:
+    bpy = make_mock_bpy()
+    existing = MagicMock()
+    existing.name = "ExistingBody"
+    existing.type = "MESH"
+    existing.data = MagicMock(name="ExistingMesh")
+    existing.location = [0.0, 0.0, 0.0]
+    existing.rotation_euler = [0.0, 0.0, 0.0]
+    existing.scale = [1.0, 1.0, 1.0]
+    bpy.data.objects.get.return_value = None
+    bpy.data.objects.__iter__.return_value = iter([existing])
+    bpy.context.active_object = existing
+    bpy.ops.mesh.primitive_cube_add.return_value = {"FINISHED"}
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/create_primitive.py",
+        bpy,
+        primitive_type="cube",
+        name="NewBody",
+    )
+
+    assert result["success"] is False
+    assert existing.name == "ExistingBody"
+    bpy.data.objects.remove.assert_not_called()
+
+
+def test_create_primitive_removes_a_new_object_after_cancelled_operator() -> None:
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = None
+    created = MagicMock()
+    created.name = "Cube"
+    created.type = "MESH"
+    created.data = MagicMock(name="CubeMesh")
+    bpy.context.active_object = created
+    bpy.ops.mesh.primitive_cube_add.return_value = {"CANCELLED"}
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/create_primitive.py",
+        bpy,
+        primitive_type="cube",
+        name="NewBody",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["rollback_attempted"] is True
+    bpy.data.objects.remove.assert_called_once_with(created, do_unlink=True)
 
 
 def test_bevel_inset_and_edge_loop_fail_closed_without_topology_readback() -> None:
@@ -216,6 +270,37 @@ def test_bevel_inset_and_edge_loop_fail_closed_without_topology_readback() -> No
     assert unchanged["success"] is False
 
 
+def test_extrude_rejects_a_cancelled_operator_even_if_topology_changed() -> None:
+    mesh = MagicMock()
+    mesh.name = "BodyMesh"
+    mesh.vertices = [MagicMock(index=index, select=False) for index in range(4)]
+    mesh.edges = [MagicMock(index=index, select=False) for index in range(4)]
+    mesh.polygons = [MagicMock(index=0, select=False)]
+    obj = MagicMock()
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.data = mesh
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+
+    def cancelled_extrude(**_kwargs):
+        mesh.polygons.append(MagicMock(index=1, select=False))
+        return {"CANCELLED"}
+
+    bpy.ops.mesh.extrude_region_move.side_effect = cancelled_extrude
+    result = load_and_call(
+        "blender-mesh-ops/scripts/extrude_faces.py",
+        bpy,
+        object_name="Body",
+        face_indices=[0],
+        distance=1.0,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_verified"] is False
+
+
 class _Modifiers(list):
     def new(self, name, type):
         modifier = MagicMock()
@@ -270,6 +355,9 @@ def test_array_mirror_and_boolean_use_typed_modifiers_with_readback() -> None:
     body.name = "Body"
     body.type = "MESH"
     body.data = MagicMock(name="BodyMesh")
+    body.data.vertices = [MagicMock() for _ in range(4)]
+    body.data.edges = [MagicMock() for _ in range(4)]
+    body.data.polygons = [MagicMock()]
     body.modifiers = _Modifiers()
     cutter = MagicMock()
     cutter.name = "Cutter"
@@ -283,6 +371,7 @@ def test_array_mirror_and_boolean_use_typed_modifiers_with_readback() -> None:
         current = body.modifiers.get(modifier)
         if current is not None:
             body.modifiers.remove(current)
+            body.data.polygons.append(MagicMock())
         return {"FINISHED"}
 
     bpy.ops.object.modifier_apply.side_effect = apply_modifier
@@ -296,14 +385,12 @@ def test_array_mirror_and_boolean_use_typed_modifiers_with_readback() -> None:
         modifier_name="RotorArray",
     )
     assert array["success"] is True, array
-    assert array["context"]["readback"] == {
-        "applied": False,
-        "constant_offset": [2.0, 0.0, 0.0],
-        "count": 4,
-        "modifier_name": "RotorArray",
-        "modifier_type": "ARRAY",
-        "verified": True,
-    }
+    assert array["context"]["readback"]["applied"] is False
+    assert array["context"]["readback"]["constant_offset"] == [2.0, 0.0, 0.0]
+    assert array["context"]["readback"]["count"] == 4
+    assert array["context"]["readback"]["modifier_name"] == "RotorArray"
+    assert array["context"]["readback"]["modifier_type"] == "ARRAY"
+    assert array["context"]["readback"]["verified"] is True
 
     mirrored = load_and_call(
         "blender-mesh-ops/scripts/mirror.py",
@@ -330,14 +417,46 @@ def test_array_mirror_and_boolean_use_typed_modifiers_with_readback() -> None:
     )
     assert boolean["success"] is True, boolean
     assert body.name == "CutBody"
-    assert boolean["context"]["readback"] == {
-        "applied": True,
-        "modifier_present": False,
-        "object_name": "CutBody",
-        "operand": "Cutter",
-        "operation": "subtract",
-        "verified": True,
-    }
+    assert boolean["context"]["readback"]["applied"] is True
+    assert boolean["context"]["readback"]["modifier_present"] is False
+    assert boolean["context"]["readback"]["object_name"] == "CutBody"
+    assert boolean["context"]["readback"]["operand"] == "Cutter"
+    assert boolean["context"]["readback"]["operation"] == "subtract"
+    assert boolean["context"]["readback"]["mesh_before"]["face_count"] == 1
+    assert boolean["context"]["readback"]["mesh_after"]["face_count"] == 2
+    assert boolean["context"]["readback"]["verified"] is True
+
+
+def test_applied_array_rejects_modifier_removal_without_mesh_change() -> None:
+    body = MagicMock()
+    body.name = "Body"
+    body.type = "MESH"
+    body.data = MagicMock(name="BodyMesh")
+    body.data.vertices = [MagicMock() for _ in range(4)]
+    body.data.edges = [MagicMock() for _ in range(4)]
+    body.data.polygons = [MagicMock()]
+    body.modifiers = _Modifiers()
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = body
+
+    def remove_modifier_only(*, modifier):
+        body.modifiers.remove(body.modifiers.get(modifier))
+        return {"FINISHED"}
+
+    bpy.ops.object.modifier_apply.side_effect = remove_modifier_only
+    result = load_and_call(
+        "blender-mesh-ops/scripts/array_instances.py",
+        bpy,
+        object_name="Body",
+        count=4,
+        offset=[2.0, 0.0, 0.0],
+        apply=True,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is False
+    assert result["context"]["rollback_verified"] is False
 
 
 def test_pivot_group_freeze_history_and_material_return_host_readback() -> None:
@@ -486,8 +605,17 @@ def test_auto_uv_and_uv_project_delegate_to_native_uv_ops_with_readback() -> Non
     bpy = make_mock_bpy()
     bpy.data.objects.get.return_value = obj
     bpy.ops.uv = MagicMock()
-    bpy.ops.uv.smart_project.return_value = {"FINISHED"}
-    bpy.ops.uv.cylinder_project.return_value = {"FINISHED"}
+
+    def smart_project(**_kwargs):
+        mesh.uv_layers.active.data = [MagicMock(uv=[0.0, 0.0]), MagicMock(uv=[1.0, 1.0])]
+        return {"FINISHED"}
+
+    def cylinder_project(**_kwargs):
+        mesh.uv_layers.active.data = [MagicMock(uv=[0.25, 0.0]), MagicMock(uv=[0.75, 1.0])]
+        return {"FINISHED"}
+
+    bpy.ops.uv.smart_project.side_effect = smart_project
+    bpy.ops.uv.cylinder_project.side_effect = cylinder_project
 
     automatic = load_and_call(
         "blender-mesh-ops/scripts/auto_uv.py",
@@ -496,11 +624,11 @@ def test_auto_uv_and_uv_project_delegate_to_native_uv_ops_with_readback() -> Non
         margin=0.01,
     )
     assert automatic["success"] is True, automatic
-    assert automatic["context"]["readback"] == {
-        "active_uv_map": "UVMap",
-        "uv_map_count": 1,
-        "verified": True,
-    }
+    assert automatic["context"]["readback"]["active_uv_map"] == "UVMap"
+    assert automatic["context"]["readback"]["uv_map_count"] == 1
+    assert automatic["context"]["readback"]["uv_coordinate_count"] == 2
+    assert len(automatic["context"]["readback"]["uv_digest"]) == 64
+    assert automatic["context"]["readback"]["verified"] is True
 
     projected = load_and_call(
         "blender-mesh-ops/scripts/uv_project.py",
@@ -514,6 +642,54 @@ def test_auto_uv_and_uv_project_delegate_to_native_uv_ops_with_readback() -> Non
     assert projected["context"]["parameters"]["projection"] == "cylindrical"
     assert projected["context"]["readback"]["active_uv_map"] == "UVMap"
     assert projected["context"]["readback"]["verified"] is True
+
+
+def test_auto_uv_rejects_an_unchanged_positive_uv_map() -> None:
+    mesh = MagicMock()
+    mesh.name = "BodyMesh"
+    mesh.vertices = [MagicMock() for _ in range(4)]
+    mesh.edges = [MagicMock() for _ in range(4)]
+    mesh.loops = [MagicMock() for _ in range(4)]
+    mesh.polygons = [MagicMock()]
+    mesh.uv_layers = _UVLayers()
+    layer = mesh.uv_layers.new("UVMap")
+    layer.data = [MagicMock(uv=[0.0, 0.0]), MagicMock(uv=[1.0, 1.0])]
+    obj = MagicMock()
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.mode = "OBJECT"
+    obj.data = mesh
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+    bpy.ops.uv = MagicMock()
+    bpy.ops.uv.smart_project.return_value = {"FINISHED"}
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/auto_uv.py",
+        bpy,
+        object_name="Body",
+        margin=0.01,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+
+
+def test_lathe_refuses_to_overwrite_the_source_profile_name() -> None:
+    profile = _profile_object("Profile")
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = profile
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/lathe_profile.py",
+        bpy,
+        profile="Profile",
+        output_name="Profile",
+    )
+
+    assert result["success"] is False
+    assert "already exists" in result["message"].lower()
+    profile.copy.assert_not_called()
 
 
 def _profile_object(name):

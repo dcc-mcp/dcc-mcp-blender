@@ -6,7 +6,16 @@ from typing import Optional, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
-from dcc_mcp_blender._modeling_common import AXIS_INDEX, close, coords, mesh_object, select_object, vector
+from dcc_mcp_blender._modeling_common import (
+    AXIS_INDEX,
+    close,
+    coords,
+    mesh_object,
+    mesh_state,
+    operator_finished,
+    select_object,
+    vector,
+)
 
 _BOOLEAN_OPERATIONS = {"union": "UNION", "intersect": "INTERSECT", "subtract": "DIFFERENCE"}
 
@@ -32,6 +41,7 @@ def array_instances(
             return error
         if len(obj.modifiers) >= 128:
             return skill_error("Modifier limit reached", "Refuse to add more than 128 modifiers to one object.")
+        before_mesh = mesh_state(obj)
         select_object(bpy, obj)
         modifier = obj.modifiers.new(name=modifier_name or "Array_Instances", type="ARRAY")
         modifier.count = count
@@ -39,11 +49,13 @@ def array_instances(
         modifier.use_constant_offset = True
         modifier.constant_offset_displace = offset_value
         name = modifier.name
+        apply_finished = False
         if bool(apply):
-            bpy.ops.object.modifier_apply(modifier=name)
+            apply_finished = operator_finished(bpy.ops.object.modifier_apply(modifier=name))
         present = obj.modifiers.get(name) is not None
+        after_mesh = mesh_state(obj)
         verified = (
-            (not present)
+            (not present and apply_finished and after_mesh["mesh_digest"] != before_mesh["mesh_digest"])
             if bool(apply)
             else (
                 present
@@ -54,7 +66,20 @@ def array_instances(
             )
         )
         if not verified:
-            return skill_error(f"Array readback failed: {object_name}", "Modifier state did not match the request.")
+            context = {}
+            if bool(apply):
+                context = {
+                    "mutation_applied": True,
+                    "rollback_attempted": False,
+                    "rollback_verified": False,
+                    "mesh_before": before_mesh,
+                    "mesh_after": after_mesh,
+                }
+            return skill_error(
+                f"Array readback failed: {object_name}",
+                "Modifier state or applied mesh did not match the request.",
+                **context,
+            )
         return skill_success(
             f"Created {count}-item array on {object_name}",
             object_name=obj.name,
@@ -66,6 +91,8 @@ def array_instances(
                 "modifier_name": name,
                 "modifier_type": "ARRAY",
                 "verified": True,
+                "mesh_before": before_mesh,
+                "mesh_after": after_mesh,
             },
             prompt="Use list_modifiers or get_poly_count to inspect the array.",
         )
@@ -95,6 +122,7 @@ def mirror(
             return error
         if len(obj.modifiers) >= 128:
             return skill_error("Modifier limit reached", "Refuse to add more than 128 modifiers to one object.")
+        before_mesh = mesh_state(obj)
         select_object(bpy, obj)
         modifier = obj.modifiers.new(name=modifier_name or f"Mirror_{axis_key.upper()}", type="MIRROR")
         axes = [False, False, False]
@@ -103,12 +131,14 @@ def mirror(
         modifier.use_bisect_axis = [bool(bisect) if enabled else False for enabled in axes]
         modifier.use_mirror_merge = bool(merge)
         name = modifier.name
+        apply_finished = False
         if bool(apply):
-            bpy.ops.object.modifier_apply(modifier=name)
+            apply_finished = operator_finished(bpy.ops.object.modifier_apply(modifier=name))
         present = obj.modifiers.get(name) is not None
+        after_mesh = mesh_state(obj)
         actual_axes = [bool(value) for value in modifier.use_axis]
         verified = (
-            (not present)
+            (not present and apply_finished and after_mesh["mesh_digest"] != before_mesh["mesh_digest"])
             if bool(apply)
             else (
                 present
@@ -119,7 +149,20 @@ def mirror(
             )
         )
         if not verified:
-            return skill_error(f"Mirror readback failed: {object_name}", "Modifier state did not match the request.")
+            context = {}
+            if bool(apply):
+                context = {
+                    "mutation_applied": True,
+                    "rollback_attempted": False,
+                    "rollback_verified": False,
+                    "mesh_before": before_mesh,
+                    "mesh_after": after_mesh,
+                }
+            return skill_error(
+                f"Mirror readback failed: {object_name}",
+                "Modifier state or applied mesh did not match the request.",
+                **context,
+            )
         return skill_success(
             f"Created {axis_key.upper()} mirror on {object_name}",
             object_name=obj.name,
@@ -133,6 +176,8 @@ def mirror(
                 "modifier_type": "MIRROR",
                 "use_axis": actual_axes,
                 "verified": True,
+                "mesh_before": before_mesh,
+                "mesh_after": after_mesh,
             },
             prompt="Use list_modifiers or get_poly_count to inspect the mirror.",
         )
@@ -166,6 +211,7 @@ def boolean_op(
             return error
         if len(left.modifiers) >= 128:
             return skill_error("Modifier limit reached", "Refuse to add more than 128 modifiers to one object.")
+        before_mesh = mesh_state(left)
         select_object(bpy, left)
         modifier = left.modifiers.new(name="Boolean_Operation", type="BOOLEAN")
         modifier.operation = _BOOLEAN_OPERATIONS[operation_key]
@@ -180,17 +226,34 @@ def boolean_op(
         )
         if not configured:
             return skill_error("Boolean configuration failed", "Blender did not retain the requested operands.")
+        apply_finished = False
         if bool(apply):
-            bpy.ops.object.modifier_apply(modifier=modifier_name)
+            apply_finished = operator_finished(bpy.ops.object.modifier_apply(modifier=modifier_name))
         present = left.modifiers.get(modifier_name) is not None
+        after_mesh = mesh_state(left)
         if output_name:
             old_name = left.name
             left.name = output_name
             if getattr(left, "data", None) is not None and getattr(left.data, "name", None) == old_name:
                 left.data.name = output_name
-        verified = (not present) if bool(apply) else present
+        verified = (
+            not present and apply_finished and after_mesh["mesh_digest"] != before_mesh["mesh_digest"]
+            if bool(apply)
+            else present
+        )
         if not verified:
-            return skill_error(f"Boolean readback failed: {input_a}", "Modifier application state did not match.")
+            context = {}
+            if bool(apply):
+                context = {
+                    "mutation_applied": True,
+                    "rollback_attempted": False,
+                    "rollback_verified": False,
+                    "mesh_before": before_mesh,
+                    "mesh_after": after_mesh,
+                }
+            return skill_error(
+                f"Boolean readback failed: {input_a}", "Modifier application or mesh state did not match.", **context
+            )
         return skill_success(
             f"Applied {operation_key} Boolean to {left.name}",
             inputs=[input_a, input_b],
@@ -202,6 +265,8 @@ def boolean_op(
                 "operand": right.name,
                 "operation": operation_key,
                 "verified": True,
+                "mesh_before": before_mesh,
+                "mesh_after": after_mesh,
             },
             prompt="Use get_poly_count to inspect the Boolean result.",
         )

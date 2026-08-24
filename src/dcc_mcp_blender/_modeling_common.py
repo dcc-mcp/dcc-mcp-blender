@@ -2,12 +2,87 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from typing import Any, List, Optional, Sequence, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_success
 
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+
+
+def operator_finished(result: Any) -> bool:
+    """Return whether a Blender operator explicitly reported FINISHED."""
+    return isinstance(result, set) and "FINISHED" in result
+
+
+def object_identity(obj: Any) -> int:
+    """Return one process-local identity for provenance checks."""
+    try:
+        pointer = obj.as_pointer()
+    except Exception:
+        pointer = None
+    if isinstance(pointer, int) and not isinstance(pointer, bool) and pointer > 0:
+        return pointer
+    return id(obj)
+
+
+def _float_sequence(value: Any) -> List[float]:
+    try:
+        return [round(float(component), 9) for component in value]
+    except (TypeError, ValueError):
+        return []
+
+
+def _int_sequence(value: Any) -> List[int]:
+    try:
+        return [int(component) for component in value]
+    except (TypeError, ValueError):
+        return []
+
+
+def _digest(payload: Any) -> str:
+    encoded = json.dumps(payload, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def mesh_state(obj: Any) -> dict:
+    """Return topology and coordinate evidence for an object's owned mesh."""
+    mesh = obj.data
+    vertices = list(getattr(mesh, "vertices", []))
+    edges = list(getattr(mesh, "edges", []))
+    polygons = list(getattr(mesh, "polygons", []))
+    payload = {
+        "vertices": [_float_sequence(getattr(vertex, "co", [])) for vertex in vertices],
+        "edges": [_int_sequence(getattr(edge, "vertices", [])) for edge in edges],
+        "polygons": [_int_sequence(getattr(polygon, "vertices", [])) for polygon in polygons],
+    }
+    return {
+        "vertex_count": len(vertices),
+        "edge_count": len(edges),
+        "face_count": len(polygons),
+        "mesh_digest": _digest(payload),
+    }
+
+
+def uv_state(obj: Any) -> dict:
+    """Return active UV-set identity and exact coordinate evidence."""
+    layers = list(getattr(obj.data, "uv_layers", []))
+    active = getattr(getattr(obj.data, "uv_layers", None), "active", None)
+    data = list(getattr(active, "data", [])) if active is not None else []
+    coordinates = [_float_sequence(getattr(loop, "uv", [])) for loop in data]
+    payload = {
+        "active_uv_map": getattr(active, "name", None),
+        "layers": [getattr(layer, "name", None) for layer in layers],
+        "coordinates": coordinates,
+    }
+    return {
+        "active_uv_map": payload["active_uv_map"],
+        "uv_map_count": len(layers),
+        "uv_coordinate_count": len(data),
+        "uv_digest": _digest(payload),
+    }
 
 
 def vector(
@@ -121,6 +196,11 @@ def topology_result(
         return skill_error(
             f"{operation} had no verifiable effect on {obj.name}",
             f"Blender reported no increase in {changed_key.replace('_', ' ')}.",
+            mutation_applied=after.get("mesh_digest") != before.get("mesh_digest"),
+            rollback_attempted=False,
+            rollback_verified=False,
+            before=before,
+            after=after,
         )
     return skill_success(
         f"{operation} completed on {obj.name}",

@@ -6,7 +6,7 @@ from typing import Optional, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
-from dcc_mcp_blender._modeling_common import close, coords, mesh_object, select_object, vector
+from dcc_mcp_blender._modeling_common import close, coords, mesh_object, select_object, uv_state, vector
 
 
 def set_pivot(object_name: str, position: Sequence[float]) -> dict:
@@ -211,16 +211,34 @@ def auto_uv(object_name: str, margin: float = 0.001) -> dict:
     """Run Blender smart projection and require UV-map readback."""
     from dcc_mcp_blender._uv_ops import unwrap_uvs
 
+    try:
+        import bpy
+
+        obj, error = mesh_object(bpy, object_name)
+        if error:
+            return error
+        before_state = uv_state(obj)
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
     result = unwrap_uvs(object_name=object_name, method="smart", margin=margin)
     if not result.get("success"):
         return result
-    context = result.get("context") or {}
-    readback = {
-        "active_uv_map": context.get("active_uv_map"),
-        "uv_map_count": int(context.get("uv_map_count", 0)),
-    }
-    if readback["uv_map_count"] < 1 or not readback["active_uv_map"]:
-        return skill_error(f"UV readback failed: {object_name}", "Blender did not expose an active UV map.")
+    readback = uv_state(obj)
+    if (
+        readback["uv_map_count"] < 1
+        or readback["uv_coordinate_count"] < 1
+        or not readback["active_uv_map"]
+        or readback["uv_digest"] == before_state["uv_digest"]
+    ):
+        return skill_error(
+            f"UV readback failed: {object_name}",
+            "Blender did not prove changed positive UV coordinates.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            uv_before=before_state,
+            uv_after=readback,
+        )
     return skill_success(
         f"Generated smart UVs on {object_name}",
         object_name=object_name,
@@ -243,16 +261,34 @@ def uv_project(
         return skill_error("Invalid projection", "projection must be planar, cylindrical, spherical, or cube.")
     from dcc_mcp_blender._uv_ops import project_uvs
 
+    try:
+        import bpy
+
+        obj, error = mesh_object(bpy, object_name)
+        if error:
+            return error
+        before_state = uv_state(obj)
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
     result = project_uvs(object_name=object_name, method=methods[projection_key], axis=axis, margin=margin)
     if not result.get("success"):
         return result
-    context = result.get("context") or {}
-    readback = {
-        "active_uv_map": context.get("active_uv_map"),
-        "uv_map_count": int(context.get("uv_map_count", 0)),
-    }
-    if readback["uv_map_count"] < 1 or not readback["active_uv_map"]:
-        return skill_error(f"UV readback failed: {object_name}", "Blender did not expose an active UV map.")
+    readback = uv_state(obj)
+    if (
+        readback["uv_map_count"] < 1
+        or readback["uv_coordinate_count"] < 1
+        or not readback["active_uv_map"]
+        or readback["uv_digest"] == before_state["uv_digest"]
+    ):
+        return skill_error(
+            f"UV readback failed: {object_name}",
+            "Blender did not prove changed positive UV coordinates.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            uv_before=before_state,
+            uv_after=readback,
+        )
     return skill_success(
         f"Projected {projection_key} UVs on {object_name}",
         object_name=object_name,

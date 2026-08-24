@@ -9,10 +9,11 @@ from dcc_mcp_core.skill import skill_error, skill_exception
 
 from dcc_mcp_blender._modeling_common import (
     bounded_indices,
-    mesh_counts,
     mesh_object,
+    mesh_state,
     object_mode,
     object_mode_if_available,
+    operator_finished,
     select_components,
     topology_result,
     vector,
@@ -38,16 +39,27 @@ def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, seg
         selected, error = bounded_indices(edge_indices, "edge_indices", len(obj.data.edges))
         if error:
             return error
-        before = mesh_counts(obj)
+        before = mesh_state(obj)
         select_components(bpy, obj, "edges", selected)
-        bpy.ops.mesh.bevel(offset=width_value, segments=segments, affect="EDGES")
+        operator_result = bpy.ops.mesh.bevel(offset=width_value, segments=segments, affect="EDGES")
         object_mode(bpy)
+        after = mesh_state(obj)
+        if not operator_finished(operator_result):
+            return skill_error(
+                f"Bevel edges did not finish on {object_name}",
+                "Blender did not report a finished bevel operation.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                before=before,
+                after=after,
+            )
         return topology_result(
             "Bevel edges",
             obj,
             {"edge_indices": selected, "segments": segments, "width": width_value},
             before,
-            mesh_counts(obj),
+            after,
             "edge_count",
         )
     except ImportError:
@@ -82,17 +94,28 @@ def extrude_faces(
         selected, error = bounded_indices(face_indices, "face_indices", len(obj.data.polygons))
         if error:
             return error
-        before = mesh_counts(obj)
+        before = mesh_state(obj)
         select_components(bpy, obj, "polygons", selected)
         offset = [component * distance_value for component in direction_value]
-        bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": offset})
+        operator_result = bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": offset})
         object_mode(bpy)
+        after = mesh_state(obj)
+        if not operator_finished(operator_result):
+            return skill_error(
+                f"Extrude faces did not finish on {object_name}",
+                "Blender did not report a finished extrusion operation.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                before=before,
+                after=after,
+            )
         return topology_result(
             "Extrude faces",
             obj,
             {"direction": direction_value, "distance": distance_value, "face_indices": selected},
             before,
-            mesh_counts(obj),
+            after,
             "face_count",
         )
     except ImportError:
@@ -125,16 +148,27 @@ def inset(
         selected, error = bounded_indices(face_indices, "face_indices", len(obj.data.polygons))
         if error:
             return error
-        before = mesh_counts(obj)
+        before = mesh_state(obj)
         select_components(bpy, obj, "polygons", selected)
-        bpy.ops.mesh.inset(thickness=thickness_value, depth=depth_value, use_even_offset=True)
+        operator_result = bpy.ops.mesh.inset(thickness=thickness_value, depth=depth_value, use_even_offset=True)
         object_mode(bpy)
+        after = mesh_state(obj)
+        if not operator_finished(operator_result):
+            return skill_error(
+                f"Inset faces did not finish on {object_name}",
+                "Blender did not report a finished inset operation.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                before=before,
+                after=after,
+            )
         return topology_result(
             "Inset faces",
             obj,
             {"depth": depth_value, "face_indices": selected, "thickness": thickness_value},
             before,
-            mesh_counts(obj),
+            after,
             "face_count",
         )
     except ImportError:
@@ -157,16 +191,27 @@ def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) 
         selected, error = bounded_indices(edge_indices, "edge_indices", len(obj.data.edges))
         if error:
             return error
-        before = mesh_counts(obj)
+        before = mesh_state(obj)
         select_components(bpy, obj, "edges", selected)
-        bpy.ops.mesh.subdivide(number_cuts=cuts, smoothness=0.0)
+        operator_result = bpy.ops.mesh.subdivide(number_cuts=cuts, smoothness=0.0)
         object_mode(bpy)
+        after = mesh_state(obj)
+        if not operator_finished(operator_result):
+            return skill_error(
+                f"Add edge loop did not finish on {object_name}",
+                "Blender did not report a finished subdivision operation.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                before=before,
+                after=after,
+            )
         return topology_result(
             "Add edge loop",
             obj,
             {"cuts": cuts, "edge_indices": selected},
             before,
-            mesh_counts(obj),
+            after,
             "edge_count",
         )
     except ImportError:
