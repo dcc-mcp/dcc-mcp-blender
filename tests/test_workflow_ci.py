@@ -138,3 +138,11 @@ def test_ci_has_an_explicit_install_lifecycle_round_trip():
     assert "lifecycle-smoke:" in text
     assert "Install lifecycle smoke" in text
     assert "tests/test_install_lifecycle.py" in text
+
+
+def test_skill_lint_does_not_depend_on_a_mutable_unused_cli_download():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "releases/latest" not in text
+    assert "Install dcc-mcp-cli" not in text
+    assert "python tools/lint_skills.py --warnings-as-errors" in text
