@@ -246,6 +246,38 @@ def test_create_primitive_reports_failed_rollback_after_renamed_output_remains()
     assert result["context"]["rollback_verified"] is False
 
 
+def test_create_primitive_claims_and_removes_output_when_operator_raises() -> None:
+    registry = []
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = None
+    bpy.data.objects.__iter__.side_effect = lambda: iter(registry)
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+    created = MagicMock()
+    created.name = "Cube"
+    created.type = "MESH"
+    created.data = MagicMock(name="CubeMesh")
+
+    def create_then_raise(**_kwargs):
+        registry.append(created)
+        bpy.context.active_object = created
+        raise RuntimeError("operator failed after create")
+
+    bpy.ops.mesh.primitive_cube_add.side_effect = create_then_raise
+    result = load_and_call(
+        "blender-mesh-ops/scripts/create_primitive.py",
+        bpy,
+        primitive_type="cube",
+        name="NewBody",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is True
+    assert result["context"]["error_type"] == "RuntimeError"
+    assert registry == []
+
+
 def test_bevel_inset_and_edge_loop_fail_closed_without_topology_readback() -> None:
     mesh = MagicMock()
     mesh.name = "BodyMesh"
@@ -937,6 +969,38 @@ def test_group_parent_rejects_and_removes_an_orphan_new_collection() -> None:
     assert bpy.data.collections == []
 
 
+def test_group_parent_rolls_back_when_existing_collection_link_mutates_then_raises() -> None:
+    child = MagicMock()
+    child.name = "Pylon"
+    child.type = "MESH"
+    collection = MagicMock()
+    collection.name = "Pylons"
+    collection.objects = _LinkedObjects()
+
+    def link_then_raise(obj):
+        collection.objects.append(obj)
+        raise RuntimeError("link failed after mutation")
+
+    collection.objects.link = link_then_raise
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = child
+    bpy.data.collections.get.return_value = collection
+    bpy.context.scene.collection.children = _LinkedObjects([collection])
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/group_parent.py",
+        bpy,
+        object_names=["Pylon"],
+        group_name="Pylons",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is True
+    assert child not in collection.objects
+
+
 def test_material_assignment_exception_rolls_back_new_slots_with_receipt() -> None:
     class _FailingSlot:
         def __init__(self):
@@ -1133,6 +1197,52 @@ def test_pivot_and_freeze_reject_cancelled_operators_even_when_readback_already_
         assert result["context"]["rollback_attempted"] is False
         assert result["context"]["rollback_verified"] is False
     assert bpy.context.scene.cursor.location == [3.0, 4.0, 5.0]
+
+
+def test_pivot_and_freeze_report_mutation_when_operators_raise_after_changes() -> None:
+    obj = MagicMock()
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.matrix_world.translation = [1.0, 2.0, 3.0]
+    obj.location = [1.0, 2.0, 3.0]
+    obj.rotation_euler = [0.2, 0.3, 0.4]
+    obj.scale = [2.0, 2.0, 2.0]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+    bpy.context.scene.cursor.location = [9.0, 9.0, 9.0]
+
+    def origin_then_raise(**_kwargs):
+        obj.matrix_world.translation = [0.0, 0.0, 0.0]
+        raise RuntimeError("origin readback failed")
+
+    bpy.ops.object.origin_set.side_effect = origin_then_raise
+    pivot = load_and_call(
+        "blender-mesh-ops/scripts/set_pivot.py",
+        bpy,
+        object_name="Body",
+        position=[0.0, 0.0, 0.0],
+    )
+    assert pivot["success"] is False
+    assert pivot["context"]["mutation_applied"] is True
+    assert pivot["context"]["position_before"] == [1.0, 2.0, 3.0]
+    assert pivot["context"]["position_after"] == [0.0, 0.0, 0.0]
+
+    def transform_then_raise(**_kwargs):
+        obj.rotation_euler = [0.0, 0.0, 0.0]
+        raise RuntimeError("transform readback failed")
+
+    bpy.ops.object.transform_apply.side_effect = transform_then_raise
+    frozen = load_and_call(
+        "blender-mesh-ops/scripts/modeling_freeze_transforms.py",
+        bpy,
+        object_name="Body",
+        rotation=True,
+        scale=False,
+    )
+    assert frozen["success"] is False
+    assert frozen["context"]["mutation_applied"] is True
+    assert frozen["context"]["transform_before"]["rotation"] == [0.2, 0.3, 0.4]
+    assert frozen["context"]["transform_after"]["rotation"] == [0.0, 0.0, 0.0]
 
 
 def test_freeze_transforms_reports_partial_mutation_when_finished_readback_fails() -> None:
@@ -1357,6 +1467,52 @@ def test_boolean_configuration_failure_removes_the_new_modifier() -> None:
     assert result["context"]["rollback_verified"] is True
     assert result["context"]["mutation_applied"] is False
     assert left.modifiers == []
+
+
+def test_delete_history_keeps_partial_receipt_when_failure_evidence_raises() -> None:
+    class _BrokenVertices:
+        def __len__(self):
+            return 4
+
+        def __iter__(self):
+            raise RuntimeError("vertex readback failed")
+
+    body = MagicMock()
+    body.name = "Body"
+    body.type = "MESH"
+    body.data = MagicMock(name="BodyMesh")
+    body.data.vertices = [MagicMock() for _ in range(4)]
+    body.data.edges = [MagicMock() for _ in range(4)]
+    body.data.polygons = [MagicMock()]
+    bevel = MagicMock(name="Bevel")
+    bevel.name = "Bevel"
+    mirror = MagicMock(name="Mirror")
+    mirror.name = "Mirror"
+    body.modifiers = _Modifiers([bevel, mirror])
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = body
+
+    def apply_modifier(*, modifier):
+        if modifier == "Bevel":
+            body.modifiers.remove(bevel)
+            body.data.vertices = _BrokenVertices()
+            return {"FINISHED"}
+        return {"CANCELLED"}
+
+    bpy.ops.object.modifier_apply.side_effect = apply_modifier
+    result = load_and_call(
+        "blender-mesh-ops/scripts/delete_history.py",
+        bpy,
+        object_name="Body",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is False
+    assert result["context"]["applied_modifiers"] == ["Bevel"]
+    assert result["context"]["remaining_modifiers"] == ["Mirror"]
+    assert result["context"]["failed_modifier"] == "Mirror"
+    assert result["context"]["error_type"] == "RuntimeError"
 
 
 def test_modeling_contracts_mark_potentially_destructive_mesh_changes() -> None:
@@ -1600,6 +1756,34 @@ def test_loft_rejects_cancelled_bridge_after_partial_mutation_and_cleans_output(
     assert result["context"]["rollback_verified"] is True
     assert result["context"]["failed_operator"] == "bridge_edge_loops"
     assert result["context"]["mesh_after"]["face_count"] == 1
+
+
+def test_loft_claims_each_duplicate_before_a_later_copy_raises() -> None:
+    section_a = _profile_object("SectionA")
+    section_b = _profile_object("SectionB")
+    first_copy = _profile_object("SectionA_copy")
+    section_a.copy.return_value = first_copy
+    section_a.data.copy.return_value = first_copy.data
+    section_b.copy.side_effect = RuntimeError("second copy failed")
+    registry = [section_a, section_b]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.side_effect = lambda name: {"SectionA": section_a, "SectionB": section_b}.get(name)
+    bpy.data.objects.__iter__.side_effect = lambda: iter(registry)
+    bpy.context.collection.objects.link.side_effect = lambda obj: registry.append(obj)
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/loft_sections.py",
+        bpy,
+        sections=["SectionA", "SectionB"],
+        output_name="Fuselage",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is True
+    assert first_copy not in registry
 
 
 def test_lathe_rejects_cancelled_apply_after_partial_mutation_and_cleans_output() -> None:

@@ -427,6 +427,12 @@ def boolean_op(
 
 def delete_history(object_name: str) -> dict:
     """Apply a bounded Blender modifier stack and verify it is empty."""
+    obj = None
+    before_mesh = None
+    before_modifiers = []
+    applied = []
+    current_name = None
+    operation_started = False
     try:
         import bpy
 
@@ -439,9 +445,10 @@ def delete_history(object_name: str) -> dict:
         before_mesh = mesh_state(obj)
         before_modifiers = [str(modifier.name) for modifier in modifiers]
         select_object(bpy, obj)
-        applied = []
         for modifier in modifiers:
             name = str(modifier.name)
+            current_name = name
+            operation_started = True
             finished = operator_finished(bpy.ops.object.modifier_apply(modifier=name))
             remaining = [str(current.name) for current in obj.modifiers]
             if not finished or name in remaining:
@@ -513,4 +520,29 @@ def delete_history(object_name: str) -> dict:
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and operation_started:
+            try:
+                remaining = [str(current.name) for current in obj.modifiers]
+            except Exception:
+                remaining = None
+            observed_applied = (
+                [name for name in before_modifiers if name not in remaining] if remaining is not None else list(applied)
+            )
+            try:
+                after_counts = mesh_evidence_counts(obj)
+            except Exception:
+                after_counts = None
+            return skill_error(
+                f"History verification failed: {object_name}",
+                "The modifier stack was partially evaluated before verification failed.",
+                mutation_applied=True,
+                rollback_attempted=False,
+                rollback_verified=False,
+                error_type=type(exc).__name__,
+                applied_modifiers=observed_applied,
+                remaining_modifiers=remaining,
+                failed_modifier=current_name,
+                mesh_before=before_mesh,
+                mesh_after_counts=after_counts,
+            )
         return skill_exception(exc, message=f"Failed to delete history for {object_name}")

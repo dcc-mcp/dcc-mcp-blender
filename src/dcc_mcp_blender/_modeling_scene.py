@@ -69,6 +69,9 @@ def _rollback_group_changes(bpy, collection, created, scene_linked, newly_linked
 
 def set_pivot(object_name: str, position: Sequence[float]) -> dict:
     """Move the object origin to an exact world-space position and verify it."""
+    obj = None
+    before = None
+    operation_started = False
     position_value, error = vector(position, "position")
     if error:
         return error
@@ -84,6 +87,7 @@ def set_pivot(object_name: str, position: Sequence[float]) -> dict:
         before = coords(obj.matrix_world.translation)
         try:
             cursor.location = position_value
+            operation_started = True
             finished = operator_finished(bpy.ops.object.origin_set(type="ORIGIN_CURSOR", center="MEDIAN"))
             actual = coords(obj.matrix_world.translation)
         finally:
@@ -118,6 +122,21 @@ def set_pivot(object_name: str, position: Sequence[float]) -> dict:
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and operation_started:
+            try:
+                actual = coords(obj.matrix_world.translation)
+            except Exception:
+                actual = None
+            return skill_error(
+                f"Pivot verification failed: {object_name}",
+                "The origin operation may have mutated the object before verification failed.",
+                mutation_applied=True,
+                rollback_attempted=False,
+                rollback_verified=False,
+                error_type=type(exc).__name__,
+                position_before=before,
+                position_after=actual,
+            )
         return skill_exception(exc, message=f"Failed to set pivot for {object_name}")
 
 
@@ -193,8 +212,14 @@ def group_parent(
             )
         for obj in objects:
             if not _contains_identity(collection.objects, obj):
-                collection.objects.link(obj)
-                newly_linked.append(obj)
+                try:
+                    collection.objects.link(obj)
+                except Exception:
+                    if _contains_identity(collection.objects, obj):
+                        newly_linked.append(obj)
+                    raise
+                if _contains_identity(collection.objects, obj):
+                    newly_linked.append(obj)
             if parent is not None:
                 matrix_world = getattr(obj, "matrix_world", None)
                 original_parent = getattr(obj, "parent", None)
@@ -277,6 +302,9 @@ def freeze_transforms(
     scale: bool = True,
 ) -> dict:
     """Apply selected transforms and require neutral host values afterward."""
+    obj = None
+    before = None
+    operation_started = False
     try:
         import bpy
 
@@ -289,6 +317,7 @@ def freeze_transforms(
             "rotation": coords(obj.rotation_euler),
             "scale": coords(obj.scale),
         }
+        operation_started = True
         finished = operator_finished(
             bpy.ops.object.transform_apply(location=bool(location), rotation=bool(rotation), scale=bool(scale))
         )
@@ -332,6 +361,25 @@ def freeze_transforms(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and operation_started:
+            try:
+                after = {
+                    "location": coords(obj.location),
+                    "rotation": coords(obj.rotation_euler),
+                    "scale": coords(obj.scale),
+                }
+            except Exception:
+                after = None
+            return skill_error(
+                f"Transform verification failed: {object_name}",
+                "The transform operation may have mutated the object before verification failed.",
+                mutation_applied=True,
+                rollback_attempted=False,
+                rollback_verified=False,
+                error_type=type(exc).__name__,
+                transform_before=before,
+                transform_after=after,
+            )
         return skill_exception(exc, message=f"Failed to freeze transforms for {object_name}")
 
 

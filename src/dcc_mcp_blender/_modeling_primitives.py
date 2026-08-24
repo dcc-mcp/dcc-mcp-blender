@@ -38,11 +38,22 @@ _PRIMITIVE_OPERATORS = {
 
 def _cleanup_created_objects(bpy, created) -> bool:
     """Remove only objects created by the current operation and verify absence."""
-    created_identities = {object_identity(obj) for obj in created}
+    unique_created = {}
     for obj in created:
+        unique_created[object_identity(obj)] = obj
+    created_identities = set(unique_created)
+    for obj in unique_created.values():
         remove_object(bpy, obj)
     remaining_identities = {object_identity(obj) for obj in bpy.data.objects}
     return created_identities.isdisjoint(remaining_identities)
+
+
+def _new_objects_since(bpy, before_identities) -> list:
+    """Claim every currently registered object that was absent from the preflight snapshot."""
+    try:
+        return [obj for obj in bpy.data.objects if object_identity(obj) not in before_identities]
+    except Exception:
+        return []
 
 
 def _creation_failure(bpy, created, message: str, prompt: str, **context) -> dict:
@@ -68,6 +79,7 @@ def create_primitive(
 ) -> dict:
     """Create a named primitive and verify its Blender transform readback."""
     created_obj = None
+    before_identities = set()
     kind = str(primitive_type).lower()
     if kind not in _PRIMITIVE_OPERATORS:
         return skill_error("Invalid primitive_type", f"Use one of: {', '.join(sorted(_PRIMITIVE_OPERATORS))}.")
@@ -181,10 +193,11 @@ def create_primitive(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        if created_obj is not None:
+        created = ([created_obj] if created_obj is not None else []) + _new_objects_since(bpy, before_identities)
+        if created:
             return _creation_failure(
                 bpy,
-                [created_obj],
+                created,
                 f"Primitive creation failed: {name}",
                 "The created object could not be verified and was rolled back where possible.",
                 error_type=type(exc).__name__,
@@ -202,6 +215,7 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
     if not isinstance(target_name, str) or not target_name.strip() or len(target_name) > 255:
         return skill_error("Invalid output_name", "output_name must contain between 1 and 255 characters.")
     copies = []
+    before_identities = set()
     try:
         import bpy
 
@@ -219,7 +233,10 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
             vertex_counts.add(len(source.data.vertices))
         if len(vertex_counts) != 1:
             return skill_error("Incompatible loft sections", "Every section must have the same vertex count.")
-        copies = [duplicate_mesh(bpy, source, f"__dcc_mcp_loft_{index}") for index, source in enumerate(sources)]
+        before_identities = {object_identity(existing) for existing in bpy.data.objects}
+        for index, source in enumerate(sources):
+            duplicate = duplicate_mesh(bpy, source, f"__dcc_mcp_loft_{index}")
+            copies.append(duplicate)
         object_mode(bpy)
         try:
             bpy.ops.object.select_all(action="DESELECT")
@@ -286,10 +303,11 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
-        if copies:
+        created = copies + _new_objects_since(bpy, before_identities)
+        if created:
             return _creation_failure(
                 bpy,
-                copies,
+                created,
                 "Loft failed",
                 "Transient loft output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
@@ -317,6 +335,7 @@ def lathe_profile(
     if not isinstance(target_name, str) or not target_name.strip() or len(target_name) > 255:
         return skill_error("Invalid output_name", "output_name must contain between 1 and 255 characters.")
     duplicate = None
+    before_identities = set()
     try:
         import bpy
 
@@ -329,6 +348,7 @@ def lathe_profile(
             )
         if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
+        before_identities = {object_identity(existing) for existing in bpy.data.objects}
         duplicate = duplicate_mesh(bpy, source, target_name)
         select_object(bpy, duplicate)
         cursor = bpy.context.scene.cursor
@@ -419,10 +439,11 @@ def lathe_profile(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        if duplicate is not None:
+        created = ([duplicate] if duplicate is not None else []) + _new_objects_since(bpy, before_identities)
+        if created:
             return _creation_failure(
                 bpy,
-                [duplicate],
+                created,
                 f"Lathe failed: {profile}",
                 "Transient lathe output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
