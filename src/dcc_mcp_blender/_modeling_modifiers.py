@@ -12,6 +12,7 @@ from dcc_mcp_blender._modeling_common import (
     coords,
     mesh_object,
     mesh_state,
+    object_identity,
     operator_finished,
     select_object,
     vector,
@@ -220,22 +221,31 @@ def boolean_op(
             modifier.solver = "EXACT"
         modifier_name = modifier.name
         configured = (
-            modifier.object is right
+            object_identity(modifier.object) == object_identity(right)
             and str(modifier.operation) == _BOOLEAN_OPERATIONS[operation_key]
             and str(modifier.type) == "BOOLEAN"
         )
         if not configured:
-            return skill_error("Boolean configuration failed", "Blender did not retain the requested operands.")
+            rollback_attempted = True
+            try:
+                left.modifiers.remove(modifier)
+            except Exception:
+                pass
+            modifier_present = left.modifiers.get(modifier_name) is not None
+            return skill_error(
+                "Boolean configuration failed",
+                "Blender did not retain the requested operands.",
+                mutation_applied=modifier_present,
+                rollback_attempted=rollback_attempted,
+                rollback_verified=not modifier_present,
+                modifier_name=modifier_name,
+                modifier_present=modifier_present,
+            )
         apply_finished = False
         if bool(apply):
             apply_finished = operator_finished(bpy.ops.object.modifier_apply(modifier=modifier_name))
         present = left.modifiers.get(modifier_name) is not None
         after_mesh = mesh_state(left)
-        if output_name:
-            old_name = left.name
-            left.name = output_name
-            if getattr(left, "data", None) is not None and getattr(left.data, "name", None) == old_name:
-                left.data.name = output_name
         verified = (
             not present and apply_finished and after_mesh["mesh_digest"] != before_mesh["mesh_digest"]
             if bool(apply)
@@ -254,6 +264,11 @@ def boolean_op(
             return skill_error(
                 f"Boolean readback failed: {input_a}", "Modifier application or mesh state did not match.", **context
             )
+        if output_name:
+            old_name = left.name
+            left.name = output_name
+            if getattr(left, "data", None) is not None and getattr(left.data, "name", None) == old_name:
+                left.data.name = output_name
         return skill_success(
             f"Applied {operation_key} Boolean to {left.name}",
             inputs=[input_a, input_b],
@@ -287,15 +302,47 @@ def delete_history(object_name: str) -> dict:
         modifiers = list(obj.modifiers)
         if len(modifiers) > 128:
             return skill_error("Modifier limit exceeded", "Refuse to apply more than 128 modifiers in one call.")
+        before_mesh = mesh_state(obj)
+        before_modifiers = [str(modifier.name) for modifier in modifiers]
         select_object(bpy, obj)
         applied = []
         for modifier in modifiers:
             name = str(modifier.name)
-            bpy.ops.object.modifier_apply(modifier=name)
+            finished = operator_finished(bpy.ops.object.modifier_apply(modifier=name))
+            remaining = [str(current.name) for current in obj.modifiers]
+            if not finished or name in remaining:
+                after_mesh = mesh_state(obj)
+                return skill_error(
+                    f"History cleanup incomplete: {object_name}",
+                    f"Modifier '{name}' was not applied.",
+                    mutation_applied=(
+                        remaining != before_modifiers or after_mesh["mesh_digest"] != before_mesh["mesh_digest"]
+                    ),
+                    rollback_attempted=False,
+                    rollback_verified=False,
+                    applied_modifiers=applied,
+                    remaining_modifiers=remaining,
+                    failed_modifier=name,
+                    mesh_before=before_mesh,
+                    mesh_after=after_mesh,
+                )
             applied.append(name)
         remaining = [str(modifier.name) for modifier in obj.modifiers]
         if remaining:
-            return skill_error(f"History cleanup incomplete: {object_name}", f"Remaining modifiers: {remaining}")
+            after_mesh = mesh_state(obj)
+            return skill_error(
+                f"History cleanup incomplete: {object_name}",
+                f"Remaining modifiers: {remaining}",
+                mutation_applied=(
+                    remaining != before_modifiers or after_mesh["mesh_digest"] != before_mesh["mesh_digest"]
+                ),
+                rollback_attempted=False,
+                rollback_verified=False,
+                applied_modifiers=applied,
+                remaining_modifiers=remaining,
+                mesh_before=before_mesh,
+                mesh_after=after_mesh,
+            )
         return skill_success(
             f"Applied {len(applied)} modifier(s) on {object_name}",
             object_name=obj.name,

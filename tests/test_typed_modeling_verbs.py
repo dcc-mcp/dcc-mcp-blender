@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -642,6 +643,270 @@ def test_auto_uv_and_uv_project_delegate_to_native_uv_ops_with_readback() -> Non
     assert projected["context"]["parameters"]["projection"] == "cylindrical"
     assert projected["context"]["readback"]["active_uv_map"] == "UVMap"
     assert projected["context"]["readback"]["verified"] is True
+
+
+def test_pivot_and_freeze_reject_cancelled_operators_even_when_readback_already_matches() -> None:
+    obj = MagicMock()
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.location = [0.0, 0.0, 0.0]
+    obj.rotation_euler = [0.0, 0.0, 0.0]
+    obj.scale = [1.0, 1.0, 1.0]
+    obj.matrix_world.translation = [0.0, 0.0, 0.0]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+    bpy.context.scene.cursor.location = [3.0, 4.0, 5.0]
+    bpy.ops.object.origin_set.return_value = {"CANCELLED"}
+    bpy.ops.object.transform_apply.return_value = {"CANCELLED"}
+
+    pivot = load_and_call(
+        "blender-mesh-ops/scripts/set_pivot.py",
+        bpy,
+        object_name="Body",
+        position=[0.0, 0.0, 0.0],
+    )
+    frozen = load_and_call(
+        "blender-mesh-ops/scripts/modeling_freeze_transforms.py",
+        bpy,
+        object_name="Body",
+        location=True,
+        rotation=True,
+        scale=True,
+    )
+
+    for result in (pivot, frozen):
+        assert result["success"] is False
+        assert result["context"]["mutation_applied"] is False
+        assert result["context"]["rollback_attempted"] is False
+        assert result["context"]["rollback_verified"] is False
+    assert bpy.context.scene.cursor.location == [3.0, 4.0, 5.0]
+
+
+def test_assign_material_stops_when_slot_creation_is_cancelled_or_makes_no_progress() -> None:
+    material = MagicMock(name="Paint")
+    material.name = "Paint"
+    obj = MagicMock(name="Body")
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.data = MagicMock(name="BodyMesh")
+    obj.material_slots = []
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+    bpy.data.materials.get.return_value = material
+
+    bpy.ops.object.material_slot_add.return_value = {"CANCELLED"}
+    cancelled = load_and_call(
+        "blender-mesh-ops/scripts/modeling_assign_material.py",
+        bpy,
+        object_name="Body",
+        material_name="Paint",
+        slot_index=0,
+    )
+    assert cancelled["success"] is False
+    assert bpy.ops.object.material_slot_add.call_count == 1
+
+    bpy.ops.object.material_slot_add.reset_mock(return_value=True, side_effect=True)
+    bpy.ops.object.material_slot_add.return_value = {"FINISHED"}
+    no_progress = load_and_call(
+        "blender-mesh-ops/scripts/modeling_assign_material.py",
+        bpy,
+        object_name="Body",
+        material_name="Paint",
+        slot_index=0,
+    )
+    assert no_progress["success"] is False
+    assert bpy.ops.object.material_slot_add.call_count == 1
+
+
+def test_delete_history_reports_partial_mutation_and_stops_on_cancelled_modifier() -> None:
+    first = MagicMock(name="Bevel")
+    first.name = "Bevel"
+    second = MagicMock(name="Mirror")
+    second.name = "Mirror"
+    obj = MagicMock(name="Body")
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.data = MagicMock(name="BodyMesh")
+    obj.data.vertices = [MagicMock() for _ in range(4)]
+    obj.data.edges = [MagicMock() for _ in range(4)]
+    obj.data.polygons = [MagicMock()]
+    obj.modifiers = _Modifiers([first, second])
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+
+    def apply_modifier(*, modifier):
+        if modifier == "Bevel":
+            obj.modifiers.remove(first)
+            obj.data.polygons.append(MagicMock())
+            return {"FINISHED"}
+        return {"CANCELLED"}
+
+    bpy.ops.object.modifier_apply.side_effect = apply_modifier
+    result = load_and_call(
+        "blender-mesh-ops/scripts/delete_history.py",
+        bpy,
+        object_name="Body",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["applied_modifiers"] == ["Bevel"]
+    assert result["context"]["remaining_modifiers"] == ["Mirror"]
+    assert result["context"]["failed_modifier"] == "Mirror"
+    assert result["context"]["mesh_before"]["face_count"] == 1
+    assert result["context"]["mesh_after"]["face_count"] == 2
+
+
+def test_boolean_operand_uses_blender_pointer_identity_instead_of_python_wrapper_identity() -> None:
+    pointer = 4242
+    right = MagicMock(name="Cutter")
+    right.name = "Cutter"
+    right.type = "MESH"
+    right.as_pointer.return_value = pointer
+    wrapper = MagicMock(name="CutterWrapper")
+    wrapper.name = "Cutter"
+    wrapper.as_pointer.return_value = pointer
+
+    class _BooleanModifier:
+        name = "Boolean_Operation"
+        type = "BOOLEAN"
+        operation = "DIFFERENCE"
+        solver = "EXACT"
+
+        @property
+        def object(self):
+            return wrapper
+
+        @object.setter
+        def object(self, _value):
+            pass
+
+    class _BooleanModifiers(_Modifiers):
+        def new(self, name, type):
+            modifier = _BooleanModifier()
+            modifier.name = name
+            modifier.type = type
+            self.append(modifier)
+            return modifier
+
+    left = MagicMock(name="Body")
+    left.name = "Body"
+    left.type = "MESH"
+    left.data = MagicMock(name="BodyMesh")
+    left.data.vertices = [MagicMock() for _ in range(4)]
+    left.data.edges = [MagicMock() for _ in range(4)]
+    left.data.polygons = [MagicMock()]
+    left.modifiers = _BooleanModifiers()
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.side_effect = lambda name: {"Body": left, "Cutter": right}.get(name)
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/boolean_op.py",
+        bpy,
+        input_a="Body",
+        input_b="Cutter",
+        operation="subtract",
+        apply=False,
+    )
+
+    assert result["success"] is True, result
+    assert result["context"]["readback"]["modifier_present"] is True
+
+
+def test_boolean_configuration_failure_removes_the_new_modifier() -> None:
+    right = MagicMock(name="Cutter")
+    right.name = "Cutter"
+    right.type = "MESH"
+    right.as_pointer.return_value = 4242
+    wrong_wrapper = MagicMock(name="WrongOperand")
+    wrong_wrapper.as_pointer.return_value = 7331
+
+    class _RejectedBooleanModifier:
+        name = "Boolean_Operation"
+        type = "BOOLEAN"
+        operation = "DIFFERENCE"
+        solver = "EXACT"
+
+        @property
+        def object(self):
+            return wrong_wrapper
+
+        @object.setter
+        def object(self, _value):
+            pass
+
+    class _RejectedModifiers(_Modifiers):
+        def new(self, name, type):
+            modifier = _RejectedBooleanModifier()
+            modifier.name = name
+            modifier.type = type
+            self.append(modifier)
+            return modifier
+
+    left = MagicMock(name="Body")
+    left.name = "Body"
+    left.type = "MESH"
+    left.data = MagicMock(name="BodyMesh")
+    left.data.vertices = [MagicMock() for _ in range(4)]
+    left.data.edges = [MagicMock() for _ in range(4)]
+    left.data.polygons = [MagicMock()]
+    left.modifiers = _RejectedModifiers()
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.side_effect = lambda name: {"Body": left, "Cutter": right}.get(name)
+
+    result = load_and_call(
+        "blender-mesh-ops/scripts/boolean_op.py",
+        bpy,
+        input_a="Body",
+        input_b="Cutter",
+        operation="subtract",
+        apply=False,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is True
+    assert result["context"]["mutation_applied"] is False
+    assert left.modifiers == []
+
+
+def test_modeling_contracts_mark_potentially_destructive_mesh_changes() -> None:
+    tools = yaml.safe_load((SKILL_ROOT / "tools.yaml").read_text(encoding="utf-8"))["tools"]
+    contracts = {tool["name"]: tool for tool in tools}
+    destructive = {
+        "add_edge_loop",
+        "array_instances",
+        "auto_uv",
+        "bevel_edges",
+        "boolean_op",
+        "extrude_faces",
+        "inset",
+        "mirror",
+        "uv_project",
+    }
+
+    for name in destructive:
+        assert contracts[name]["destructive"] is True, name
+        assert contracts[name]["annotations"]["destructive_hint"] is True, name
+
+
+def test_mesh_state_rejects_unbounded_evidence_before_iteration() -> None:
+    from dcc_mcp_blender._modeling_common import mesh_state
+
+    class _TooLarge:
+        def __len__(self):
+            return 10_000_001
+
+        def __iter__(self):
+            raise AssertionError("oversized evidence must be rejected before iteration")
+
+    obj = MagicMock()
+    obj.data.vertices = _TooLarge()
+    obj.data.edges = []
+    obj.data.polygons = []
+
+    with pytest.raises(ValueError, match="evidence limit"):
+        mesh_state(obj)
 
 
 def test_auto_uv_rejects_an_unchanged_positive_uv_map() -> None:

@@ -255,11 +255,11 @@ tools:
           description: Keep the Mirror modifier live instead of applying it.
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations:
+    annotations: &modeling_destructive_annotations
       read_only_hint: false
-      destructive_hint: false
+      destructive_hint: true
       idempotent_hint: false
       open_world_hint: false
 
@@ -331,13 +331,9 @@ tools:
           default: [0.0, 0.0, 1.0]
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations:
-      read_only_hint: false
-      destructive_hint: false
-      idempotent_hint: false
-      open_world_hint: false
+    annotations: *modeling_destructive_annotations
 
   - name: create_primitive
     description: "Create a named mesh primitive with bounded transform parameters and exact object readback."
@@ -428,9 +424,9 @@ tools:
         segments: {type: integer, minimum: 1, maximum: 64, default: 1}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: inset
     description: "Inset explicit mesh faces with bounded thickness/depth and verify topology."
@@ -450,9 +446,9 @@ tools:
         depth: {type: number, minimum: -1000000, maximum: 1000000, default: 0}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: boolean_op
     description: "Apply a typed Boolean operation between two meshes and verify modifier/application readback."
@@ -473,9 +469,9 @@ tools:
         output_name: {type: string, minLength: 1, maxLength: 255}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: add_edge_loop
     description: "Subdivide explicit mesh edges with bounded cuts and verify topology."
@@ -494,9 +490,9 @@ tools:
         cuts: {type: integer, minimum: 1, maximum: 64, default: 1}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: array_instances
     description: "Add a bounded Array modifier using an explicit constant offset and return modifier readback."
@@ -517,9 +513,9 @@ tools:
         modifier_name: {type: string, minLength: 1, maxLength: 255}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: mirror
     description: "Add a typed Mirror modifier on one axis and return exact modifier readback."
@@ -541,9 +537,9 @@ tools:
         modifier_name: {type: string, minLength: 1, maxLength: 255}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: set_pivot
     description: "Move an object's origin to an explicit world-space position and verify exact readback."
@@ -651,9 +647,9 @@ tools:
         margin: {type: number, minimum: 0, maximum: 0.49, default: 0.001}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: uv_project
     description: "Project UVs with a typed projection mode and return UV-map readback."
@@ -673,9 +669,9 @@ tools:
         margin: {type: number, minimum: 0, maximum: 0.49, default: 0}
     output_schema: *mesh_result_schema
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *modeling_annotations
+    annotations: *modeling_destructive_annotations
 
   - name: assign_material
     description: "Assign a named material slot and verify the slot connection before success."

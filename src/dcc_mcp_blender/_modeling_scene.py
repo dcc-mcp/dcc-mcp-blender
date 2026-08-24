@@ -6,7 +6,15 @@ from typing import Optional, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
-from dcc_mcp_blender._modeling_common import close, coords, mesh_object, select_object, uv_state, vector
+from dcc_mcp_blender._modeling_common import (
+    close,
+    coords,
+    mesh_object,
+    operator_finished,
+    select_object,
+    uv_state,
+    vector,
+)
 
 
 def set_pivot(object_name: str, position: Sequence[float]) -> dict:
@@ -23,14 +31,33 @@ def set_pivot(object_name: str, position: Sequence[float]) -> dict:
         select_object(bpy, obj)
         cursor = bpy.context.scene.cursor
         previous = coords(cursor.location)
+        before = coords(obj.matrix_world.translation)
         try:
             cursor.location = position_value
-            bpy.ops.object.origin_set(type="ORIGIN_CURSOR", center="MEDIAN")
+            finished = operator_finished(bpy.ops.object.origin_set(type="ORIGIN_CURSOR", center="MEDIAN"))
             actual = coords(obj.matrix_world.translation)
         finally:
             cursor.location = previous
+        if not finished:
+            return skill_error(
+                f"Pivot operation failed: {object_name}",
+                "Blender did not report FINISHED for origin_set.",
+                mutation_applied=not close(before, actual),
+                rollback_attempted=False,
+                rollback_verified=False,
+                position_before=before,
+                position_after=actual,
+            )
         if not close(actual, position_value):
-            return skill_error(f"Pivot readback failed: {object_name}", "Object origin did not match the request.")
+            return skill_error(
+                f"Pivot readback failed: {object_name}",
+                "Object origin did not match the request.",
+                mutation_applied=not close(before, actual),
+                rollback_attempted=False,
+                rollback_verified=False,
+                position_before=before,
+                position_after=actual,
+            )
         return skill_success(
             f"Set pivot for {object_name}",
             object_name=obj.name,
@@ -143,12 +170,24 @@ def freeze_transforms(
             "rotation": coords(obj.rotation_euler),
             "scale": coords(obj.scale),
         }
-        bpy.ops.object.transform_apply(location=bool(location), rotation=bool(rotation), scale=bool(scale))
+        finished = operator_finished(
+            bpy.ops.object.transform_apply(location=bool(location), rotation=bool(rotation), scale=bool(scale))
+        )
         after = {
             "location": coords(obj.location),
             "rotation": coords(obj.rotation_euler),
             "scale": coords(obj.scale),
         }
+        if not finished:
+            return skill_error(
+                f"Transform operation failed: {object_name}",
+                "Blender did not report FINISHED for transform_apply.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                transform_before=before,
+                transform_after=after,
+            )
         verified = (
             (not location or close(after["location"], [0.0, 0.0, 0.0]))
             and (not rotation or close(after["rotation"], [0.0, 0.0, 0.0]))
@@ -183,13 +222,34 @@ def assign_material(object_name: str, material_name: str, slot_index: int = 0) -
         if material is None:
             return skill_error(f"Material not found: {material_name}", f"No material named '{material_name}'.")
         select_object(bpy, obj)
+        initial_slot_count = len(obj.material_slots)
         while len(obj.material_slots) <= slot_index:
-            bpy.ops.object.material_slot_add()
+            before_slot_count = len(obj.material_slots)
+            finished = operator_finished(bpy.ops.object.material_slot_add())
+            after_slot_count = len(obj.material_slots)
+            if not finished or after_slot_count <= before_slot_count:
+                return skill_error(
+                    f"Material slot creation failed: {object_name}",
+                    "Blender did not create the requested material slot.",
+                    mutation_applied=after_slot_count != initial_slot_count,
+                    rollback_attempted=False,
+                    rollback_verified=False,
+                    slot_count_before=initial_slot_count,
+                    slot_count_after=after_slot_count,
+                )
         obj.material_slots[slot_index].material = material
         actual = obj.material_slots[slot_index].material
         verified = actual is material or getattr(actual, "name", None) == material_name
         if not verified:
-            return skill_error(f"Material readback failed: {object_name}", "Material slot did not retain the request.")
+            return skill_error(
+                f"Material readback failed: {object_name}",
+                "Material slot did not retain the request.",
+                mutation_applied=True,
+                rollback_attempted=False,
+                rollback_verified=False,
+                slot_count_before=initial_slot_count,
+                slot_count_after=len(obj.material_slots),
+            )
         return skill_success(
             f"Assigned {material_name} to {object_name}",
             parameters={"material_name": material_name, "object_name": object_name, "slot_index": slot_index},

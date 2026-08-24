@@ -130,6 +130,74 @@ class TestMeshSceneOpsE2E:
         assert cleaned["success"] is True, cleaned
         assert cleaned["context"]["readback"]["remaining_modifiers"] == []
 
+    def test_applied_modifiers_boolean_and_uvs_prove_real_mesh_digest_changes(self):
+        from dcc_mcp_blender._modeling_common import uv_state
+
+        create_mod = load_skill("blender-mesh-ops", "create_primitive")
+        body = create_mod.create_primitive(primitive_type="cube", name="DigestBody", size=2.0)
+        cutter = create_mod.create_primitive(
+            primitive_type="cube",
+            name="DigestCutter",
+            location=[0.75, 0.0, 0.0],
+            scale=[0.5, 0.5, 0.5],
+            size=2.0,
+        )
+        assert body["success"] is True, body
+        assert cutter["success"] is True, cutter
+
+        array_mod = load_skill("blender-mesh-ops", "array_instances")
+        arrayed = array_mod.array_instances(
+            object_name="DigestBody",
+            count=3,
+            offset=[3.0, 0.0, 0.0],
+            modifier_name="AppliedArray",
+            apply=True,
+        )
+        assert arrayed["success"] is True, arrayed
+        assert arrayed["context"]["readback"]["applied"] is True
+        assert (
+            arrayed["context"]["readback"]["mesh_before"]["mesh_digest"]
+            != arrayed["context"]["readback"]["mesh_after"]["mesh_digest"]
+        )
+
+        mirror_mod = load_skill("blender-mesh-ops", "mirror")
+        mirrored = mirror_mod.mirror(
+            object_name="DigestBody",
+            axis="y",
+            modifier_name="AppliedMirror",
+            apply=True,
+        )
+        assert mirrored["success"] is True, mirrored
+        assert mirrored["context"]["readback"]["applied"] is True
+        assert (
+            mirrored["context"]["readback"]["mesh_before"]["mesh_digest"]
+            != mirrored["context"]["readback"]["mesh_after"]["mesh_digest"]
+        )
+
+        boolean_mod = load_skill("blender-mesh-ops", "boolean_op")
+        booleaned = boolean_mod.boolean_op(
+            input_a="DigestBody",
+            input_b="DigestCutter",
+            operation="subtract",
+            apply=True,
+        )
+        assert booleaned["success"] is True, booleaned
+        assert booleaned["context"]["readback"]["applied"] is True
+        assert (
+            booleaned["context"]["readback"]["mesh_before"]["mesh_digest"]
+            != booleaned["context"]["readback"]["mesh_after"]["mesh_digest"]
+        )
+
+        object_state = bpy.data.objects["DigestBody"]
+        uv_before = uv_state(object_state)
+        uv_mod = load_skill("blender-mesh-ops", "auto_uv")
+        unwrapped = uv_mod.auto_uv(object_name="DigestBody", margin=0.01)
+        assert unwrapped["success"] is True, unwrapped
+        uv_after = uv_state(object_state)
+        assert uv_after["uv_coordinate_count"] > 0
+        assert uv_after["uv_digest"] != uv_before["uv_digest"]
+        assert uv_after["uv_digest"] == unwrapped["context"]["readback"]["uv_digest"]
+
     def test_loft_and_lathe_generate_real_mesh_topology_without_consuming_sources(self):
         bpy.ops.mesh.primitive_circle_add(vertices=8, radius=1.0, fill_type="NOTHING", location=(0.0, 0.0, 0.0))
         bpy.context.active_object.name = "SectionA"

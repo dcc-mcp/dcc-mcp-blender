@@ -10,6 +10,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 from dcc_mcp_core.skill import skill_error, skill_success
 
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+MAX_EVIDENCE_ELEMENTS = 10_000_000
 
 
 def operator_finished(result: Any) -> bool:
@@ -42,46 +43,71 @@ def _int_sequence(value: Any) -> List[int]:
         return []
 
 
-def _digest(payload: Any) -> str:
-    encoded = json.dumps(payload, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("ascii")
-    return hashlib.sha256(encoded).hexdigest()
+def _bounded_collection_length(collection: Any, label: str) -> int:
+    count = len(collection)
+    if count > MAX_EVIDENCE_ELEMENTS:
+        raise ValueError(f"{label} exceeds the modeling evidence limit of {MAX_EVIDENCE_ELEMENTS} elements")
+    return count
+
+
+def _update_digest(digest: Any, label: str, value: Any) -> None:
+    """Append one canonical record without materializing the whole mesh."""
+    encoded = json.dumps([label, value], allow_nan=False, separators=(",", ":")).encode("ascii")
+    digest.update(encoded)
+    digest.update(b"\n")
 
 
 def mesh_state(obj: Any) -> dict:
     """Return topology and coordinate evidence for an object's owned mesh."""
     mesh = obj.data
-    vertices = list(getattr(mesh, "vertices", []))
-    edges = list(getattr(mesh, "edges", []))
-    polygons = list(getattr(mesh, "polygons", []))
-    payload = {
-        "vertices": [_float_sequence(getattr(vertex, "co", [])) for vertex in vertices],
-        "edges": [_int_sequence(getattr(edge, "vertices", [])) for edge in edges],
-        "polygons": [_int_sequence(getattr(polygon, "vertices", [])) for polygon in polygons],
-    }
+    vertices = getattr(mesh, "vertices", [])
+    edges = getattr(mesh, "edges", [])
+    polygons = getattr(mesh, "polygons", [])
+    vertex_count = _bounded_collection_length(vertices, "mesh vertices")
+    edge_count = _bounded_collection_length(edges, "mesh edges")
+    face_count = _bounded_collection_length(polygons, "mesh polygons")
+    if vertex_count + edge_count + face_count > MAX_EVIDENCE_ELEMENTS:
+        raise ValueError(f"mesh exceeds the modeling evidence limit of {MAX_EVIDENCE_ELEMENTS} elements")
+    digest = hashlib.sha256()
+    _update_digest(digest, "schema", "dcc-mcp/blender-mesh-evidence@1")
+    _update_digest(digest, "counts", [vertex_count, edge_count, face_count])
+    for vertex in vertices:
+        _update_digest(digest, "v", _float_sequence(getattr(vertex, "co", [])))
+    for edge in edges:
+        _update_digest(digest, "e", _int_sequence(getattr(edge, "vertices", [])))
+    for polygon in polygons:
+        _update_digest(digest, "p", _int_sequence(getattr(polygon, "vertices", [])))
     return {
-        "vertex_count": len(vertices),
-        "edge_count": len(edges),
-        "face_count": len(polygons),
-        "mesh_digest": _digest(payload),
+        "vertex_count": vertex_count,
+        "edge_count": edge_count,
+        "face_count": face_count,
+        "mesh_digest": digest.hexdigest(),
     }
 
 
 def uv_state(obj: Any) -> dict:
     """Return active UV-set identity and exact coordinate evidence."""
-    layers = list(getattr(obj.data, "uv_layers", []))
+    layers = getattr(obj.data, "uv_layers", [])
     active = getattr(getattr(obj.data, "uv_layers", None), "active", None)
-    data = list(getattr(active, "data", [])) if active is not None else []
-    coordinates = [_float_sequence(getattr(loop, "uv", [])) for loop in data]
-    payload = {
-        "active_uv_map": getattr(active, "name", None),
-        "layers": [getattr(layer, "name", None) for layer in layers],
-        "coordinates": coordinates,
-    }
+    data = getattr(active, "data", []) if active is not None else []
+    layer_count = _bounded_collection_length(layers, "UV layers")
+    coordinate_count = _bounded_collection_length(data, "UV coordinates")
+    if layer_count + coordinate_count > MAX_EVIDENCE_ELEMENTS:
+        raise ValueError(f"UV data exceeds the modeling evidence limit of {MAX_EVIDENCE_ELEMENTS} elements")
+    active_name = getattr(active, "name", None)
+    digest = hashlib.sha256()
+    _update_digest(digest, "schema", "dcc-mcp/blender-uv-evidence@1")
+    _update_digest(digest, "active", active_name)
+    _update_digest(digest, "counts", [layer_count, coordinate_count])
+    for layer in layers:
+        _update_digest(digest, "layer", getattr(layer, "name", None))
+    for loop in data:
+        _update_digest(digest, "uv", _float_sequence(getattr(loop, "uv", [])))
     return {
-        "active_uv_map": payload["active_uv_map"],
-        "uv_map_count": len(layers),
-        "uv_coordinate_count": len(data),
-        "uv_digest": _digest(payload),
+        "active_uv_map": active_name,
+        "uv_map_count": layer_count,
+        "uv_coordinate_count": coordinate_count,
+        "uv_digest": digest.hexdigest(),
     }
 
 
