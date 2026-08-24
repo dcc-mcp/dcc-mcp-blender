@@ -124,7 +124,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 |---------------|-----------|
 | blender-scene | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info` |
 | blender-objects | `create_object`, `delete_object`, `move/rotate/scale`, `get_selection`, `set_selection` |
-| blender-mesh / blender-mesh-ops | `add_modifier`, `apply_modifier`, `triangulate_mesh`, `combine_meshes`, `merge_vertices` |
+| blender-mesh / blender-mesh-ops | `add_modifier`, `apply_modifier`; opt-in `modeling` group for primitive, loft/lathe, extrude/bevel/inset, Boolean, array/mirror, pivot, UV, and material verbs |
 | blender-uv-ops | `create_uv_map`, `unwrap_uvs`, `pack_uvs`, `project_uvs` |
 | blender-rigging | `create_armature`, `create_bone`, `add_constraint`, `bind_mesh_to_armature`, `retarget_animation` |
 | blender-pose-library | `list_poses`, `save_pose`, `load_pose` |

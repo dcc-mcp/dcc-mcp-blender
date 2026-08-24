@@ -1,10 +1,10 @@
 ---
 name: blender-mesh-ops
 description: >-
-  Blender authoring skill for polygon mesh inspection, cleanup, topology
-  mutations, mesh extraction, mirroring, and material-based face selection. Use
-  this before falling back to blender-scripting whenever a workflow edits mesh
-  topology directly.
+  Blender authoring skill for verified cross-DCC modeling verbs, polygon mesh
+  inspection, cleanup, topology mutation, UV generation, material assignment,
+  hierarchy, and modifier workflows. Use this before falling back to
+  blender-scripting whenever a workflow models or edits mesh topology.
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
 metadata:
@@ -16,9 +16,11 @@ metadata:
     tags: [blender, mesh, polygon, topology, modeling]
     search-hint: >-
       mesh topology, polygon count, cleanup mesh, triangulate, combine meshes,
-      separate mesh, merge vertices, extract faces, mirror mesh, select by material
-    search-aliases: [polygon edit, face selection, mesh cleanup, topology fix, weld vertices, combine objects, split mesh, mirror geometry, degenerate faces]
-    intent: "Inspect and edit polygon mesh topology — cleanup, triangulate, combine, separate, mirror, merge vertices, and extract faces."
+      create primitive, loft sections, lathe profile, extrude faces, bevel edges,
+      inset faces, boolean, edge loop, array instances, mirror, pivot, freeze transforms,
+      auto UV, UV projection, assign material, select by material
+    search-aliases: [polygon edit, hard surface modeling, fuselage loft, revolve profile, rotor array, pivot origin, mesh cleanup, topology fix, UV projection, material binding]
+    intent: "Build and verify polygon models through the shared cross-DCC modeling vocabulary."
     recall-context:
       app_type: blender
       domain: authoring
@@ -38,13 +40,17 @@ metadata:
     produces: [mesh_data, polygon_count, topology_report]
     requires: []
     tools: tools.yaml
+    groups: groups.yaml
 ---
 
 # blender-mesh-ops
 
-Typed polygon mesh editing tools for Blender. Load this skill when an existing
-mesh needs topology inspection, cleanup, combine/separate operations, face
-extraction, vertex merging, mirroring, or material-based face selection.
+Typed polygon modeling and mesh editing tools for Blender. The lightweight
+`mesh-edit` group remains active by default. The larger `modeling` group is
+inactive until requested and covers the shared DCC verbs for primitive,
+loft/lathe, hard-surface edits, modifiers, pivots, hierarchy, cleanup, UVs, and
+material assignment. Mutating modeling tools read Blender state back before
+reporting success.
 
 Prefer `blender-objects` for object transforms and selection, `blender-mesh` for
 modifier management, `blender-uv-ops` for UVs, and `blender-scripting` only

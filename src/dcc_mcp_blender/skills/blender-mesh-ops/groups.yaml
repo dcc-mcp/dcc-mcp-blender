@@ -1,0 +1,35 @@
+groups:
+  - name: mesh-edit
+    description: Existing lightweight polygon inspection and edit operations.
+    default_active: true
+    tools:
+      - get_poly_count
+      - cleanup_mesh
+      - triangulate_mesh
+      - separate_mesh
+      - combine_meshes
+      - merge_vertices
+      - extract_faces
+      - mirror_mesh
+      - select_by_material
+  - name: modeling
+    description: Cross-DCC typed modeling verbs with post-condition readback.
+    default_active: false
+    tools:
+      - create_primitive
+      - loft_sections
+      - lathe_profile
+      - extrude_faces
+      - bevel_edges
+      - inset
+      - boolean_op
+      - add_edge_loop
+      - array_instances
+      - mirror
+      - set_pivot
+      - group_parent
+      - freeze_transforms
+      - delete_history
+      - auto_uv
+      - uv_project
+      - assign_material

@@ -179,7 +179,7 @@ HDRI by Poly Haven (CC0), and
 | **blender-scene** | `new_scene`, `open_scene`, `save_scene`, `list_objects`, `get_scene_info`, `get_session_info` |
 | **blender-objects** | `create_object`, `delete_object`, `duplicate_object`, `move_object`, `rotate_object`, `scale_object`, `get_object_info`, `get_selection`, `set_selection`, `select_by_type`, `find_by_pattern`, `rename_object`, `parent_object`, `group_objects`, `set_visibility`, `get_bounding_box`, `center_origin`, `freeze_transforms` |
 | **blender-mesh** | `add_modifier`, `apply_modifier`, `list_modifiers`, `get_mesh_info` |
-| **blender-mesh-ops** | `get_poly_count`, `cleanup_mesh`, `triangulate_mesh`, `separate_mesh`, `combine_meshes`, `merge_vertices`, `extract_faces`, `mirror_mesh`, `select_by_material` |
+| **blender-mesh-ops** | Default `mesh-edit` inspection/cleanup tools plus the opt-in `modeling` group: `create_primitive`, `loft_sections`, `lathe_profile`, `extrude_faces`, `bevel_edges`, `inset`, `boolean_op`, `add_edge_loop`, `array_instances`, `mirror`, `set_pivot`, `group_parent`, `freeze_transforms`, `delete_history`, `auto_uv`, `uv_project`, `assign_material` |
 | **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
 | **blender-rigging** | `create_armature`, `create_bone`, `mirror_bones`, `add_constraint`, `set_constraint_properties`, `bind_mesh_to_armature`, `add_shape_key`, `set_driver`, `retarget_animation` |
 | **blender-pose-library** | `list_poses`, `save_pose`, `load_pose` |
