@@ -682,6 +682,42 @@ def test_pivot_and_freeze_reject_cancelled_operators_even_when_readback_already_
     assert bpy.context.scene.cursor.location == [3.0, 4.0, 5.0]
 
 
+def test_freeze_transforms_reports_partial_mutation_when_finished_readback_fails() -> None:
+    obj = MagicMock()
+    obj.name = "Body"
+    obj.type = "MESH"
+    obj.location = [0.0, 0.0, 0.0]
+    obj.rotation_euler = [0.2, 0.3, 0.4]
+    obj.scale = [2.0, 2.0, 2.0]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = obj
+
+    def partial_apply(*, location, rotation, scale):
+        assert location is False
+        assert rotation is True
+        assert scale is True
+        obj.rotation_euler = [0.0, 0.0, 0.0]
+        return {"FINISHED"}
+
+    bpy.ops.object.transform_apply.side_effect = partial_apply
+    result = load_and_call(
+        "blender-mesh-ops/scripts/modeling_freeze_transforms.py",
+        bpy,
+        object_name="Body",
+        location=False,
+        rotation=True,
+        scale=True,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is False
+    assert result["context"]["rollback_verified"] is False
+    assert result["context"]["transform_before"]["rotation"] == [0.2, 0.3, 0.4]
+    assert result["context"]["transform_after"]["rotation"] == [0.0, 0.0, 0.0]
+    assert result["context"]["transform_after"]["scale"] == [2.0, 2.0, 2.0]
+
+
 def test_assign_material_stops_when_slot_creation_is_cancelled_or_makes_no_progress() -> None:
     material = MagicMock(name="Paint")
     material.name = "Paint"

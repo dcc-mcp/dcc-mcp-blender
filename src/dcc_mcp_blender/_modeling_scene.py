@@ -194,7 +194,15 @@ def freeze_transforms(
             and (not scale or close(after["scale"], [1.0, 1.0, 1.0]))
         )
         if not verified:
-            return skill_error(f"Transform readback failed: {object_name}", "Applied transforms were not neutral.")
+            return skill_error(
+                f"Transform readback failed: {object_name}",
+                "Applied transforms were not neutral.",
+                mutation_applied=after != before,
+                rollback_attempted=False,
+                rollback_verified=False,
+                transform_before=before,
+                transform_after=after,
+            )
         return skill_success(
             f"Froze transforms for {object_name}",
             object_name=obj.name,
