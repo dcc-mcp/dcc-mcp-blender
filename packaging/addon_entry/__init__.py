@@ -528,15 +528,24 @@ def register() -> None:
         print("[DCC MCP Blender] Background render worker detected; server autostart skipped")
         return
 
+    from dcc_mcp_core import capture_bootstrap_errors
+
     try:
-        srv = _start_server_with_host()
-        url = getattr(srv, "mcp_url", None) if srv is not None else None
-        if url:
-            print("[DCC MCP Blender] Server started —", url)
-        else:
-            print("[DCC MCP Blender] Server start requested (URL not yet available)")
+        with capture_bootstrap_errors(
+            "blender",
+            adapter_version=__addon_version__,
+            min_core_version="0.20.0",
+            phase="startup",
+        ):
+            srv = _start_server_with_host()
+            url = getattr(srv, "mcp_url", None) if srv is not None else None
+            if url:
+                print("[DCC MCP Blender] Server started —", url)
+            else:
+                print("[DCC MCP Blender] Server start requested (URL not yet available)")
     except Exception as exc:  # noqa: BLE001
         print(f"[DCC MCP Blender] Failed to start server: {exc}")
+        raise
 
 
 def unregister() -> None:

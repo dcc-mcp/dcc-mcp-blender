@@ -46,6 +46,9 @@ Repository = "https://github.com/dcc-mcp/dcc-mcp-blender"
 Issues = "https://github.com/dcc-mcp/dcc-mcp-blender/issues"
 Changelog = "https://github.com/dcc-mcp/dcc-mcp-blender/releases"
 
+[project.scripts]
+dcc-mcp-blender = "dcc_mcp_blender.install:main"
+
 [project.entry-points."dcc_mcp.adapters"]
 blender = "dcc_mcp_blender:BlenderMcpServer"
 

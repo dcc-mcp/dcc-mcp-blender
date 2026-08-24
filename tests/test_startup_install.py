@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import builtins
+import contextlib
 import importlib.util
 import pathlib
 import sys
 from types import ModuleType, SimpleNamespace
+
+import pytest
 
 ROOT = pathlib.Path(__file__).parent.parent
 SETUP_SCRIPT = ROOT / "skills" / "dcc-mcp-blender-setup" / "scripts" / "setup_dcc_mcp_blender.py"
@@ -118,3 +121,37 @@ def test_user_install_pairs_pip_user_with_blender_system_environment(monkeypatch
     install_guide = (ROOT / "install.md").read_text(encoding="utf-8")
     assert "-m pip install --user" in install_guide
     assert "blender --python-use-system-env" in install_guide
+
+
+def test_startup_bridge_captures_and_reraises_bootstrap_failures(monkeypatch, tmp_path):
+    """Early startup failures must remain visible both to Core and Blender."""
+    setup = _load_setup_module()
+    blender_python = tmp_path / "Blender 5.2" / "5.2" / "python" / "bin" / "python.exe"
+    blender_python.parent.mkdir(parents=True)
+    blender_python.touch()
+    startup_path = setup.install_startup_script(blender_python, str(tmp_path / "scripts"))
+    startup = _load_startup_module(startup_path, monkeypatch)
+    captured = []
+
+    @contextlib.contextmanager
+    def capture_bootstrap_errors(dcc_name, **kwargs):
+        try:
+            yield
+        except BaseException as exc:
+            captured.append((dcc_name, kwargs, exc))
+            raise
+
+    fake_core = ModuleType("dcc_mcp_core")
+    fake_core.capture_bootstrap_errors = capture_bootstrap_errors
+    fake_package = ModuleType("dcc_mcp_blender")
+    fake_package.get_server = lambda: (_ for _ in ()).throw(RuntimeError("startup exploded"))
+    fake_package.start_server = lambda: None
+    monkeypatch.setitem(sys.modules, "dcc_mcp_core", fake_core)
+    monkeypatch.setitem(sys.modules, "dcc_mcp_blender", fake_package)
+
+    with pytest.raises(RuntimeError, match="startup exploded"):
+        startup.register()
+
+    assert captured[0][0] == "blender"
+    assert captured[0][1]["phase"] == "startup"
+    assert captured[0][2].args == ("startup exploded",)
