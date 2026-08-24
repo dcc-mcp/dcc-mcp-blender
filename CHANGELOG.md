@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.2](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.1...v0.2.2) (2026-08-24)
+
+
+### Features
+
+* add agent-first install lifecycle ([#193](https://github.com/dcc-mcp/dcc-mcp-blender/issues/193)) ([f891d1a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f891d1a09904d4241ade73c121918ee74489dee4))
+* add verified Blender modeling verbs ([#194](https://github.com/dcc-mcp/dcc-mcp-blender/issues/194)) ([eb25ac2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/eb25ac2dbcdd8d1089e80fc721226f7169461825))
+
+
+### Bug Fixes
+
+* capture viewport at requested dimensions ([#192](https://github.com/dcc-mcp/dcc-mcp-blender/issues/192)) ([1c508c3](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1c508c3a0acecb9c03ba9ae25f8d218724b3ee80))
+* clear mesh selection before face extraction ([e8e7c07](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e8e7c077c33c6d4eefb3dfc48e7e430a576292e3))
+* support Blender 5 startup installs ([2bd7f7b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2bd7f7b18c5231824ef5dc1bbb8d4c87c4a1b76f))
+
+
+### Documentation
+
+* add stylized swing reconstruction showcase ([db1469d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/db1469d796027175e4dfb4fd388c807091fa8751))
+
 ## [0.2.1](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.0...v0.2.1) (2026-08-13)
 
 
