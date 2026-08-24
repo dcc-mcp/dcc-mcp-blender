@@ -104,6 +104,43 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
     assert not receipt.exists()
 
 
+def test_install_requires_an_explicit_target_interpreter(tmp_path, monkeypatch, capsys):
+    """The agent CLI interpreter is not implicitly a Blender-owned interpreter."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.delenv("DCC_MCP_INSTALL_PYTHON", raising=False)
+
+    exit_code = install.main(["install", "--json", "--dry-run", "--dcc-path", str(blender)])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == install.INSTALL_EXIT_PREFLIGHT
+    assert report["verify"]["failure_stage"] == "python"
+    assert report["verify"]["failure_reason"] == "python_required"
+    assert report["next_steps"][0]["command"][5] == "<absolute-blender-python>"
+
+
+def test_environment_selected_interpreter_reports_its_real_source(tmp_path, monkeypatch, capsys):
+    """Machine-provided interpreter selection must not be mislabeled as --python."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_INSTALL_PYTHON", sys.executable)
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
+
+    exit_code = install.main(["install", "--json", "--dry-run", "--dcc-path", str(blender)])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == install.INSTALL_EXIT_OK
+    assert report["python"]["path"] == str(Path(sys.executable).resolve())
+    assert report["python"]["selection_source"] == "DCC_MCP_INSTALL_PYTHON"
+
+
 def test_receipt_round_trip_is_convergent_and_uninstall_is_idempotent(tmp_path, monkeypatch, capsys):
     """Host enablement remains installed when only live readiness is unavailable."""
     from dcc_mcp_blender import install
@@ -153,6 +190,66 @@ def test_receipt_round_trip_is_convergent_and_uninstall_is_idempotent(tmp_path, 
 
     assert install.main(["uninstall", "--yes", *common]) == install.INSTALL_EXIT_OK
     assert json.loads(capsys.readouterr().out)["steps"][0]["status"] == "already_absent"
+
+
+def test_install_preserves_unreceipted_marker_spoof(tmp_path, monkeypatch, capsys):
+    """A comment containing the legacy marker is not proof of adapter ownership."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    startup_path = tmp_path / "scripts" / "startup" / install.STARTUP_SCRIPT_NAME
+    startup_path.parent.mkdir(parents=True)
+    spoof = '# Auto-start dcc-mcp-blender\nraise RuntimeError("operator owned")\n'
+    startup_path.write_text(spoof, encoding="utf-8")
+    receipt_path = tmp_path / "receipt.json"
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
+
+    exit_code = install.main(
+        [
+            "install",
+            "--yes",
+            "--json",
+            "--dcc-path",
+            str(blender),
+            "--python",
+            sys.executable,
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == install.INSTALL_EXIT_PREFLIGHT
+    assert report["verify"]["failure_reason"] == "unreceipted_startup_script"
+    assert startup_path.read_text(encoding="utf-8") == spoof
+    assert not receipt_path.exists()
+
+
+def test_install_repairs_only_exact_generated_unreceipted_startup(tmp_path, monkeypatch, capsys):
+    """Losing a receipt is repairable only for exact known generated content."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    startup_path = tmp_path / "scripts" / "startup" / install.STARTUP_SCRIPT_NAME
+    receipt_path = tmp_path / "receipt.json"
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    common = ["--json", "--dcc-path", str(blender), "--python", sys.executable]
+
+    assert install.main(["install", "--yes", *common]) == install.INSTALL_EXIT_VERIFY
+    capsys.readouterr()
+    known_content = startup_path.read_text(encoding="utf-8")
+    receipt_path.unlink()
+
+    assert install.main(["install", "--yes", *common]) == install.INSTALL_EXIT_VERIFY
+    report = json.loads(capsys.readouterr().out)
+    assert report["install_state"] == "partial"
+    assert startup_path.read_text(encoding="utf-8") == known_content
+    assert receipt_path.is_file()
 
 
 def test_upgrade_requires_a_receipt_and_reuses_the_install_transaction(tmp_path, monkeypatch, capsys):

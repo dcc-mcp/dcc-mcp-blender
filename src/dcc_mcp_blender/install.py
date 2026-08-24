@@ -91,6 +91,7 @@ class InstallContext:
     host_version: str
     profile: Path
     python_path: Path
+    python_selection_source: str
     python_version: str
     site_packages: Path
     core_version: str
@@ -265,7 +266,19 @@ def _resolve_context(dcc_path, python_path, environ):
     # type: (Optional[str], Optional[str], Mapping[str, str]) -> InstallContext
     host_path = _resolve_host_path(dcc_path)
     host_version = _resolve_host_version(host_path, environ)
-    selected_python = python_path or environ.get("DCC_MCP_INSTALL_PYTHON") or sys.executable
+    if python_path:
+        selected_python = python_path
+        python_selection_source = "--python"
+    else:
+        selected_python = environ.get("DCC_MCP_INSTALL_PYTHON", "").strip()
+        if not selected_python:
+            raise LifecycleError(
+                INSTALL_EXIT_PREFLIGHT,
+                "python",
+                "python_required",
+                "Pass Blender's exact target interpreter with --python or DCC_MCP_INSTALL_PYTHON.",
+            )
+        python_selection_source = "DCC_MCP_INSTALL_PYTHON"
     interpreter = Path(selected_python).expanduser().resolve()
     python = _probe_python(interpreter)
     profile = (
@@ -364,6 +377,7 @@ def _resolve_context(dcc_path, python_path, environ):
         host_version=host_version,
         profile=profile,
         python_path=interpreter,
+        python_selection_source=python_selection_source,
         python_version=python["python_version"],
         site_packages=Path(python["site_packages"]).resolve(),
         core_version=python["core_version"],
@@ -402,7 +416,7 @@ def _base_report(ctx, command, status):
             "path": str(ctx.python_path),
             "version": ctx.python_version,
             "site_packages": str(ctx.site_packages),
-            "selection_source": "--python",
+            "selection_source": ctx.python_selection_source,
         },
         "install_state": ctx.state,
     }
@@ -836,7 +850,7 @@ def _execute_install(ctx, environ, command="install"):
                 "unreceipted_startup_script",
                 "The unreceipted Blender startup script cannot be inspected: %s" % exc,
             ) from exc
-        if "Auto-start dcc-mcp-blender" not in legacy:
+        if legacy != _render_startup_script(ctx):
             raise LifecycleError(
                 INSTALL_EXIT_PREFLIGHT,
                 "partial",
@@ -985,7 +999,7 @@ def _failure_report(command, dcc_path, python_path, environ, exc):
                     "--dcc-path",
                     dcc_path or "<absolute-blender-path>",
                     "--python",
-                    python_path or environ.get("DCC_MCP_INSTALL_PYTHON") or sys.executable,
+                    python_path or environ.get("DCC_MCP_INSTALL_PYTHON") or "<absolute-blender-python>",
                     "--json",
                     "--dry-run",
                 ],

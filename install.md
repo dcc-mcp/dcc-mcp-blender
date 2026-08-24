@@ -40,6 +40,9 @@ blender --python-use-system-env
 Preflight runs `<blender> --version`, rejects unsupported hosts, and binds the
 matching versioned user profile. `--dcc-path` and `--python` always select the
 exact host and interpreter recorded in the plan and receipt.
+The lifecycle never assumes its own CLI interpreter belongs to Blender:
+`--python` is required unless `DCC_MCP_INSTALL_PYTHON` explicitly selects the
+target, and JSON reports which of those two sources was used.
 
 ## Agent quick path
 
@@ -162,6 +165,7 @@ scene data it does not own.
 | Result | Diagnosis | Action |
 |---|---|---|
 | Exit `10`, `dcc_path_required` | Blender was not selected safely | Pass the exact executable or `.app` with `--dcc-path`. |
+| Exit `10`, `python_required` | Blender's target interpreter was not selected | Pass its exact interpreter with `--python` or `DCC_MCP_INSTALL_PYTHON`. |
 | Exit `10`, `unsupported_blender_version` | Host is older than Blender 3.6 | Install a supported Blender version. |
 | Exit `10`, `python_mismatch` | Interpreter differs from the receipt | Use the exact receipted Blender Python or uninstall from the original target first. |
 | Exit `10`, `unreceipted_startup_script` | Ownership cannot be proven | Inspect the reported file; do not delete or overwrite user content. |
