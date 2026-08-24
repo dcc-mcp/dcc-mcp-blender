@@ -315,8 +315,10 @@ def topology_result(
     )
 
 
-def duplicate_mesh(bpy: Any, source: Any, name: str) -> Any:
+def duplicate_mesh(bpy: Any, source: Any, name: str, owned_objects: Optional[List[Any]] = None) -> Any:
     duplicate = source.copy()
+    if owned_objects is not None:
+        owned_objects.append(duplicate)
     duplicate.data = source.data.copy()
     duplicate.name = name
     duplicate.data.name = name

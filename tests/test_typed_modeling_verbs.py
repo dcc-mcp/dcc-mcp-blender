@@ -1701,6 +1701,149 @@ def _profile_object(name):
     return obj
 
 
+def _registry_iterator_fails_after_snapshot(registry):
+    calls = 0
+
+    def iterate():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return iter(registry)
+        raise RuntimeError("post-mutation ownership scan failed")
+
+    return iterate
+
+
+def test_primitive_post_mutation_scan_failure_keeps_structured_rollback_receipt() -> None:
+    existing = _profile_object("Existing")
+    created = _profile_object("Cube")
+    registry = [existing]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = None
+    bpy.data.objects.__iter__.side_effect = _registry_iterator_fails_after_snapshot(registry)
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    def create_then_raise(**_kwargs):
+        registry.append(created)
+        bpy.context.active_object = created
+        raise RuntimeError("operator failed after create")
+
+    bpy.ops.mesh.primitive_cube_add.side_effect = create_then_raise
+    result = load_and_call(
+        "blender-mesh-ops/scripts/create_primitive.py",
+        bpy,
+        primitive_type="cube",
+        name="NewBody",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert result["context"]["ownership_scan_verified"] is False
+    assert registry == [existing]
+
+
+def test_loft_post_mutation_scan_failure_keeps_structured_rollback_receipt() -> None:
+    section_a = _profile_object("SectionA")
+    section_b = _profile_object("SectionB")
+    duplicate = _profile_object("SectionA_copy")
+    section_a.copy.return_value = duplicate
+    section_a.data.copy.return_value = duplicate.data
+    registry = [section_a, section_b]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.side_effect = lambda name: {"SectionA": section_a, "SectionB": section_b}.get(name)
+    bpy.data.objects.__iter__.side_effect = _registry_iterator_fails_after_snapshot(registry)
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    def link_then_raise(obj):
+        registry.append(obj)
+        raise RuntimeError("link failed after create")
+
+    bpy.context.collection.objects.link.side_effect = link_then_raise
+    result = load_and_call(
+        "blender-mesh-ops/scripts/loft_sections.py",
+        bpy,
+        sections=["SectionA", "SectionB"],
+        output_name="Fuselage",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert result["context"]["ownership_scan_verified"] is False
+    assert registry == [section_a, section_b]
+
+
+def test_lathe_post_mutation_scan_failure_keeps_structured_rollback_receipt() -> None:
+    source = _profile_object("Profile")
+    duplicate = _profile_object("Profile_copy")
+    source.copy.return_value = duplicate
+    source.data.copy.return_value = duplicate.data
+    registry = [source]
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.side_effect = lambda name: source if name == "Profile" else None
+    bpy.data.objects.__iter__.side_effect = _registry_iterator_fails_after_snapshot(registry)
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    def link_then_raise(obj):
+        registry.append(obj)
+        raise RuntimeError("link failed after create")
+
+    bpy.context.collection.objects.link.side_effect = link_then_raise
+    result = load_and_call(
+        "blender-mesh-ops/scripts/lathe_profile.py",
+        bpy,
+        profile="Profile",
+        output_name="RotorHub",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert result["context"]["ownership_scan_verified"] is False
+    assert registry == [source]
+
+
+def test_creation_cleanup_verification_failure_returns_false_in_the_receipt() -> None:
+    created = _profile_object("Cube")
+    registry = []
+    iterations = 0
+    bpy = make_mock_bpy()
+    bpy.data.objects.get.return_value = None
+
+    def iterate_registry():
+        nonlocal iterations
+        iterations += 1
+        if iterations <= 2:
+            return iter(registry)
+        raise RuntimeError("rollback verification failed")
+
+    bpy.data.objects.__iter__.side_effect = iterate_registry
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    def create_then_raise(**_kwargs):
+        registry.append(created)
+        bpy.context.active_object = created
+        raise RuntimeError("operator failed after create")
+
+    bpy.ops.mesh.primitive_cube_add.side_effect = create_then_raise
+    result = load_and_call(
+        "blender-mesh-ops/scripts/create_primitive.py",
+        bpy,
+        primitive_type="cube",
+        name="NewBody",
+    )
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_attempted"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert registry == []
+
+
 def test_loft_and_lathe_preserve_sources_and_verify_generated_topology() -> None:
     section_a = _profile_object("SectionA")
     section_b = _profile_object("SectionB")

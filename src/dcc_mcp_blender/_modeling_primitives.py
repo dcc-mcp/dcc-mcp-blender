@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
@@ -44,18 +44,21 @@ def _cleanup_created_objects(bpy, created) -> bool:
     created_identities = set(unique_created)
     for obj in unique_created.values():
         remove_object(bpy, obj)
-    remaining_identities = {object_identity(obj) for obj in bpy.data.objects}
+    try:
+        remaining_identities = {object_identity(obj) for obj in bpy.data.objects}
+    except Exception:
+        return False
     return created_identities.isdisjoint(remaining_identities)
 
 
-def _new_objects_since(bpy, before_identities) -> list:
+def _new_objects_since(bpy, before_identities) -> Tuple[List[Any], Optional[Exception]]:
     """Claim every currently registered object that was absent from the preflight snapshot."""
     if before_identities is None:
-        return []
+        return [], RuntimeError("object ownership snapshot is unavailable")
     try:
-        return [obj for obj in bpy.data.objects if object_identity(obj) not in before_identities]
-    except Exception:
-        return []
+        return [obj for obj in bpy.data.objects if object_identity(obj) not in before_identities], None
+    except Exception as exc:
+        return [], exc
 
 
 def _creation_failure(bpy, created, message: str, prompt: str, **context) -> dict:
@@ -80,6 +83,41 @@ def _creation_preflight_failure(operation: str, exc: Exception) -> dict:
         rollback_attempted=False,
         rollback_verified=False,
         error_type=type(exc).__name__,
+    )
+
+
+def _active_owned_object(bpy, before_identities):
+    """Return the active object only when a valid snapshot proves it is operation-owned."""
+    if before_identities is None:
+        return None
+    try:
+        candidate = active_object(bpy)
+        if candidate is not None and object_identity(candidate) not in before_identities:
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
+def _creation_evidence_failure(
+    bpy,
+    created,
+    message: str,
+    operation_error: Exception,
+    evidence_error: Exception,
+) -> dict:
+    """Return conservative mutation facts when post-mutation ownership evidence is unreadable."""
+    rollback_attempted = bool(created)
+    rollback_verified = _cleanup_created_objects(bpy, created) if rollback_attempted else False
+    return skill_error(
+        message,
+        "Owned output evidence became unreadable after mutation; cleanup was attempted where identity was proven.",
+        mutation_applied=True,
+        rollback_attempted=rollback_attempted,
+        rollback_verified=rollback_verified,
+        ownership_scan_verified=False,
+        error_type=type(operation_error).__name__,
+        evidence_error_type=type(evidence_error).__name__,
     )
 
 
@@ -212,7 +250,22 @@ def create_primitive(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        created = ([created_obj] if created_obj is not None else []) + _new_objects_since(bpy, before_identities)
+        if not mutation_started:
+            return _creation_preflight_failure("Primitive creation", exc)
+        created = [created_obj] if created_obj is not None else []
+        active_created = _active_owned_object(bpy, before_identities)
+        if active_created is not None:
+            created.append(active_created)
+        scanned_created, scan_error = _new_objects_since(bpy, before_identities)
+        created += scanned_created
+        if scan_error is not None:
+            return _creation_evidence_failure(
+                bpy,
+                created,
+                f"Primitive creation evidence failed: {name}",
+                exc,
+                scan_error,
+            )
         if created:
             return _creation_failure(
                 bpy,
@@ -221,8 +274,6 @@ def create_primitive(
                 "The created object could not be verified and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
-        if not mutation_started:
-            return _creation_preflight_failure("Primitive creation", exc)
         return skill_exception(exc, message=f"Failed to create {kind} primitive")
 
 
@@ -261,8 +312,7 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
             return skill_error("Incompatible loft sections", "Every section must have the same vertex count.")
         for index, source in enumerate(sources):
             mutation_started = True
-            duplicate = duplicate_mesh(bpy, source, f"__dcc_mcp_loft_{index}")
-            copies.append(duplicate)
+            duplicate_mesh(bpy, source, f"__dcc_mcp_loft_{index}", owned_objects=copies)
         object_mode(bpy)
         try:
             bpy.ops.object.select_all(action="DESELECT")
@@ -329,7 +379,12 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
-        created = copies + _new_objects_since(bpy, before_identities)
+        if not mutation_started:
+            return _creation_preflight_failure("Loft", exc)
+        scanned_created, scan_error = _new_objects_since(bpy, before_identities)
+        created = copies + scanned_created
+        if scan_error is not None:
+            return _creation_evidence_failure(bpy, created, "Loft ownership evidence failed", exc, scan_error)
         if created:
             return _creation_failure(
                 bpy,
@@ -338,8 +393,6 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
                 "Transient loft output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
-        if not mutation_started:
-            return _creation_preflight_failure("Loft", exc)
         return skill_exception(exc, message="Failed to loft sections")
 
 
@@ -363,6 +416,7 @@ def lathe_profile(
     if not isinstance(target_name, str) or not target_name.strip() or len(target_name) > 255:
         return skill_error("Invalid output_name", "output_name must contain between 1 and 255 characters.")
     duplicate = None
+    owned_objects = []
     before_identities = None
     mutation_started = False
     try:
@@ -382,7 +436,7 @@ def lathe_profile(
         if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
         mutation_started = True
-        duplicate = duplicate_mesh(bpy, source, target_name)
+        duplicate = duplicate_mesh(bpy, source, target_name, owned_objects=owned_objects)
         select_object(bpy, duplicate)
         cursor = bpy.context.scene.cursor
         previous_cursor = coords(cursor.location)
@@ -472,7 +526,18 @@ def lathe_profile(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        created = ([duplicate] if duplicate is not None else []) + _new_objects_since(bpy, before_identities)
+        if not mutation_started:
+            return _creation_preflight_failure("Lathe", exc)
+        scanned_created, scan_error = _new_objects_since(bpy, before_identities)
+        created = owned_objects + scanned_created
+        if scan_error is not None:
+            return _creation_evidence_failure(
+                bpy,
+                created,
+                f"Lathe ownership evidence failed: {profile}",
+                exc,
+                scan_error,
+            )
         if created:
             return _creation_failure(
                 bpy,
@@ -481,6 +546,4 @@ def lathe_profile(
                 "Transient lathe output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
-        if not mutation_started:
-            return _creation_preflight_failure("Lathe", exc)
         return skill_exception(exc, message=f"Failed to lathe profile {profile}")
