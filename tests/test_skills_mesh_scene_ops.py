@@ -29,15 +29,32 @@ NEW_OBJECT_TOOLS = {
 }
 
 MESH_OPS_TOOLS = {
+    "add_edge_loop",
+    "array_instances",
+    "assign_material",
+    "auto_uv",
+    "bevel_edges",
+    "boolean_op",
     "get_poly_count",
     "cleanup_mesh",
     "triangulate_mesh",
     "separate_mesh",
     "combine_meshes",
+    "create_primitive",
+    "delete_history",
+    "extrude_faces",
+    "freeze_transforms",
+    "group_parent",
+    "inset",
+    "lathe_profile",
+    "loft_sections",
     "merge_vertices",
     "extract_faces",
+    "mirror",
     "mirror_mesh",
     "select_by_material",
+    "set_pivot",
+    "uv_project",
 }
 
 
