@@ -50,6 +50,8 @@ def _cleanup_created_objects(bpy, created) -> bool:
 
 def _new_objects_since(bpy, before_identities) -> list:
     """Claim every currently registered object that was absent from the preflight snapshot."""
+    if before_identities is None:
+        return []
     try:
         return [obj for obj in bpy.data.objects if object_identity(obj) not in before_identities]
     except Exception:
@@ -69,6 +71,18 @@ def _creation_failure(bpy, created, message: str, prompt: str, **context) -> dic
     )
 
 
+def _creation_preflight_failure(operation: str, exc: Exception) -> dict:
+    """Return a fail-closed receipt before any operation-owned mutation starts."""
+    return skill_error(
+        f"{operation} preflight failed",
+        "Blender object ownership could not be verified safely before mutation.",
+        mutation_applied=False,
+        rollback_attempted=False,
+        rollback_verified=False,
+        error_type=type(exc).__name__,
+    )
+
+
 def create_primitive(
     primitive_type: str,
     name: str,
@@ -79,7 +93,8 @@ def create_primitive(
 ) -> dict:
     """Create a named primitive and verify its Blender transform readback."""
     created_obj = None
-    before_identities = set()
+    before_identities = None
+    mutation_started = False
     kind = str(primitive_type).lower()
     if kind not in _PRIMITIVE_OPERATORS:
         return skill_error("Invalid primitive_type", f"Use one of: {', '.join(sorted(_PRIMITIVE_OPERATORS))}.")
@@ -103,9 +118,12 @@ def create_primitive(
     try:
         import bpy
 
+        try:
+            before_identities = {object_identity(existing) for existing in bpy.data.objects}
+        except Exception as exc:
+            return _creation_preflight_failure("Primitive creation", exc)
         if bpy.data.objects.get(name) is not None:
             return skill_error(f"Object already exists: {name}", "Choose a unique semantic object name.")
-        before_identities = {object_identity(existing) for existing in bpy.data.objects}
         rotation_radians = [math.radians(component) for component in rotation_value]
         kwargs = {"location": location_value, "rotation": rotation_radians}
         if kind in {"cube", "plane"}:
@@ -118,6 +136,7 @@ def create_primitive(
             kwargs.update({"radius1": size_value / 2.0, "depth": size_value})
         elif kind == "torus":
             kwargs.update({"major_radius": size_value / 2.0, "minor_radius": size_value / 8.0})
+        mutation_started = True
         operator_result = getattr(bpy.ops.mesh, _PRIMITIVE_OPERATORS[kind])(**kwargs)
         obj = active_object(bpy)
         if obj is not None and object_identity(obj) not in before_identities:
@@ -202,6 +221,8 @@ def create_primitive(
                 "The created object could not be verified and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
+        if not mutation_started:
+            return _creation_preflight_failure("Primitive creation", exc)
         return skill_exception(exc, message=f"Failed to create {kind} primitive")
 
 
@@ -215,10 +236,15 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
     if not isinstance(target_name, str) or not target_name.strip() or len(target_name) > 255:
         return skill_error("Invalid output_name", "output_name must contain between 1 and 255 characters.")
     copies = []
-    before_identities = set()
+    before_identities = None
+    mutation_started = False
     try:
         import bpy
 
+        try:
+            before_identities = {object_identity(existing) for existing in bpy.data.objects}
+        except Exception as exc:
+            return _creation_preflight_failure("Loft", exc)
         if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
         sources = []
@@ -233,8 +259,8 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
             vertex_counts.add(len(source.data.vertices))
         if len(vertex_counts) != 1:
             return skill_error("Incompatible loft sections", "Every section must have the same vertex count.")
-        before_identities = {object_identity(existing) for existing in bpy.data.objects}
         for index, source in enumerate(sources):
+            mutation_started = True
             duplicate = duplicate_mesh(bpy, source, f"__dcc_mcp_loft_{index}")
             copies.append(duplicate)
         object_mode(bpy)
@@ -312,6 +338,8 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
                 "Transient loft output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
+        if not mutation_started:
+            return _creation_preflight_failure("Loft", exc)
         return skill_exception(exc, message="Failed to loft sections")
 
 
@@ -335,10 +363,15 @@ def lathe_profile(
     if not isinstance(target_name, str) or not target_name.strip() or len(target_name) > 255:
         return skill_error("Invalid output_name", "output_name must contain between 1 and 255 characters.")
     duplicate = None
-    before_identities = set()
+    before_identities = None
+    mutation_started = False
     try:
         import bpy
 
+        try:
+            before_identities = {object_identity(existing) for existing in bpy.data.objects}
+        except Exception as exc:
+            return _creation_preflight_failure("Lathe", exc)
         source, error = mesh_object(bpy, profile)
         if error:
             return error
@@ -348,7 +381,7 @@ def lathe_profile(
             )
         if bpy.data.objects.get(target_name) is not None:
             return skill_error(f"Object already exists: {target_name}", "Choose a unique output_name.")
-        before_identities = {object_identity(existing) for existing in bpy.data.objects}
+        mutation_started = True
         duplicate = duplicate_mesh(bpy, source, target_name)
         select_object(bpy, duplicate)
         cursor = bpy.context.scene.cursor
@@ -448,4 +481,6 @@ def lathe_profile(
                 "Transient lathe output could not be completed and was rolled back where possible.",
                 error_type=type(exc).__name__,
             )
+        if not mutation_started:
+            return _creation_preflight_failure("Lathe", exc)
         return skill_exception(exc, message=f"Failed to lathe profile {profile}")

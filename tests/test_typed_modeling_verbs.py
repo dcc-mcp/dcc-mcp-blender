@@ -278,6 +278,45 @@ def test_create_primitive_claims_and_removes_output_when_operator_raises() -> No
     assert registry == []
 
 
+@pytest.mark.parametrize(
+    ("script", "kwargs"),
+    [
+        ("blender-mesh-ops/scripts/create_primitive.py", {"primitive_type": "cube", "name": "NewBody"}),
+        (
+            "blender-mesh-ops/scripts/loft_sections.py",
+            {"sections": ["SectionA", "SectionB"], "output_name": "Fuselage"},
+        ),
+        (
+            "blender-mesh-ops/scripts/lathe_profile.py",
+            {"profile": "Profile", "output_name": "RotorHub"},
+        ),
+    ],
+)
+@pytest.mark.parametrize("snapshot_failure", [False, True])
+def test_creation_preflight_failure_never_claims_existing_scene_objects(script, kwargs, snapshot_failure) -> None:
+    existing = MagicMock()
+    existing.name = "Existing"
+    registry = [existing]
+    bpy = make_mock_bpy()
+    if snapshot_failure:
+        bpy.data.objects.__iter__.side_effect = RuntimeError("ownership snapshot failed")
+    else:
+        bpy.data.objects.__iter__.side_effect = lambda: iter(registry)
+        bpy.data.objects.get.side_effect = RuntimeError("preflight read failed")
+    bpy.data.objects.remove.side_effect = lambda obj, **_kwargs: registry.remove(obj)
+
+    result = load_and_call(script, bpy, **kwargs)
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is False
+    assert result["context"]["rollback_attempted"] is False
+    assert result["context"]["rollback_verified"] is False
+    assert registry == [existing]
+    bpy.data.objects.remove.assert_not_called()
+    if snapshot_failure:
+        bpy.data.objects.get.assert_not_called()
+
+
 def test_bevel_inset_and_edge_loop_fail_closed_without_topology_readback() -> None:
     mesh = MagicMock()
     mesh.name = "BodyMesh"
