@@ -43,13 +43,51 @@ End with:
 
 ## Fast Path
 
-From the repository root, run:
+Use the installed adapter lifecycle as the canonical agent path. First resolve
+the exact Blender executable/application and its target Python interpreter,
+then inspect the non-mutating plan:
+
+```bash
+dcc-mcp-blender install --json --dry-run --dcc-path <absolute-blender-path> --python <absolute-python-path>
+```
+
+Review the resolved host, version, profile, interpreter, file steps, and
+machine-executable `next_steps`. If they are correct, execute the same plan and
+verify typed readiness:
+
+```bash
+dcc-mcp-blender install --json --yes --dcc-path <absolute-blender-path> --python <absolute-python-path>
+dcc-mcp-blender verify --json --dcc-path <absolute-blender-path> --python <absolute-python-path>
+```
+
+Exit `40` after install means the staged, receipted host integration was
+written but `host.ping` could not yet prove a live Blender instance. Follow the
+returned `next_steps`; do not report the adapter as directly usable yet.
+
+The lifecycle command:
+
+1. Probes Blender 3.6+ and the exact target Python before writing.
+2. Resolves the per-user Blender scripts profile without changing the host
+   installation directory.
+3. Stages and atomically replaces the owned startup script with rollback.
+4. Writes an ownership receipt used by `status`, `verify`, `upgrade`, and
+   receipt-only `uninstall`.
+5. Captures bootstrap failures and verifies a live instance with typed
+   `host.ping` rather than a process or port-only check.
+
+See the repository root `install.md` for all platforms, stable exit codes, and
+repair/troubleshooting flows.
+
+## Legacy compatibility path
+
+The checkout-local script remains available for operators that still need the
+pre-SOP pip/setup flow:
 
 ```bash
 python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py
 ```
 
-The script:
+This compatibility script:
 
 1. Finds Blender's bundled Python from `--blender-python` / `--python`,
    `BLENDER_PYTHON`, `DCC_MCP_BLENDER_PYTHON`, a `blender` launcher on `PATH`,
@@ -65,7 +103,7 @@ The script:
 5. Writes a reusable MCP JSON snippet and smoke prompt under
    `.dcc-mcp/agent-setup/`.
 
-Use PyPI instead of the local checkout when setting up an end-user machine:
+Use PyPI instead of the local checkout with that legacy path:
 
 ```bash
 python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --source pypi

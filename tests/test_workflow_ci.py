@@ -6,6 +6,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).parent.parent
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 E2E_WORKFLOW = ROOT / ".github" / "workflows" / "e2e.yml"
 SCRIPTS_DIR = ROOT / ".github" / "scripts"
 RUN_BLENDER_E2E = SCRIPTS_DIR / "run_blender_e2e.py"
@@ -129,3 +130,11 @@ def test_windows_e2e_targets_vs2026_runner_explicitly():
 
     assert "runner: windows-2025-vs2026" in text
     assert "runner: windows-latest" not in text
+
+
+def test_ci_has_an_explicit_install_lifecycle_round_trip():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "lifecycle-smoke:" in text
+    assert "Install lifecycle smoke" in text
+    assert "tests/test_install_lifecycle.py" in text

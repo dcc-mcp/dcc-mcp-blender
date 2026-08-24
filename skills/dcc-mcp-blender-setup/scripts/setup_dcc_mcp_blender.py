@@ -28,17 +28,24 @@ def register():
     if _server is not None and getattr(_server, "is_running", True):
         return _server
 
-    from dcc_mcp_blender import get_server, start_server
+    from dcc_mcp_core import capture_bootstrap_errors
 
-    existing = get_server()
-    if existing is not None and getattr(existing, "is_running", False):
-        _server = existing
-        _owns_server = False
+    with capture_bootstrap_errors(
+        "blender",
+        min_core_version="0.20.0",
+        phase="startup",
+    ):
+        from dcc_mcp_blender import get_server, start_server
+
+        existing = get_server()
+        if existing is not None and getattr(existing, "is_running", False):
+            _server = existing
+            _owns_server = False
+            return _server
+
+        _server = start_server()
+        _owns_server = True
         return _server
-
-    _server = start_server()
-    _owns_server = True
-    return _server
 
 
 def unregister():
