@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 from dcc_mcp_core.skill import skill_error, skill_success
 
 AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
-MAX_EVIDENCE_ELEMENTS = 10_000_000
+MAX_EVIDENCE_ELEMENTS = 1_000_000
 
 
 def operator_finished(result: Any) -> bool:
@@ -159,6 +159,84 @@ def mesh_counts(obj: Any) -> dict:
         "edge_count": len(getattr(mesh, "edges", [])),
         "face_count": len(getattr(mesh, "polygons", [])),
     }
+
+
+def mesh_evidence_counts(obj: Any) -> dict:
+    """Return bounded-size readback without iterating mesh elements."""
+    counts = mesh_counts(obj)
+    counts["evidence_limited"] = sum(counts.values()) > MAX_EVIDENCE_ELEMENTS
+    return counts
+
+
+def post_mutation_mesh_state(operation: str, obj: Any, before: dict) -> Tuple[Optional[dict], Optional[dict]]:
+    """Hash a mutated mesh or return a truthful bounded failure receipt."""
+    counts = mesh_evidence_counts(obj)
+    if counts["evidence_limited"]:
+        return None, skill_error(
+            f"{operation} evidence limit exceeded",
+            "The mutated mesh is too large for bounded verification.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            mesh_before=before,
+            mesh_after_counts=counts,
+        )
+    try:
+        return mesh_state(obj), None
+    except Exception as exc:
+        return None, skill_error(
+            f"{operation} evidence failed",
+            "The mutated mesh could not be verified safely.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            error_type=type(exc).__name__,
+            mesh_before=before,
+            mesh_after_counts=counts,
+        )
+
+
+def uv_evidence_counts(obj: Any) -> dict:
+    """Return bounded-size UV readback without iterating UV coordinates."""
+    layers = getattr(obj.data, "uv_layers", [])
+    active = getattr(layers, "active", None)
+    data = getattr(active, "data", []) if active is not None else []
+    layer_count = len(layers)
+    coordinate_count = len(data)
+    return {
+        "active_uv_map": getattr(active, "name", None),
+        "uv_map_count": layer_count,
+        "uv_coordinate_count": coordinate_count,
+        "evidence_limited": layer_count + coordinate_count > MAX_EVIDENCE_ELEMENTS,
+    }
+
+
+def post_mutation_uv_state(operation: str, obj: Any, before: dict) -> Tuple[Optional[dict], Optional[dict]]:
+    """Hash mutated UV data or return a truthful bounded failure receipt."""
+    counts = uv_evidence_counts(obj)
+    if counts["evidence_limited"]:
+        return None, skill_error(
+            f"{operation} evidence limit exceeded",
+            "The mutated UV data is too large for bounded verification.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            uv_before=before,
+            uv_after_counts=counts,
+        )
+    try:
+        return uv_state(obj), None
+    except Exception as exc:
+        return None, skill_error(
+            f"{operation} evidence failed",
+            "The mutated UV data could not be verified safely.",
+            mutation_applied=True,
+            rollback_attempted=False,
+            rollback_verified=False,
+            error_type=type(exc).__name__,
+            uv_before=before,
+            uv_after_counts=counts,
+        )
 
 
 def bounded_indices(values: Sequence[int], label: str, available: int) -> Tuple[Optional[List[int]], Optional[dict]]:

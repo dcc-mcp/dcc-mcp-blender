@@ -369,7 +369,7 @@ tools:
     execution: sync
     affinity: main
     group: modeling
-    timeout_hint_secs: 2
+    timeout_hint_secs: 30
     input_schema:
       type: object
       additionalProperties: false
@@ -389,7 +389,7 @@ tools:
     execution: sync
     affinity: main
     group: modeling
-    timeout_hint_secs: 2
+    timeout_hint_secs: 30
     input_schema:
       type: object
       additionalProperties: false
@@ -456,7 +456,7 @@ tools:
     execution: sync
     affinity: main
     group: modeling
-    timeout_hint_secs: 2
+    timeout_hint_secs: 30
     input_schema:
       type: object
       additionalProperties: false
@@ -614,7 +614,7 @@ tools:
     execution: sync
     affinity: main
     group: modeling
-    timeout_hint_secs: 2
+    timeout_hint_secs: 30
     input_schema:
       type: object
       additionalProperties: false
@@ -665,8 +665,20 @@ tools:
       properties:
         object_name: {type: string, minLength: 1}
         projection: {type: string, enum: [planar, cylindrical, spherical, cube], default: planar}
-        axis: {type: string, enum: [x, y, z], default: z}
+        axis:
+          type: string
+          enum: [x, y, z]
+          default: z
+          description: "Planar projection axis. Other projection modes require the z sentinel and do not report an applied axis."
         margin: {type: number, minimum: 0, maximum: 0.49, default: 0}
+      allOf:
+        - if:
+            properties:
+              projection: {enum: [cylindrical, spherical, cube]}
+            required: [projection]
+          then:
+            properties:
+              axis: {const: z}
     output_schema: *mesh_result_schema
     read_only: false
     destructive: true

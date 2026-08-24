@@ -10,11 +10,61 @@ from dcc_mcp_blender._modeling_common import (
     close,
     coords,
     mesh_object,
+    object_identity,
     operator_finished,
+    post_mutation_uv_state,
     select_object,
     uv_state,
     vector,
 )
+
+
+def _contains_identity(items, target) -> bool:
+    """Compare Blender wrappers by stable host identity rather than Python wrapper identity."""
+    target_identity = object_identity(target)
+    return any(object_identity(item) == target_identity for item in items)
+
+
+def _rollback_group_changes(bpy, collection, created, scene_linked, newly_linked, original_parents) -> bool:
+    """Best-effort rollback for collection linking and parenting changes."""
+    for obj, original_parent in original_parents:
+        try:
+            obj.parent = original_parent
+        except Exception:
+            pass
+    unlink = getattr(collection.objects, "unlink", None)
+    for obj in newly_linked:
+        try:
+            if callable(unlink):
+                unlink(obj)
+            elif obj in collection.objects:
+                collection.objects.remove(obj)
+        except Exception:
+            pass
+    scene_children = bpy.context.scene.collection.children
+    if created:
+        try:
+            if scene_linked:
+                scene_unlink = getattr(scene_children, "unlink", None)
+                if callable(scene_unlink):
+                    scene_unlink(collection)
+                elif collection in scene_children:
+                    scene_children.remove(collection)
+        except Exception:
+            pass
+        try:
+            bpy.data.collections.remove(collection)
+        except Exception:
+            pass
+    collection_absent = not created or not _contains_identity(bpy.data.collections, collection)
+    members_restored = all(not _contains_identity(collection.objects, obj) for obj in newly_linked)
+    parents_restored = all(
+        object_identity(getattr(obj, "parent", None)) == object_identity(original_parent)
+        if original_parent is not None
+        else getattr(obj, "parent", None) is None
+        for obj, original_parent in original_parents
+    )
+    return collection_absent and members_restored and parents_restored
 
 
 def set_pivot(object_name: str, position: Sequence[float]) -> dict:
@@ -77,6 +127,11 @@ def group_parent(
     parent_name: Optional[str] = None,
 ) -> dict:
     """Link named objects to a collection and optionally parent them, with readback."""
+    collection = None
+    created = False
+    scene_linked = False
+    newly_linked = []
+    original_parents = []
     if isinstance(object_names, (str, bytes)) or not object_names or len(object_names) > 128:
         return skill_error("Invalid object_names", "Provide between 1 and 128 object names.")
     if any(not isinstance(name, str) or not name.strip() for name in object_names):
@@ -103,35 +158,82 @@ def group_parent(
             parent = bpy.data.objects.get(parent_name)
             if parent is None:
                 return skill_error(f"Parent not found: {parent_name}", f"No object named '{parent_name}'.")
-            if parent in objects:
+            if any(object_identity(obj) == object_identity(parent) for obj in objects):
                 return skill_error("Invalid parent", "parent_name cannot also appear in object_names.")
         collection = bpy.data.collections.get(group_name)
-        created = False
+        scene_children = bpy.context.scene.collection.children
         if collection is None:
             collection = bpy.data.collections.new(group_name)
             created = True
             try:
-                bpy.context.scene.collection.children.link(collection)
-            except Exception:
-                pass
+                scene_children.link(collection)
+            except Exception as exc:
+                rollback_verified = _rollback_group_changes(bpy, collection, created, False, [], [])
+                return skill_error(
+                    f"Group scene link failed: {group_name}",
+                    "The new collection could not be linked into the active scene.",
+                    mutation_applied=True,
+                    rollback_attempted=True,
+                    rollback_verified=rollback_verified,
+                    error_type=type(exc).__name__,
+                    collection_created=True,
+                    scene_linked=False,
+                )
+        scene_linked = _contains_identity(scene_children, collection)
+        if not scene_linked:
+            rollback_verified = _rollback_group_changes(bpy, collection, created, False, [], [])
+            return skill_error(
+                f"Group scene link failed: {group_name}",
+                "The collection is not linked into the active scene.",
+                mutation_applied=created,
+                rollback_attempted=created,
+                rollback_verified=rollback_verified if created else False,
+                collection_created=created,
+                scene_linked=False,
+            )
         for obj in objects:
-            if obj not in collection.objects:
+            if not _contains_identity(collection.objects, obj):
                 collection.objects.link(obj)
+                newly_linked.append(obj)
             if parent is not None:
                 matrix_world = getattr(obj, "matrix_world", None)
+                original_parent = getattr(obj, "parent", None)
+                original_parents.append((obj, original_parent))
                 obj.parent = parent
                 if matrix_world is not None:
                     try:
                         obj.matrix_world = matrix_world
                     except Exception:
                         pass
-        members = [obj.name for obj in objects if obj in collection.objects]
-        parented = [obj.name for obj in objects if getattr(obj, "parent", None) is parent] if parent else []
+        members = [obj.name for obj in objects if _contains_identity(collection.objects, obj)]
+        parented = (
+            [
+                obj.name
+                for obj in objects
+                if getattr(obj, "parent", None) is not None
+                and object_identity(getattr(obj, "parent", None)) == object_identity(parent)
+            ]
+            if parent
+            else []
+        )
         verified = members == [obj.name for obj in objects] and (
             parent is None or parented == [obj.name for obj in objects]
         )
         if not verified:
-            return skill_error(f"Group readback failed: {group_name}", "Collection or parent state did not match.")
+            rollback_verified = _rollback_group_changes(
+                bpy, collection, created, scene_linked, newly_linked, original_parents
+            )
+            return skill_error(
+                f"Group readback failed: {group_name}",
+                "Collection or parent state did not match.",
+                mutation_applied=bool(created or newly_linked or original_parents),
+                rollback_attempted=True,
+                rollback_verified=rollback_verified,
+                collection_created=created,
+                scene_linked=scene_linked,
+                members=members,
+                parented=parented,
+            )
         return skill_success(
             f"Grouped {len(objects)} object(s) into {group_name}",
             parameters={"group_name": group_name, "object_names": list(object_names), "parent_name": parent_name},
@@ -141,6 +243,7 @@ def group_parent(
                 "members": members,
                 "parent_name": getattr(parent, "name", None),
                 "parented": parented,
+                "scene_linked": scene_linked,
                 "verified": True,
             },
             prompt="Use collection and object inspection tools to inspect the hierarchy.",
@@ -148,6 +251,22 @@ def group_parent(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if collection is not None and (created or newly_linked or original_parents):
+            rollback_verified = _rollback_group_changes(
+                bpy, collection, created, scene_linked, newly_linked, original_parents
+            )
+            return skill_error(
+                f"Group operation failed: {group_name}",
+                "Partial collection or parent changes were rolled back where possible.",
+                mutation_applied=True,
+                rollback_attempted=True,
+                rollback_verified=rollback_verified,
+                error_type=type(exc).__name__,
+                collection_created=created,
+                scene_linked=scene_linked,
+                linked_objects=[getattr(obj, "name", None) for obj in newly_linked],
+                parented_objects=[getattr(obj, "name", None) for obj, _ in original_parents],
+            )
         return skill_exception(exc, message=f"Failed to group objects into {group_name}")
 
 
@@ -216,8 +335,37 @@ def freeze_transforms(
         return skill_exception(exc, message=f"Failed to freeze transforms for {object_name}")
 
 
+def _rollback_material_slots(bpy, obj, initial_slot_count: int, slot_index: int, previous_material) -> bool:
+    """Restore an existing assignment and remove only slots appended by this call."""
+    if slot_index < initial_slot_count:
+        try:
+            obj.material_slots[slot_index].material = previous_material
+        except Exception:
+            pass
+    while len(obj.material_slots) > initial_slot_count:
+        before = len(obj.material_slots)
+        try:
+            obj.active_material_index = before - 1
+            result = bpy.ops.object.material_slot_remove()
+        except Exception:
+            break
+        if not operator_finished(result) or len(obj.material_slots) >= before:
+            break
+    assignment_restored = True
+    if slot_index < initial_slot_count:
+        actual = obj.material_slots[slot_index].material
+        assignment_restored = actual is previous_material or (
+            getattr(actual, "name", None) == getattr(previous_material, "name", None)
+        )
+    return len(obj.material_slots) == initial_slot_count and assignment_restored
+
+
 def assign_material(object_name: str, material_name: str, slot_index: int = 0) -> dict:
     """Assign a material slot and require exact host connection readback."""
+    obj = None
+    initial_slot_count = None
+    previous_material = None
+    assignment_attempted = False
     if not isinstance(slot_index, int) or isinstance(slot_index, bool) or not 0 <= slot_index <= 63:
         return skill_error("Invalid slot_index", "slot_index must be an integer between 0 and 63.")
     try:
@@ -236,25 +384,31 @@ def assign_material(object_name: str, material_name: str, slot_index: int = 0) -
             finished = operator_finished(bpy.ops.object.material_slot_add())
             after_slot_count = len(obj.material_slots)
             if not finished or after_slot_count <= before_slot_count:
+                rollback_verified = _rollback_material_slots(
+                    bpy, obj, initial_slot_count, slot_index, previous_material
+                )
                 return skill_error(
                     f"Material slot creation failed: {object_name}",
                     "Blender did not create the requested material slot.",
                     mutation_applied=after_slot_count != initial_slot_count,
-                    rollback_attempted=False,
-                    rollback_verified=False,
+                    rollback_attempted=after_slot_count != initial_slot_count,
+                    rollback_verified=rollback_verified,
                     slot_count_before=initial_slot_count,
                     slot_count_after=after_slot_count,
                 )
+        previous_material = obj.material_slots[slot_index].material
+        assignment_attempted = True
         obj.material_slots[slot_index].material = material
         actual = obj.material_slots[slot_index].material
         verified = actual is material or getattr(actual, "name", None) == material_name
         if not verified:
+            rollback_verified = _rollback_material_slots(bpy, obj, initial_slot_count, slot_index, previous_material)
             return skill_error(
                 f"Material readback failed: {object_name}",
                 "Material slot did not retain the request.",
                 mutation_applied=True,
-                rollback_attempted=False,
-                rollback_verified=False,
+                rollback_attempted=True,
+                rollback_verified=rollback_verified,
                 slot_count_before=initial_slot_count,
                 slot_count_after=len(obj.material_slots),
             )
@@ -272,6 +426,23 @@ def assign_material(object_name: str, material_name: str, slot_index: int = 0) -
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if (
+            obj is not None
+            and initial_slot_count is not None
+            and (assignment_attempted or len(obj.material_slots) != initial_slot_count)
+        ):
+            mutated_slot_count = len(obj.material_slots)
+            rollback_verified = _rollback_material_slots(bpy, obj, initial_slot_count, slot_index, previous_material)
+            return skill_error(
+                f"Material assignment failed: {object_name}",
+                "Material slots changed before the assignment failed and were rolled back where possible.",
+                mutation_applied=True,
+                rollback_attempted=True,
+                rollback_verified=rollback_verified,
+                error_type=type(exc).__name__,
+                slot_count_before=initial_slot_count,
+                slot_count_after=mutated_slot_count,
+            )
         return skill_exception(exc, message=f"Failed to assign material to {object_name}")
 
 
@@ -291,7 +462,9 @@ def auto_uv(object_name: str, margin: float = 0.001) -> dict:
     result = unwrap_uvs(object_name=object_name, method="smart", margin=margin)
     if not result.get("success"):
         return result
-    readback = uv_state(obj)
+    readback, evidence_error = post_mutation_uv_state("Auto UV", obj, before_state)
+    if evidence_error:
+        return evidence_error
     if (
         readback["uv_map_count"] < 1
         or readback["uv_coordinate_count"] < 1
@@ -324,9 +497,17 @@ def uv_project(
 ) -> dict:
     """Project UVs through the existing typed UV owner and verify readback."""
     projection_key = str(projection).lower()
+    axis_key = str(axis).lower()
     methods = {"planar": "planar", "cylindrical": "cylinder", "spherical": "sphere", "cube": "cube"}
     if projection_key not in methods:
         return skill_error("Invalid projection", "projection must be planar, cylindrical, spherical, or cube.")
+    if axis_key not in {"x", "y", "z"}:
+        return skill_error("Invalid axis", "axis must be one of: x, y, z.")
+    if projection_key != "planar" and axis_key != "z":
+        return skill_error(
+            "Invalid axis for projection",
+            "axis controls planar projection only; use the z sentinel for cylindrical, spherical, and cube modes.",
+        )
     from dcc_mcp_blender._uv_ops import project_uvs
 
     try:
@@ -338,10 +519,12 @@ def uv_project(
         before_state = uv_state(obj)
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
-    result = project_uvs(object_name=object_name, method=methods[projection_key], axis=axis, margin=margin)
+    result = project_uvs(object_name=object_name, method=methods[projection_key], axis=axis_key, margin=margin)
     if not result.get("success"):
         return result
-    readback = uv_state(obj)
+    readback, evidence_error = post_mutation_uv_state("UV projection", obj, before_state)
+    if evidence_error:
+        return evidence_error
     if (
         readback["uv_map_count"] < 1
         or readback["uv_coordinate_count"] < 1
@@ -360,7 +543,11 @@ def uv_project(
     return skill_success(
         f"Projected {projection_key} UVs on {object_name}",
         object_name=object_name,
-        parameters={"axis": str(axis).lower(), "margin": float(margin), "projection": projection_key},
+        parameters={
+            "axis": axis_key if projection_key == "planar" else None,
+            "margin": float(margin),
+            "projection": projection_key,
+        },
         readback={**readback, "verified": True},
         prompt="Use get_uv_islands or pack_uvs to inspect the projected UVs.",
     )

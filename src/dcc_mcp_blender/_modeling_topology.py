@@ -9,19 +9,42 @@ from dcc_mcp_core.skill import skill_error, skill_exception
 
 from dcc_mcp_blender._modeling_common import (
     bounded_indices,
+    mesh_evidence_counts,
     mesh_object,
     mesh_state,
     object_mode,
     object_mode_if_available,
     operator_finished,
+    post_mutation_mesh_state,
     select_components,
     topology_result,
     vector,
 )
 
 
+def _topology_exception_receipt(obj, before, exc, operation) -> dict:
+    """Report unexpected failures after a destructive mesh operator was invoked."""
+    try:
+        after_counts = mesh_evidence_counts(obj)
+    except Exception:
+        after_counts = None
+    return skill_error(
+        f"{operation} verification failed: {obj.name}",
+        "The mesh operator may have mutated the object before verification failed.",
+        mutation_applied=True,
+        rollback_attempted=False,
+        rollback_verified=False,
+        error_type=type(exc).__name__,
+        mesh_before=before,
+        mesh_after_counts=after_counts,
+    )
+
+
 def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, segments: int = 1) -> dict:
     """Bevel explicit edges and require a host topology delta."""
+    obj = None
+    before = None
+    operation_started = False
     try:
         width_value = float(width)
     except (TypeError, ValueError):
@@ -41,9 +64,12 @@ def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, seg
             return error
         before = mesh_state(obj)
         select_components(bpy, obj, "edges", selected)
+        operation_started = True
         operator_result = bpy.ops.mesh.bevel(offset=width_value, segments=segments, affect="EDGES")
         object_mode(bpy)
-        after = mesh_state(obj)
+        after, evidence_error = post_mutation_mesh_state("Bevel", obj, before)
+        if evidence_error:
+            return evidence_error
         if not operator_finished(operator_result):
             return skill_error(
                 f"Bevel edges did not finish on {object_name}",
@@ -66,6 +92,8 @@ def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, seg
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
+        if obj is not None and operation_started:
+            return _topology_exception_receipt(obj, before, exc, "Bevel")
         return skill_exception(exc, message=f"Failed to bevel edges on {object_name}")
 
 
@@ -76,6 +104,9 @@ def extrude_faces(
     direction: Sequence[float] = (0.0, 0.0, 1.0),
 ) -> dict:
     """Extrude explicit faces and require a host topology delta."""
+    obj = None
+    before = None
+    operation_started = False
     direction_value, error = vector(direction, "direction")
     if error:
         return error
@@ -97,9 +128,12 @@ def extrude_faces(
         before = mesh_state(obj)
         select_components(bpy, obj, "polygons", selected)
         offset = [component * distance_value for component in direction_value]
+        operation_started = True
         operator_result = bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": offset})
         object_mode(bpy)
-        after = mesh_state(obj)
+        after, evidence_error = post_mutation_mesh_state("Extrude", obj, before)
+        if evidence_error:
+            return evidence_error
         if not operator_finished(operator_result):
             return skill_error(
                 f"Extrude faces did not finish on {object_name}",
@@ -122,6 +156,8 @@ def extrude_faces(
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
+        if obj is not None and operation_started:
+            return _topology_exception_receipt(obj, before, exc, "Extrude")
         return skill_exception(exc, message=f"Failed to extrude faces on {object_name}")
 
 
@@ -132,6 +168,9 @@ def inset(
     depth: float = 0.0,
 ) -> dict:
     """Inset explicit faces and require a host topology delta."""
+    obj = None
+    before = None
+    operation_started = False
     try:
         thickness_value = float(thickness)
         depth_value = float(depth)
@@ -150,9 +189,12 @@ def inset(
             return error
         before = mesh_state(obj)
         select_components(bpy, obj, "polygons", selected)
+        operation_started = True
         operator_result = bpy.ops.mesh.inset(thickness=thickness_value, depth=depth_value, use_even_offset=True)
         object_mode(bpy)
-        after = mesh_state(obj)
+        after, evidence_error = post_mutation_mesh_state("Inset", obj, before)
+        if evidence_error:
+            return evidence_error
         if not operator_finished(operator_result):
             return skill_error(
                 f"Inset faces did not finish on {object_name}",
@@ -175,11 +217,16 @@ def inset(
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
+        if obj is not None and operation_started:
+            return _topology_exception_receipt(obj, before, exc, "Inset")
         return skill_exception(exc, message=f"Failed to inset faces on {object_name}")
 
 
 def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) -> dict:
     """Subdivide an explicit edge ring and require a host topology delta."""
+    obj = None
+    before = None
+    operation_started = False
     if not isinstance(cuts, int) or isinstance(cuts, bool) or not 1 <= cuts <= 64:
         return skill_error("Invalid cuts", "cuts must be an integer between 1 and 64.")
     try:
@@ -193,9 +240,12 @@ def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) 
             return error
         before = mesh_state(obj)
         select_components(bpy, obj, "edges", selected)
+        operation_started = True
         operator_result = bpy.ops.mesh.subdivide(number_cuts=cuts, smoothness=0.0)
         object_mode(bpy)
-        after = mesh_state(obj)
+        after, evidence_error = post_mutation_mesh_state("Edge loop", obj, before)
+        if evidence_error:
+            return evidence_error
         if not operator_finished(operator_result):
             return skill_error(
                 f"Add edge loop did not finish on {object_name}",
@@ -218,4 +268,6 @@ def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) 
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         object_mode_if_available()
+        if obj is not None and operation_started:
+            return _topology_exception_receipt(obj, before, exc, "Edge loop")
         return skill_exception(exc, message=f"Failed to add edge loop on {object_name}")

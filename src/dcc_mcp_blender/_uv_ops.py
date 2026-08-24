@@ -112,6 +112,38 @@ def _mesh_uv_context(obj: Any) -> dict:
     }
 
 
+def _uv_operator_failed(object_name: str, operation: str, result: list[str], before: dict, after: dict) -> dict:
+    """Reject non-FINISHED UV operators with a conservative mutation receipt."""
+    return skill_error(
+        f"{operation} failed: {object_name}",
+        "Blender did not report FINISHED for the UV operator.",
+        mutation_applied=True,
+        rollback_attempted=False,
+        rollback_verified=False,
+        operator_result=result,
+        uv_before=before,
+        uv_after=after,
+    )
+
+
+def _uv_exception_receipt(obj: Any, operation: str, before: dict, exc: Exception) -> dict:
+    """Report UV state when an exception follows layer creation or operator invocation."""
+    try:
+        after = _mesh_uv_context(obj)
+    except Exception:
+        after = None
+    return skill_error(
+        f"{operation} verification failed: {obj.name}",
+        "UV state may have changed before verification failed.",
+        mutation_applied=True,
+        rollback_attempted=False,
+        rollback_verified=False,
+        error_type=type(exc).__name__,
+        uv_before=before,
+        uv_after=after,
+    )
+
+
 def _co(value: Any) -> tuple[float, float, float]:
     return (float(value[0]), float(value[1]), float(value[2]))
 
@@ -404,6 +436,8 @@ def _calculate_uv_islands(mesh: Any, layer: Any) -> list[dict]:
 
 def project_uvs(object_name: str, method: str = "planar", axis: str = "z", margin: float = 0.0) -> dict:
     """Project UV coordinates onto a mesh."""
+    obj = None
+    before_uv = None
     margin_error = _validate_margin(margin)
     if margin_error:
         return margin_error
@@ -421,11 +455,15 @@ def project_uvs(object_name: str, method: str = "planar", axis: str = "z", margi
         if error:
             return error
         mesh = obj.data
+        before_uv = _mesh_uv_context(obj)
         layer = _ensure_uv_layer(mesh, set_active=True)
 
         if method_key in {"smart", "sphere", "cylinder", "view"}:
             operator_result = _run_projection_operator(bpy, obj, method_key, float(margin))
             _update_mesh(mesh)
+            after_uv = _mesh_uv_context(obj)
+            if "FINISHED" not in operator_result:
+                return _uv_operator_failed(object_name, "UV projection", operator_result, before_uv, after_uv)
             return skill_success(
                 f"Projected UVs on {object_name} using {method_key}",
                 uv_map=layer.name,
@@ -452,6 +490,8 @@ def project_uvs(object_name: str, method: str = "planar", axis: str = "z", margi
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and before_uv is not None:
+            return _uv_exception_receipt(obj, "UV projection", before_uv, exc)
         return skill_exception(exc, message=f"Failed to project UVs on {object_name}")
 
 
@@ -488,6 +528,8 @@ def _project_mesh_coordinates(
 
 def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.001) -> dict:
     """Unwrap a mesh through Blender's UV operators."""
+    obj = None
+    before_uv = None
     margin_error = _validate_margin(margin)
     if margin_error:
         return margin_error
@@ -502,6 +544,7 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
         if error:
             return error
         mesh = obj.data
+        before_uv = _mesh_uv_context(obj)
         layer = _ensure_uv_layer(mesh, set_active=True)
         if method_key == "smart":
             operator_result = _run_uv_edit_operator(
@@ -520,6 +563,9 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
                 margin=float(margin),
             )
         _update_mesh(mesh)
+        after_uv = _mesh_uv_context(obj)
+        if "FINISHED" not in operator_result:
+            return _uv_operator_failed(object_name, "UV unwrap", operator_result, before_uv, after_uv)
         return skill_success(
             f"Unwrapped UVs on {object_name} using {method_key}",
             uv_map=layer.name,
@@ -532,6 +578,8 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and before_uv is not None:
+            return _uv_exception_receipt(obj, "UV unwrap", before_uv, exc)
         return skill_exception(exc, message=f"Failed to unwrap UVs on {object_name}")
 
 

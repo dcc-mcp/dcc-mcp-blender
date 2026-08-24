@@ -36,6 +36,28 @@ _PRIMITIVE_OPERATORS = {
 }
 
 
+def _cleanup_created_objects(bpy, created) -> bool:
+    """Remove only objects created by the current operation and verify absence."""
+    created_identities = {object_identity(obj) for obj in created}
+    for obj in created:
+        remove_object(bpy, obj)
+    remaining_identities = {object_identity(obj) for obj in bpy.data.objects}
+    return created_identities.isdisjoint(remaining_identities)
+
+
+def _creation_failure(bpy, created, message: str, prompt: str, **context) -> dict:
+    """Return a truthful receipt after rolling back transient output objects."""
+    rollback_verified = _cleanup_created_objects(bpy, created)
+    return skill_error(
+        message,
+        prompt,
+        mutation_applied=True,
+        rollback_attempted=True,
+        rollback_verified=rollback_verified,
+        **context,
+    )
+
+
 def create_primitive(
     primitive_type: str,
     name: str,
@@ -45,6 +67,7 @@ def create_primitive(
     size: float = 1.0,
 ) -> dict:
     """Create a named primitive and verify its Blender transform readback."""
+    created_obj = None
     kind = str(primitive_type).lower()
     if kind not in _PRIMITIVE_OPERATORS:
         return skill_error("Invalid primitive_type", f"Use one of: {', '.join(sorted(_PRIMITIVE_OPERATORS))}.")
@@ -85,17 +108,25 @@ def create_primitive(
             kwargs.update({"major_radius": size_value / 2.0, "minor_radius": size_value / 8.0})
         operator_result = getattr(bpy.ops.mesh, _PRIMITIVE_OPERATORS[kind])(**kwargs)
         obj = active_object(bpy)
-        if obj is None or object_identity(obj) in before_identities or getattr(obj, "type", None) != "MESH":
+        if obj is not None and object_identity(obj) not in before_identities:
+            created_obj = obj
+        if created_obj is None:
             return skill_error("Primitive creation failed", "Blender did not expose the created mesh as active.")
+        if getattr(created_obj, "type", None) != "MESH":
+            return _creation_failure(
+                bpy,
+                [created_obj],
+                "Primitive creation failed",
+                "Blender exposed a new active object that was not a mesh.",
+            )
+        obj = created_obj
         if not operator_finished(operator_result):
-            remove_object(bpy, obj)
-            remaining_identities = {object_identity(existing) for existing in bpy.data.objects}
-            return skill_error(
+            return _creation_failure(
+                bpy,
+                [obj],
                 "Primitive creation failed",
                 "Blender did not report a finished primitive operation.",
-                mutation_applied=True,
-                rollback_attempted=True,
-                rollback_verified=object_identity(obj) not in remaining_identities,
+                failed_operator=_PRIMITIVE_OPERATORS[kind],
             )
         obj.name = name
         if getattr(obj, "data", None) is not None:
@@ -114,9 +145,17 @@ def create_primitive(
             and close(actual_scale, scale_value)
         )
         if not verified:
-            remove_object(bpy, obj)
-            return skill_error(
-                f"Primitive readback failed: {name}", "Blender state did not match the requested transform."
+            return _creation_failure(
+                bpy,
+                [obj],
+                f"Primitive readback failed: {name}",
+                "Blender state did not match the requested transform.",
+                readback={
+                    "location": actual_location,
+                    "rotation": actual_rotation,
+                    "scale": actual_scale,
+                    **counts,
+                },
             )
         return skill_success(
             f"Created {kind} primitive {name}",
@@ -142,6 +181,14 @@ def create_primitive(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if created_obj is not None:
+            return _creation_failure(
+                bpy,
+                [created_obj],
+                f"Primitive creation failed: {name}",
+                "The created object could not be verified and was rolled back where possible.",
+                error_type=type(exc).__name__,
+            )
         return skill_exception(exc, message=f"Failed to create {kind} primitive")
 
 
@@ -182,7 +229,15 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
             duplicate.select_set(True)
         joined = copies[0]
         bpy.context.view_layer.objects.active = joined
-        bpy.ops.object.join()
+        join_result = bpy.ops.object.join()
+        if not operator_finished(join_result):
+            return _creation_failure(
+                bpy,
+                copies,
+                "Loft join failed",
+                "Blender did not report a finished join operation.",
+                failed_operator="object.join",
+            )
         joined.name = target_name
         joined.data.name = target_name
         before = mesh_counts(joined)
@@ -192,14 +247,30 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
             select_mode(type="EDGE")
         bpy.ops.mesh.select_all(action="SELECT")
         try:
-            bpy.ops.mesh.bridge_edge_loops(type="OPEN", number_cuts=0, interpolation="LINEAR")
+            bridge_result = bpy.ops.mesh.bridge_edge_loops(type="OPEN", number_cuts=0, interpolation="LINEAR")
         except TypeError:
-            bpy.ops.mesh.bridge_edge_loops()
+            bridge_result = bpy.ops.mesh.bridge_edge_loops()
         object_mode(bpy)
         after = mesh_counts(joined)
+        if not operator_finished(bridge_result):
+            return _creation_failure(
+                bpy,
+                copies,
+                "Loft bridge failed",
+                "Blender did not report a finished bridge operation.",
+                failed_operator="bridge_edge_loops",
+                mesh_before=before,
+                mesh_after=after,
+            )
         if after["face_count"] <= before["face_count"]:
-            remove_object(bpy, joined)
-            return skill_error("Loft had no verifiable effect", "Blender reported no new bridge faces.")
+            return _creation_failure(
+                bpy,
+                copies,
+                "Loft had no verifiable effect",
+                "Blender reported no new bridge faces.",
+                mesh_before=before,
+                mesh_after=after,
+            )
         return skill_success(
             f"Lofted {len(sources)} sections into {target_name}",
             parameters={"output_name": target_name, "sections": list(sections)},
@@ -214,14 +285,15 @@ def loft_sections(sections: Sequence[str], output_name: Optional[str] = None) ->
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        try:
-            import bpy
-
-            for duplicate in copies:
-                remove_object(bpy, duplicate)
-        except Exception:
-            pass
         object_mode_if_available()
+        if copies:
+            return _creation_failure(
+                bpy,
+                copies,
+                "Loft failed",
+                "Transient loft output could not be completed and was rolled back where possible.",
+                error_type=type(exc).__name__,
+            )
         return skill_exception(exc, message="Failed to loft sections")
 
 
@@ -263,12 +335,24 @@ def lathe_profile(
         previous_cursor = coords(cursor.location)
         try:
             cursor.location = origin_value
-            bpy.ops.object.origin_set(type="ORIGIN_CURSOR", center="MEDIAN")
+            origin_result = bpy.ops.object.origin_set(type="ORIGIN_CURSOR", center="MEDIAN")
         finally:
             cursor.location = previous_cursor
+        if not operator_finished(origin_result):
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe origin update failed",
+                "Blender did not report a finished origin operation.",
+                failed_operator="origin_set",
+            )
         if not close(coords(duplicate.matrix_world.translation), origin_value):
-            remove_object(bpy, duplicate)
-            return skill_error("Lathe origin readback failed", "Profile origin did not match the request.")
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe origin readback failed",
+                "Profile origin did not match the request.",
+            )
         before = mesh_counts(duplicate)
         modifier = duplicate.modifiers.new(name="Lathe_Profile", type="SCREW")
         modifier.axis = axis_key.upper()
@@ -283,13 +367,43 @@ def lathe_profile(
             and abs(float(modifier.angle) - math.tau) <= 1e-6
         )
         if not configured:
-            remove_object(bpy, duplicate)
-            return skill_error("Lathe modifier readback failed", "Screw modifier did not retain the request.")
-        bpy.ops.object.modifier_apply(modifier=modifier.name)
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe modifier readback failed",
+                "Screw modifier did not retain the request.",
+            )
+        apply_result = bpy.ops.object.modifier_apply(modifier=modifier.name)
         after = mesh_counts(duplicate)
+        if not operator_finished(apply_result):
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe modifier apply failed",
+                "Blender did not report a finished modifier apply operation.",
+                failed_operator="modifier_apply",
+                mesh_before=before,
+                mesh_after=after,
+            )
+        if duplicate.modifiers.get(modifier.name) is not None:
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe modifier apply failed",
+                "The Screw modifier remained after Blender reported success.",
+                failed_operator="modifier_apply",
+                mesh_before=before,
+                mesh_after=after,
+            )
         if after["face_count"] <= before["face_count"]:
-            remove_object(bpy, duplicate)
-            return skill_error("Lathe had no verifiable effect", "Blender reported no generated faces.")
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                "Lathe had no verifiable effect",
+                "Blender reported no generated faces.",
+                mesh_before=before,
+                mesh_after=after,
+            )
         return skill_success(
             f"Lathed {profile} into {target_name}",
             parameters={
@@ -305,11 +419,12 @@ def lathe_profile(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        try:
-            import bpy
-
-            if duplicate is not None:
-                remove_object(bpy, duplicate)
-        except Exception:
-            pass
+        if duplicate is not None:
+            return _creation_failure(
+                bpy,
+                [duplicate],
+                f"Lathe failed: {profile}",
+                "Transient lathe output could not be completed and was rolled back where possible.",
+                error_type=type(exc).__name__,
+            )
         return skill_exception(exc, message=f"Failed to lathe profile {profile}")
