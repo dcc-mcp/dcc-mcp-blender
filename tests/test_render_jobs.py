@@ -12,6 +12,10 @@ def _write_valid_exr(path):
     path.write_bytes(b"\x76\x2f\x31\x01payload")
 
 
+def _write_valid_png(path):
+    path.write_bytes(b"\x89PNG\r\n\x1a\npayload")
+
+
 def test_build_command_uses_multilayer_exr_and_exact_frames(tmp_path):
     command = jobs._build_blender_command(
         blender_path="blender",
@@ -43,6 +47,23 @@ def test_build_command_uses_multilayer_exr_and_exact_frames(tmp_path):
     assert factory_command[2] == "--factory-startup"
 
 
+def test_build_command_supports_png_animation_output(tmp_path):
+    pattern = str(tmp_path / "beauty_####")
+
+    command = jobs._build_blender_command(
+        blender_path="blender",
+        scene_path=str(tmp_path / "scene.blend"),
+        output_pattern=pattern,
+        output_format="PNG",
+        frames=[2],
+        device="CPU",
+        factory_startup=False,
+    )
+
+    assert command[command.index("--render-format") + 1] == "PNG"
+    assert jobs._expected_output_path(pattern, 2, output_format="PNG") == tmp_path / "beauty_0002.png"
+
+
 def test_select_frames_resumes_only_missing_nonempty_exrs(tmp_path):
     pattern = str(tmp_path / "beauty_####")
     _write_valid_exr(jobs._expected_output_path(pattern, 1))
@@ -50,6 +71,19 @@ def test_select_frames_resumes_only_missing_nonempty_exrs(tmp_path):
 
     assert jobs._select_frames(pattern, 1, 4, 1, resume_missing=True) == [2, 3, 4]
     assert jobs._select_frames(pattern, 1, 4, 2, resume_missing=False) == [1, 3]
+
+
+def test_select_frames_resumes_only_missing_valid_pngs(tmp_path):
+    pattern = str(tmp_path / "beauty_####")
+    _write_valid_png(jobs._expected_output_path(pattern, 1, output_format="PNG"))
+    jobs._expected_output_path(pattern, 3, output_format="PNG").write_bytes(b"not a png")
+
+    assert jobs._select_frames(pattern, 1, 4, 1, resume_missing=True, output_format="PNG") == [2, 3, 4]
+
+
+def test_rejects_unsupported_background_render_format(tmp_path):
+    with pytest.raises(ValueError, match="output_format"):
+        jobs._expected_output_path(str(tmp_path / "beauty_####"), 1, output_format="TIFF")
 
 
 def test_start_get_cancel_background_render_job(monkeypatch, tmp_path):

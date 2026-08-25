@@ -36,5 +36,6 @@ metadata:
 # blender-render
 
 Use `render_scene` for short stills. Use `start_render_job` for animation or
-multi-layer EXR output so the interactive Blender process remains responsive;
-poll with `get_render_job` and cancel only through the returned job id.
+multi-layer EXR or display-ready PNG output so the interactive Blender process
+remains responsive; poll with `get_render_job` and cancel only through the
+returned job id.
