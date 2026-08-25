@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.2...v0.2.3) (2026-08-25)
+
+
+### Features
+
+* support PNG background render jobs ([b8284b1](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b8284b1ae295fd418403f7dedfb6ecb1a45a4f43))
+
 ## [0.2.2](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.1...v0.2.2) (2026-08-24)
 
 
