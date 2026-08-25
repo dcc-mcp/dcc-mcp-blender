@@ -102,7 +102,7 @@ tools:
     destructive: false
     idempotent: false
   - name: start_render_job
-    description: "Save the current .blend and start an isolated background animation render to multi-layer OpenEXR; optionally render only missing frames."
+    description: "Save the current .blend and start an isolated background animation render to multi-layer OpenEXR or PNG; optionally render only missing frames."
     source_file: scripts/start_render_job.py
     execution: sync
     affinity: main
@@ -117,7 +117,12 @@ tools:
         output_pattern:
           type: string
           minLength: 1
-          description: "Absolute output pattern containing # placeholders, for example C:/renders/beauty_####. Blender appends .exr."
+          description: "Absolute output pattern containing # placeholders, for example C:/renders/beauty_####. Blender appends the selected format's extension."
+        output_format:
+          type: string
+          enum: [OPEN_EXR_MULTILAYER, PNG]
+          default: OPEN_EXR_MULTILAYER
+          description: "Background render output format. PNG produces display-ready frames; multilayer EXR preserves render passes."
         start_frame:
           type: integer
           minimum: 0
@@ -131,7 +136,7 @@ tools:
         resume_missing:
           type: boolean
           default: true
-          description: "Skip existing non-empty EXR files and render only missing frames."
+          description: "Skip existing files with a valid signature for the selected output format and render only missing frames."
         device:
           type: string
           enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]

@@ -20,6 +20,14 @@ def test_render_tools_publish_ci_safe_input_contracts():
     assert render_scene["properties"]["write_still"]["default"] is True
     assert render_scene["additionalProperties"] is False
 
+    render_job = tools["start_render_job"]["input_schema"]
+    assert render_job["properties"]["output_format"] == {
+        "type": "string",
+        "enum": ["OPEN_EXR_MULTILAYER", "PNG"],
+        "default": "OPEN_EXR_MULTILAYER",
+        "description": "Background render output format. PNG produces display-ready frames; multilayer EXR preserves render passes.",
+    }
+
     settings = tools["set_render_settings"]["input_schema"]["properties"]
     assert "CYCLES" in settings["engine"]["enum"]
     assert settings["resolution_percentage"]["maximum"] == 100
