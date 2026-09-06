@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.3...v0.2.4) (2026-09-06)
+
+
+### Bug Fixes
+
+* preserve skill search limits with semantic recall ([2ea9f56](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2ea9f56bb0f9c2e359d813c38e6485838710564b))
+
 ## [0.2.3](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.2...v0.2.3) (2026-08-25)
 
 
