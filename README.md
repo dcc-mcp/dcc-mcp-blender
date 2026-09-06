@@ -93,6 +93,9 @@ observe [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/ima
 
 `dcc-mcp-blender` turns Blender into a first-class MCP server. Once the addon is enabled, any MCP client (Claude Desktop, custom agents, etc.) can call Blender tools over HTTP without any external gateway.
 
+See [MCP protocol compatibility](docs/protocol-compatibility.md) for the
+adapter-facing negotiation matrix and contract test command.
+
 ```
 ┌─────────────────────────────────┐
 │  Blender (Python 3.10+)         │
