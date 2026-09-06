@@ -386,6 +386,28 @@ class TestProgressiveLoading:
         finally:
             server.stop()
 
+    def test_search_skills_semantic_augmentation_preserves_limit(self):
+        from unittest.mock import MagicMock
+
+        mock_inner = MagicMock()
+        mock_inner.search_skills.return_value = [{"name": "blender-scene"}]
+        mock_inner.list_skills.return_value = [{"name": "blender-scene"}]
+        server = self._make_server_with_mock(mock_inner)
+        semantic = MagicMock()
+        semantic.augment.return_value = [{"name": "blender-scene"}]
+        server._semantic = semantic
+        try:
+            result = server.search_skills(query="render", limit=1)
+            assert result == [{"name": "blender-scene"}]
+            semantic.augment.assert_called_once_with(
+                [{"name": "blender-scene"}],
+                "render",
+                [{"name": "blender-scene"}],
+                limit=1,
+            )
+        finally:
+            server.stop()
+
     def test_find_skills_tags_none_becomes_empty_list(self):
         """tags=None must be coerced to [] so the Rust binding doesn't crash."""
         from unittest.mock import MagicMock

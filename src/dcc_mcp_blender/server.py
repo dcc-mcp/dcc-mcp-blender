@@ -604,7 +604,8 @@ class BlenderMcpServer(DccServerBase):
         # demote); vector-only hits are appended.
         if self._semantic is not None and query:
             try:
-                return self._semantic.augment(base, query, self.list_skills())
+                # Semantic recall must preserve the public search limit.
+                return self._semantic.augment(base, query, self.list_skills(), limit=limit)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("BlenderMcpServer: semantic augment failed: %s", exc)
         return base
