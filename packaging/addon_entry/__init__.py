@@ -24,7 +24,7 @@ bl_info = {
     "version": (
         0,  # x-release-please-major
         2,  # x-release-please-minor
-        3,  # x-release-please-patch
+        4,  # x-release-please-patch
     ),
     "blender": (4, 2, 0),
     "location": "Top Bar > DCC MCP",
@@ -574,4 +574,4 @@ def unregister() -> None:
         _remove_runtime_import_aliases()
 
 
-__addon_version__ = "0.2.3"  # x-release-please-version
+__addon_version__ = "0.2.4"  # x-release-please-version
