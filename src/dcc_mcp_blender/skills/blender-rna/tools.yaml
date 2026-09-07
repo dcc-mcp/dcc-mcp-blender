@@ -1,0 +1,249 @@
+tools:
+  - name: search_rna_types
+    description: "Search the running Blender's RNA type metadata in bounded pages; no operators or instances are created."
+    source_file: scripts/search_rna_types.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 10
+    read_only: true
+    destructive: false
+    idempotent: true
+    tags: [blender, rna, discovery, read-only]
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          maxLength: 128
+          default: ""
+          description: "Case-insensitive substring, not a regular expression."
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+    output_schema:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context:
+          type: object
+          properties:
+            schema: {type: string}
+            blender_version: {type: string}
+            response_budget_bytes: {type: integer, const: 32768}
+            types:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required: [identifier, name, description, text_truncated]
+                properties:
+                  identifier: {type: string, maxLength: 128}
+                  name: {type: string, maxLength: 128}
+                  description: {type: string, maxLength: 256}
+                  text_truncated: {type: boolean}
+            total: {type: integer}
+            offset: {type: integer}
+            limit: {type: integer}
+            returned: {type: integer, minimum: 0, maximum: 100}
+            next_offset: {type: [integer, "null"]}
+            truncated: {type: boolean}
+    call_examples:
+      - arguments: {query: Subdivision, limit: 10}
+        note: "Find the current runtime's subdivision modifier RNA type."
+
+  - name: describe_rna_type
+    description: "Describe live RNA properties, readonly flags, numeric limits and bounded static enums; discovery does not grant mutation support."
+    source_file: scripts/describe_rna_type.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 10
+    read_only: true
+    destructive: false
+    idempotent: true
+    tags: [blender, rna, discovery, read-only]
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [type_name]
+      properties:
+        type_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+          description: "Exact public identifier from search_rna_types, not bpy.types or a data path."
+        query:
+          type: string
+          maxLength: 128
+          default: ""
+          description: "Case-insensitive property identifier or label substring."
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+    output_schema:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context:
+          type: object
+          properties:
+            schema: {type: string}
+            blender_version: {type: string}
+            type_name: {type: string}
+            response_budget_bytes: {type: integer, const: 32768}
+            properties:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required: [identifier, name, description, text_truncated, type, is_readonly, is_array, array_length, is_runtime, value_support, limits]
+                properties:
+                  identifier: {type: string, maxLength: 128}
+                  name: {type: string, maxLength: 128}
+                  description: {type: string, maxLength: 256}
+                  text_truncated: {type: boolean}
+                  type: {type: string}
+                  is_readonly: {type: boolean}
+                  is_array: {type: boolean}
+                  array_length: {type: integer, minimum: 0}
+                  is_runtime: {type: boolean}
+                  subtype: {type: string, maxLength: 128}
+                  unit: {type: string, maxLength: 128}
+                  value_support: {type: string, enum: [supported, unsupported]}
+                  limits:
+                    type: object
+                    description: "Only finite numeric bounds provided by this runtime are included."
+                    properties:
+                      hard_min: {type: number}
+                      hard_max: {type: number}
+                      soft_min: {type: number}
+                      soft_max: {type: number}
+                  enum_status:
+                    type: string
+                    enum: [static_only, unavailable]
+                    description: "Static items can be incomplete for context-dependent enums; no dynamic callbacks are called."
+                  enum_truncated: {type: boolean}
+                  is_enum_flag: {type: boolean}
+                  enum_items:
+                    type: array
+                    maxItems: 64
+                    items:
+                      type: object
+                      required: [identifier, name, description, text_truncated]
+                      properties:
+                        identifier: {type: string, maxLength: 128}
+                        name: {type: string, maxLength: 128}
+                        description: {type: string, maxLength: 160}
+                        text_truncated: {type: boolean}
+            total: {type: integer}
+            offset: {type: integer}
+            limit: {type: integer}
+            returned: {type: integer, minimum: 0, maximum: 100}
+            next_offset: {type: [integer, "null"]}
+            truncated: {type: boolean}
+    call_examples:
+      - arguments: {type_name: SubsurfModifier, query: levels}
+        note: "Inspect subdivision level ranges before a typed modifier operation."
+
+  - name: get_modifier_values
+    description: "Read up to 32 named modifier scalar/array properties. Pointer, collection and runtime callback values are not read; check each result status."
+    source_file: scripts/get_modifier_values.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 10
+    read_only: true
+    destructive: false
+    idempotent: true
+    tags: [blender, rna, modifiers, read-only]
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, modifier_name, properties]
+      properties:
+        object_name: {type: string, minLength: 1, maxLength: 256}
+        modifier_name: {type: string, minLength: 1, maxLength: 256}
+        properties:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+          description: "Exact public identifiers; no expressions, paths, or rna_type."
+    output_schema:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context:
+          type: object
+          properties:
+            schema: {type: string}
+            blender_version: {type: string}
+            object_name: {type: string}
+            modifier_name: {type: string}
+            type_name: {type: string}
+            response_budget_bytes: {type: integer, const: 32768}
+            properties:
+              type: object
+              maxProperties: 32
+              additionalProperties:
+                type: object
+                required: [identifier, status]
+                properties:
+                  identifier: {type: string}
+                  type: {type: string}
+                  status: {type: string, enum: [available, unavailable, unsupported]}
+                  reason: {type: string}
+                  value:
+                    type: [boolean, integer, number, string, array]
+                    maxLength: 4096
+                    maxItems: 32
+                    items:
+                      type: [boolean, integer, number, string]
+                      maxLength: 4096
+                    description: "Present only when status is available. Values are not truncated to fit a budget."
+    call_examples:
+      - arguments: {object_name: Cube, modifier_name: Subdivision, properties: [levels, render_levels]}
+        note: "Read exact subdivision settings instead of inferring them from mutation success."
