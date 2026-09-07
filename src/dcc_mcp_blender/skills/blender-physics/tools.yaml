@@ -468,7 +468,7 @@ tools:
       open_world_hint: false
 
   - name: bake_simulation
-    description: "Bake simulation caches for matching modifiers."
+    description: "Bake only matching cloth, soft-body or particle point caches in the current scene. Dry run validates without mutation; unsupported cache types fail closed."
     source_file: scripts/bake_simulation.py
     execution: sync
     affinity: main
@@ -480,13 +480,20 @@ tools:
         object_name:
           type: string
           minLength: 1
+          maxLength: 256
+          description: "Exact current-scene object name; omit to inspect all matching objects."
         modifier_name:
           type: string
           minLength: 1
+          maxLength: 256
         frame_start:
           type: integer
+          minimum: 1
+          maximum: 1048574
         frame_end:
           type: integer
+          minimum: 1
+          maximum: 1048574
         dry_run:
           type: boolean
           default: false
@@ -511,7 +518,7 @@ tools:
       open_world_hint: false
 
   - name: clear_simulation_cache
-    description: "Clear simulation caches for matching modifiers."
+    description: "Free only matching cloth, soft-body or particle point caches in the current scene. Never clears unrelated caches; dry run does not mutate."
     source_file: scripts/clear_simulation_cache.py
     execution: sync
     affinity: main
@@ -523,9 +530,12 @@ tools:
         object_name:
           type: string
           minLength: 1
+          maxLength: 256
+          description: "Exact current-scene object name; omit to inspect all matching objects."
         modifier_name:
           type: string
           minLength: 1
+          maxLength: 256
         dry_run:
           type: boolean
           default: false

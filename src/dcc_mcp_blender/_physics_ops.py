@@ -478,9 +478,14 @@ def list_simulation_modifiers(object_name: Optional[str] = None) -> dict:
 def _target_simulation_modifiers(
     bpy, object_name: Optional[str], modifier_name: Optional[str]
 ) -> Tuple[List[Tuple[Any, Any]], Optional[dict]]:
-    objects, error = _matching_objects(bpy, object_name)
-    if error:
-        return [], error
+    scene_objects = bpy.context.scene.objects
+    if object_name is not None:
+        obj = scene_objects.get(object_name)
+        if obj is None:
+            return [], skill_error("Object not in current scene", "Choose an object in the active scene.")
+        objects = [obj]
+    else:
+        objects = list(scene_objects)
     targets: List[Tuple[Any, Any]] = []
     for obj in objects:
         for modifier in _simulation_modifiers_for_object(obj, modifier_name):
@@ -492,58 +497,28 @@ def _target_simulation_modifiers(
     return targets, None
 
 
-def bake_simulation(
-    object_name: Optional[str] = None,
-    modifier_name: Optional[str] = None,
+def _simulation_cache_operation(
+    operation: str,
+    object_name: Optional[str],
+    modifier_name: Optional[str],
+    dry_run: bool,
     frame_start: Optional[int] = None,
     frame_end: Optional[int] = None,
-    dry_run: bool = False,
 ) -> dict:
-    """Bake simulation caches for matching modifiers."""
-    try:
-        import bpy
-
-        targets, error = _target_simulation_modifiers(bpy, object_name, modifier_name)
-        if error:
-            return error
-        if not targets:
+    """Preflight all targets, then operate only on explicitly scoped point caches."""
+    for label, name in (("object_name", object_name), ("modifier_name", modifier_name)):
+        if name is not None and (not isinstance(name, str) or not name.strip() or len(name) > 256):
             return skill_error(
-                "No simulation modifiers found", "Add cloth, collision, soft-body, fluid, or particle modifiers first."
+                "Invalid simulation target", f"{label} must be a nonempty name of at most 256 characters."
             )
+    if type(dry_run) is not bool:
+        return skill_error("Invalid dry_run", "dry_run must be a boolean.")
+    for value in (frame_start, frame_end):
+        if value is not None and (type(value) is not int or not 1 <= value <= 1048574):
+            return skill_error("Invalid cache frame", "Cache frames must be integers between 1 and 1048574.")
 
-        cache_updates = []
-        for obj, modifier in targets:
-            cache = _modifier_point_cache(modifier)
-            cache_updates.append(
-                {
-                    "object_name": getattr(obj, "name", ""),
-                    "modifier": _modifier_context(modifier),
-                    "applied": _set_cache_frames(cache, frame_start, frame_end),
-                }
-            )
-        _set_scene_frames(bpy.context.scene, frame_start, frame_end)
-        if not dry_run:
-            first_obj = targets[0][0]
-            _activate_object(bpy, first_obj)
-            bpy.ops.ptcache.bake_all(bake=True)
-        return skill_success(
-            "Simulation bake prepared" if dry_run else "Baked simulation caches",
-            dry_run=bool(dry_run),
-            targets=cache_updates,
-            count=len(cache_updates),
-        )
-    except ImportError:
-        return skill_error("Blender not available", "bpy could not be imported")
-    except Exception as exc:
-        return skill_exception(exc, message="Failed to bake simulation")
-
-
-def clear_simulation_cache(
-    object_name: Optional[str] = None,
-    modifier_name: Optional[str] = None,
-    dry_run: bool = False,
-) -> dict:
-    """Clear simulation caches for matching modifiers."""
+    records = []
+    mutation_started = False
     try:
         import bpy
 
@@ -553,27 +528,148 @@ def clear_simulation_cache(
         if not targets:
             return skill_error("No simulation modifiers found", "No matching simulation caches were found.")
 
-        cleared = []
+        entries = []
         for obj, modifier in targets:
-            cleared.append(
-                {
-                    "object_name": getattr(obj, "name", ""),
-                    "modifier": _modifier_context(modifier),
-                }
+            cache = _modifier_point_cache(modifier)
+            if modifier.type not in {"CLOTH", "SOFT_BODY", "PARTICLE_SYSTEM"} or cache is None:
+                return skill_error(
+                    "Unsupported simulation cache",
+                    "Scoped point-cache operations support cloth, soft-body and particle caches only; no global fallback.",
+                    object_name=obj.name,
+                    modifier_name=modifier.name,
+                    modifier_type=modifier.type,
+                    mutation_state="none",
+                )
+            before = _cache_context(cache)
+            start = frame_start if frame_start is not None else before["frame_start"]
+            end = frame_end if frame_end is not None else before["frame_end"]
+            if operation == "bake" and (
+                type(start) is not int or type(end) is not int or not 1 <= start <= end <= 1048574
+            ):
+                return skill_error(
+                    "Invalid cache range",
+                    "Each target needs frame_start <= frame_end within valid cache bounds.",
+                    mutation_state="none",
+                )
+            if operation == "bake" and before["is_baked"]:
+                return skill_error(
+                    "Cache already baked",
+                    "Clear the exact target cache before changing or rebaking it.",
+                    object_name=obj.name,
+                    modifier_name=modifier.name,
+                    mutation_state="none",
+                )
+            planned = {
+                key: value
+                for key, value in (("frame_start", frame_start), ("frame_end", frame_end))
+                if value is not None
+            }
+            record = {
+                "object_name": obj.name,
+                "modifier": _modifier_context(modifier),
+                "before": before,
+                "planned": planned,
+                "applied": {},
+                "status": "planned",
+            }
+            records.append(record)
+            entries.append((obj, cache, record))
+
+        if dry_run:
+            return skill_success(
+                "Simulation cache operation prepared",
+                dry_run=True,
+                targets=records,
+                count=len(records),
+                mutation_state="none",
             )
-        if not dry_run:
-            _activate_object(bpy, targets[0][0])
-            bpy.ops.ptcache.free_bake_all()
+
+        override = getattr(bpy.context, "temp_override", None)
+        operator = getattr(bpy.ops.ptcache, "bake" if operation == "bake" else "free_bake", None)
+        if not callable(override) or not callable(operator) or not callable(getattr(operator, "poll", None)):
+            return skill_error(
+                "Scoped cache context unavailable",
+                "This runtime must support context.temp_override and the per-cache operator; no global fallback.",
+                targets=records,
+                mutation_state="none",
+            )
+
+        # Poll every target before changing any frame range or invoking a bake.
+        for obj, cache, _record in entries:
+            with override(scene=bpy.context.scene, object=obj, active_object=obj, point_cache=cache):
+                if not operator.poll():
+                    return skill_error(
+                        "Scoped cache operator unavailable",
+                        "The per-cache operator cannot run in this target's context.",
+                        object_name=obj.name,
+                        targets=records,
+                        mutation_state="none",
+                    )
+
+        for obj, cache, record in entries:
+            mutation_started = True
+            record["status"] = "attempted"
+            try:
+                planned = record["planned"]
+                # Blender may clamp range assignments; set the upper bound first
+                # when moving the entire range above its previous end.
+                keys = ["frame_start", "frame_end"]
+                if planned.get("frame_start", cache.frame_start) > cache.frame_end:
+                    keys.reverse()
+                for key in keys:
+                    if key in planned:
+                        setattr(cache, key, planned[key])
+                        record["applied"][key] = getattr(cache, key)
+                if record["applied"] != planned:
+                    raise ValueError("The target cache did not retain the requested frame range.")
+                with override(scene=bpy.context.scene, object=obj, active_object=obj, point_cache=cache):
+                    result = operator(bake=True) if operation == "bake" else operator()
+                record["operator_result"] = sorted(result)
+                if result != {"FINISHED"}:
+                    raise ValueError("The scoped cache operator did not finish.")
+                if bool(cache.is_baked) != (operation == "bake"):
+                    raise ValueError("The target cache did not satisfy the baked-state postcondition.")
+                record["status"] = "completed"
+            finally:
+                record["after"] = _cache_context(cache)
         return skill_success(
-            "Simulation cache clear prepared" if dry_run else "Cleared simulation caches",
-            dry_run=bool(dry_run),
-            targets=cleared,
-            count=len(cleared),
+            "Baked simulation caches" if operation == "bake" else "Cleared simulation caches",
+            dry_run=False,
+            targets=records,
+            count=len(records),
+            mutation_state="completed",
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        return skill_exception(exc, message="Failed to clear simulation cache")
+        return skill_exception(
+            exc,
+            message="Simulation cache operation failed",
+            targets=records,
+            completed_count=sum(record["status"] == "completed" for record in records),
+            mutation_state="partial_or_unknown" if mutation_started else "none",
+            prompt="Inspect get_simulation_status for these targets before deciding whether to retry; no global fallback was used.",
+        )
+
+
+def bake_simulation(
+    object_name: Optional[str] = None,
+    modifier_name: Optional[str] = None,
+    frame_start: Optional[int] = None,
+    frame_end: Optional[int] = None,
+    dry_run: bool = False,
+) -> dict:
+    """Bake only matching point caches without changing scene range or selection."""
+    return _simulation_cache_operation("bake", object_name, modifier_name, dry_run, frame_start, frame_end)
+
+
+def clear_simulation_cache(
+    object_name: Optional[str] = None,
+    modifier_name: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict:
+    """Clear only matching point caches; never invoke a scene-wide cache operator."""
+    return _simulation_cache_operation("clear", object_name, modifier_name, dry_run)
 
 
 # ---------------------------------------------------------------------------
