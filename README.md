@@ -95,6 +95,8 @@ observe [NASA media usage guidelines](https://www.nasa.gov/nasa-brand-center/ima
 
 See [MCP protocol compatibility](docs/protocol-compatibility.md) for the
 adapter-facing negotiation matrix and contract test command.
+See [capability enhancement](docs/capability-enhancement.md) for live RNA
+parameter discovery, bounded modifier readback, and the validation rubric.
 
 ```
 ┌─────────────────────────────────┐
