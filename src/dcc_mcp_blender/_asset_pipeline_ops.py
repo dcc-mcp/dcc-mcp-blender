@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from ._material_validation import material_image_issues
+
 ASSET_METADATA_KEY = "dcc_mcp_asset_metadata"
 PROJECT_CONTEXT_KEY = "dcc_mcp_project_context"
 SUPPORTED_EXPORT_FORMATS = {"fbx", "obj", "gltf", "glb", "usd", "usda", "usdc", "abc", "blend"}
@@ -132,11 +134,11 @@ def _material_slots(obj: Any) -> List[Any]:
 
 
 def _object_materials(obj: Any) -> List[Any]:
+    slots = _material_slots(obj)
+    if slots:
+        return [getattr(slot, "material", None) for slot in slots]
     data = getattr(obj, "data", None)
-    materials = list(_iter_or_empty(getattr(data, "materials", [])))
-    if materials:
-        return materials
-    return [getattr(slot, "material", None) for slot in _material_slots(obj)]
+    return list(_iter_or_empty(getattr(data, "materials", [])))
 
 
 def _custom_get(target: Any, key: str, default: Any = None) -> Any:
@@ -291,7 +293,17 @@ def validate_mesh(object_name: str, rules: Optional[Dict[str, Any]] = None) -> d
 
 
 def validate_materials(object_names: Optional[List[str]] = None, rules: Optional[Dict[str, Any]] = None) -> dict:
-    """Validate material assignments for scene objects."""
+    """Validate slots, required node trees, and connected image file presence.
+
+    ``require_nodes`` rejects disabled or empty node trees. Image checks cover
+    linked, unmuted nodes within material graphs, not final-output reachability,
+    image decoding, or render fidelity. They never load, reload, or write images.
+    Generated/viewer and packed FILE images need no external path. UDIM checks
+    use declared tiles only; packed tile coverage, sequence/movie sources, and
+    graph/file budget limits produce explicit unverified warnings. ``passed``
+    means no errors, while ``context.resource_checks_complete`` distinguishes
+    incomplete resource inspection from a fully checked report.
+    """
     try:
         import bpy
 
@@ -317,14 +329,36 @@ def validate_materials(object_names: Optional[List[str]] = None, rules: Optional
                     issues.append(
                         _issue(
                             "MATERIAL_NODES_DISABLED",
-                            "warning",
+                            "error",
                             f"Material {getattr(material, 'name', '<unnamed>')} does not use nodes.",
                             name,
                         )
                     )
+                elif rules.get("require_nodes") and not _len_or_zero(
+                    getattr(getattr(material, "node_tree", None), "nodes", None)
+                ):
+                    issues.append(
+                        _issue(
+                            "MATERIAL_NODE_TREE_EMPTY",
+                            "error",
+                            f"Material {getattr(material, 'name', '<unnamed>')} has no shader nodes.",
+                            name,
+                            {"material": getattr(material, "name", ""), "slot": index},
+                        )
+                    )
+                for finding in material_image_issues(bpy, material):
+                    issues.append(dict(finding, object_name=name))
         if not issues:
             issues.append(_issue("MATERIALS_VALID", "info", "Material validation passed."))
-        report = _make_report("materials", issues, [_object_name(obj) for obj in objects], {"rules": rules})
+        report = _make_report(
+            "materials",
+            issues,
+            [_object_name(obj) for obj in objects],
+            {
+                "rules": rules,
+                "resource_checks_complete": not any(issue["code"].endswith("UNVERIFIED") for issue in issues),
+            },
+        )
         return skill_success("Material validation completed", report=report)
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")

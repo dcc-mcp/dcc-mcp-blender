@@ -75,7 +75,7 @@ tools:
       open_world_hint: false
 
   - name: validate_materials
-    description: "Validate material assignments and optional material rules."
+    description: "Validate material slots, required node trees, and linked image file presence without loading images. Check report.context.resource_checks_complete for incomplete sequence, packed UDIM, or bounded graph inspection; this is not image decoding or render validation."
     source_file: scripts/validate_materials.py
     execution: sync
     affinity: main
@@ -91,6 +91,15 @@ tools:
         rules:
           type: object
           additionalProperties: true
+          properties:
+            require_materials:
+              type: boolean
+              default: true
+              description: "Report mesh objects without material assignments."
+            require_nodes:
+              type: boolean
+              default: false
+              description: "Reject disabled or empty material node trees. Linked image resources are checked independently; unlinked and muted nodes are ignored."
     output_schema:
       type: object
       additionalProperties: true
