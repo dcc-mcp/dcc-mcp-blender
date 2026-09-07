@@ -7,6 +7,8 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from tests.conftest import load_and_call, make_mock_bpy
 
 
@@ -73,6 +75,16 @@ def _codes(result):
     return {issue["code"] for issue in result["context"]["report"]["issues"]}
 
 
+def _bpy_with_image(image, connected=True):
+    texture = SimpleNamespace(
+        name="Texture", type="TEX_IMAGE", image=image, outputs=[SimpleNamespace(is_linked=connected)]
+    )
+    material = SimpleNamespace(name="Leaves", use_nodes=True, node_tree=SimpleNamespace(nodes=[texture]))
+    bpy = _make_bpy(_FakeObject(materials=[material]))
+    bpy.path.abspath.side_effect = lambda path, **kwargs: path
+    return bpy
+
+
 class TestValidationSkills:
     def test_validate_mesh_passes_with_info_report(self):
         cube = _FakeObject()
@@ -108,6 +120,220 @@ class TestValidationSkills:
 
         assert result["success"] is True
         assert {"OBJECT_MISSING", "MATERIALS_MISSING"}.issubset(_codes(result))
+
+    def test_validate_materials_rejects_empty_enabled_node_tree(self):
+        material = SimpleNamespace(name="ImportedPlaceholder", use_nodes=True, node_tree=SimpleNamespace(nodes=[]))
+        bpy = _make_bpy(_FakeObject(materials=[material]))
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": True},
+        )
+
+        assert result["success"] is True
+        assert result["context"]["report"]["passed"] is False
+        assert "MATERIAL_NODE_TREE_EMPTY" in _codes(result)
+
+    def test_validate_materials_reports_missing_connected_image(self, tmp_path):
+        image = SimpleNamespace(
+            name="Normal", source="FILE", filepath=str(tmp_path / "missing.png"), packed_file=None, packed_files=[]
+        )
+        texture = SimpleNamespace(
+            name="Texture", type="TEX_IMAGE", image=image, outputs=[SimpleNamespace(is_linked=True)]
+        )
+        material = SimpleNamespace(name="Leaves", use_nodes=True, node_tree=SimpleNamespace(nodes=[texture]))
+        bpy = _make_bpy(_FakeObject(materials=[material]))
+        bpy.path.abspath.side_effect = lambda path, **kwargs: path
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": True},
+        )
+
+        assert result["success"] is True
+        assert result["context"]["report"]["passed"] is False
+        assert "MATERIAL_IMAGE_MISSING" in _codes(result)
+
+    @pytest.mark.parametrize("source,packed", [("GENERATED", False), ("VIEWER", False), ("FILE", True)])
+    def test_validate_materials_does_not_require_external_files_for_internal_images(self, source, packed):
+        image = SimpleNamespace(
+            name="Internal", source=source, filepath="", packed_file=object() if packed else None, packed_files=[]
+        )
+        texture = SimpleNamespace(
+            name="Texture", type="TEX_IMAGE", image=image, outputs=[SimpleNamespace(is_linked=True)]
+        )
+        material = SimpleNamespace(name="Internal", use_nodes=True, node_tree=SimpleNamespace(nodes=[texture]))
+        bpy = _make_bpy(_FakeObject(materials=[material]))
+        bpy.path.abspath.side_effect = lambda path, **kwargs: path
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert result["context"]["report"]["passed"] is True
+        assert "MATERIAL_IMAGE_MISSING" not in _codes(result)
+        bpy.path.abspath.assert_not_called()
+
+    @pytest.mark.parametrize("missing_tile", [False, True])
+    def test_validate_materials_checks_declared_udim_tiles_not_literal_template(self, tmp_path, missing_tile):
+        (tmp_path / "leaf.1001.png").write_bytes(b"fixture")
+        if not missing_tile:
+            (tmp_path / "leaf.1002.png").write_bytes(b"fixture")
+        image = SimpleNamespace(
+            name="Tiles",
+            source="TILED",
+            filepath=str(tmp_path / "leaf.<UDIM>.png"),
+            packed_file=None,
+            packed_files=[],
+            tiles=[SimpleNamespace(number=1001), SimpleNamespace(number=1002)],
+        )
+        bpy = _bpy_with_image(image)
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert result["context"]["report"]["passed"] is (not missing_tile)
+        if missing_tile:
+            findings = result["context"]["report"]["issues"]
+            assert any(
+                item["code"] == "MATERIAL_IMAGE_MISSING" and item["details"]["tile"] == 1002 for item in findings
+            )
+
+    @pytest.mark.parametrize(
+        "source,template,tiles",
+        [
+            ("SEQUENCE", "frame0001.png", []),
+            ("MOVIE", "clip.mov", []),
+            ("TILED", "leaf.png", [1001]),
+            ("TILED", "leaf.<UDIM>.png", []),
+            ("UNKNOWN", "image.png", []),
+        ],
+    )
+    def test_validate_materials_reports_unverified_sources_without_false_missing(self, source, template, tiles):
+        image = SimpleNamespace(
+            name="Special",
+            source=source,
+            filepath=template,
+            packed_file=None,
+            packed_files=[],
+            tiles=[SimpleNamespace(number=number) for number in tiles],
+        )
+        bpy = _bpy_with_image(image)
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        report = result["context"]["report"]
+        assert report["counts"]["error"] == 0
+        assert "MATERIAL_IMAGE_UNVERIFIED" in _codes(result)
+        assert "MATERIALS_VALID" not in _codes(result)
+        assert report["context"]["resource_checks_complete"] is False
+
+    def test_validate_materials_checks_connected_nested_node_groups(self, tmp_path):
+        image = SimpleNamespace(name="Nested", source="FILE", filepath=str(tmp_path / "missing.png"), packed_file=None)
+        bpy = _bpy_with_image(image)
+        material = bpy.data.objects[0].data.materials[0]
+        nested_tree = material.node_tree
+        group = SimpleNamespace(
+            name="Group", type="GROUP", node_tree=nested_tree, outputs=[SimpleNamespace(is_linked=True)]
+        )
+        material.node_tree = SimpleNamespace(nodes=[group])
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert result["context"]["report"]["passed"] is False
+        assert "MATERIAL_IMAGE_MISSING" in _codes(result)
+
+    def test_validate_materials_bounds_udim_file_checks(self):
+        image = SimpleNamespace(
+            name="ManyTiles",
+            source="TILED",
+            filepath="many.<UDIM>.png",
+            packed_file=None,
+            tiles=[SimpleNamespace(number=number) for number in range(1001, 2026)],
+        )
+        bpy = _bpy_with_image(image)
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert "MATERIAL_IMAGE_UNVERIFIED" in _codes(result)
+        assert result["context"]["report"]["context"]["resource_checks_complete"] is False
+        assert result["context"]["report"]["counts"]["error"] == 0
+
+    def test_validate_materials_does_not_assume_partial_packed_udim_is_complete(self):
+        image = SimpleNamespace(
+            name="PartialPacked",
+            source="TILED",
+            filepath="leaf.<UDIM>.png",
+            packed_file=object(),
+            packed_files=[object()],
+            tiles=[SimpleNamespace(number=1001), SimpleNamespace(number=1002)],
+        )
+        bpy = _bpy_with_image(image)
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert "MATERIAL_IMAGE_UNVERIFIED" in _codes(result)
+        assert result["context"]["report"]["context"]["resource_checks_complete"] is False
+        assert result["context"]["report"]["counts"]["error"] == 0
+        bpy.path.abspath.assert_not_called()
+
+    @pytest.mark.parametrize("case", ["depth", "nodes", "unavailable_group"])
+    def test_validate_materials_marks_bounded_or_unavailable_groups_incomplete(self, case):
+        bpy = _bpy_with_image(None)
+        material = bpy.data.objects[0].data.materials[0]
+        if case == "nodes":
+            material.node_tree.nodes = [SimpleNamespace(outputs=[], mute=False)] * 4097
+        else:
+            tree = None if case == "unavailable_group" else material.node_tree
+            for _ in range(1 if case == "unavailable_group" else 18):
+                tree = SimpleNamespace(
+                    nodes=[
+                        SimpleNamespace(
+                            name="Group", type="GROUP", node_tree=tree, outputs=[SimpleNamespace(is_linked=True)]
+                        )
+                    ]
+                )
+            material.node_tree = tree
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert "MATERIAL_GRAPH_UNVERIFIED" in _codes(result)
+        assert result["context"]["report"]["context"]["resource_checks_complete"] is False
+
+    @pytest.mark.parametrize("muted,linked", [(True, True), (False, False)])
+    def test_validate_materials_does_not_check_inactive_images(self, muted, linked):
+        bpy = _bpy_with_image(None, connected=linked)
+        bpy.data.objects[0].data.materials[0].node_tree.nodes[0].mute = muted
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert result["context"]["report"]["passed"] is True
+        bpy.path.abspath.assert_not_called()
+
+    def test_validate_materials_fails_closed_on_unreadable_image_metadata(self):
+        image = SimpleNamespace(name="Unreadable", source="FILE", filepath="//locked.png", packed_file=None)
+        bpy = _bpy_with_image(image)
+        bpy.path.abspath.side_effect = OSError("Image library cannot be resolved")
+
+        result = load_and_call("blender-validation/scripts/validate_materials.py", bpy, object_names=["Cube"])
+
+        assert result["success"] is False
+
+    def test_validate_materials_uses_effective_object_material_override(self):
+        unused = SimpleNamespace(name="UnusedMeshMaterial", use_nodes=True, node_tree=SimpleNamespace(nodes=[]))
+        image = SimpleNamespace(name="Generated", source="GENERATED", filepath="")
+        bpy = _bpy_with_image(image)
+        bpy.data.objects[0].data.materials = [unused]
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": True},
+        )
+
+        assert result["context"]["report"]["passed"] is True
 
     def test_validate_export_readiness_reports_unsupported_format(self):
         cube = _FakeObject()
