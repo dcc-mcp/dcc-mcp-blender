@@ -77,6 +77,7 @@ class _ModifierCollection(list):
 def _bpy_with_objects(*objects):
     bpy = make_mock_bpy()
     bpy.data.objects = _ObjectCollection(objects)
+    bpy.context.scene.objects = bpy.data.objects
     return bpy
 
 

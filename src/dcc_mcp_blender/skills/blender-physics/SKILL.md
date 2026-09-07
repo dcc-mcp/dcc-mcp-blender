@@ -33,7 +33,8 @@ metadata:
 
 # blender-physics
 
-Full-coverage physics and dynamics skill for AI-assisted scene assembly.
+Typed physics and dynamics tools for AI-assisted scene assembly. Host-specific
+cache limitations are explicit; this is not a claim of complete API coverage.
 
 ## Capabilities
 
@@ -61,3 +62,21 @@ Full-coverage physics and dynamics skill for AI-assisted scene assembly.
 
 Baking and cache-clearing tools mutate scene state; pass `dry_run=true` when
 you only need target discovery and frame-range validation.
+
+`bake_simulation` and `clear_simulation_cache` operate on matching cloth,
+soft-body, and particle point caches in the current scene only. Use both exact
+object and modifier names to narrow the target. With no names, all supported
+matching caches are selected; any unsupported target aborts preflight before
+mutation. Collision-only, fluid, and dynamic-paint caches require their own
+host-specific workflows and never trigger a global cache fallback.
+
+Dry runs do not change cache ranges, scene frames, selection, or baked state.
+Actual operations require Blender's `context.temp_override` and per-cache
+operator support, retain the scene range and selection, and return before/after
+cache state. Clear an already baked target explicitly before rebaking it.
+Native baking is monolithic: no mid-call cancellation is promised. On failure,
+inspect `targets`, `completed_count`, and `mutation_state` through the response
+and `get_simulation_status` before considering a retry.
+
+The distinction between per-cache and scene-wide operators follows Blender's
+[official point-cache API](https://docs.blender.org/api/5.2/bpy.ops.ptcache.html).
