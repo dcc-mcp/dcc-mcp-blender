@@ -361,12 +361,16 @@ tools:
       open_world_hint: false
 
   - name: extrude_faces
-    description: "Extrude an explicit bounded face selection and verify the resulting topology."
+    description: "Extrude bounded face indices and verify topology. Supply the query revision to reject stale indices before editing."
     source_file: scripts/extrude_faces.py
     execution: sync
     affinity: main
+    enforce_thread_affinity: true
     group: modeling
-    timeout_hint_secs: 0
+    timeout_hint_secs: 30
+    next-tools: &component_edit_recovery
+      on-success: [inspect_mesh_components]
+      on-failure: [inspect_mesh_components]
     input_schema:
       type: object
       additionalProperties: false
@@ -375,6 +379,10 @@ tools:
         object_name:
           type: string
           minLength: 1
+        expected_revision: &component_edit_revision
+          type: string
+          pattern: '^mesh-query-v1:[0-9a-f]{64}$'
+          description: Exact inspect_mesh_components revision; checks the original Object-mode mesh before any edit. Omit for legacy unguarded behavior.
         face_indices:
           type: array
           minItems: 1
@@ -475,12 +483,14 @@ tools:
     annotations: *modeling_annotations
 
   - name: bevel_edges
-    description: "Bevel explicit mesh edges with bounded width and segments, then verify topology."
+    description: "Bevel bounded edge indices and verify topology. Supply the query revision to reject stale indices before editing."
     source_file: scripts/bevel_edges.py
     execution: sync
     affinity: main
+    enforce_thread_affinity: true
     group: modeling
-    timeout_hint_secs: 0
+    timeout_hint_secs: 30
+    next-tools: *component_edit_recovery
     input_schema:
       type: object
       additionalProperties: false
@@ -490,6 +500,7 @@ tools:
         edge_indices: {type: array, minItems: 1, maxItems: 4096, uniqueItems: true, items: {type: integer, minimum: 0}}
         width: {type: number, exclusiveMinimum: 0, maximum: 1000000}
         segments: {type: integer, minimum: 1, maximum: 64, default: 1}
+        expected_revision: *component_edit_revision
     output_schema: *mesh_result_schema
     read_only: false
     destructive: true
@@ -497,12 +508,14 @@ tools:
     annotations: *modeling_destructive_annotations
 
   - name: inset
-    description: "Inset explicit mesh faces with bounded thickness/depth and verify topology."
+    description: "Inset bounded face indices and verify topology. Supply the query revision to reject stale indices before editing."
     source_file: scripts/inset.py
     execution: sync
     affinity: main
+    enforce_thread_affinity: true
     group: modeling
-    timeout_hint_secs: 0
+    timeout_hint_secs: 30
+    next-tools: *component_edit_recovery
     input_schema:
       type: object
       additionalProperties: false
@@ -512,6 +525,7 @@ tools:
         face_indices: {type: array, minItems: 1, maxItems: 4096, uniqueItems: true, items: {type: integer, minimum: 0}}
         thickness: {type: number, minimum: 0, maximum: 1000000}
         depth: {type: number, minimum: -1000000, maximum: 1000000, default: 0}
+        expected_revision: *component_edit_revision
     output_schema: *mesh_result_schema
     read_only: false
     destructive: true
@@ -542,12 +556,14 @@ tools:
     annotations: *modeling_destructive_annotations
 
   - name: add_edge_loop
-    description: "Subdivide explicit mesh edges with bounded cuts and verify topology."
+    description: "Subdivide bounded edge indices and verify topology. Supply the query revision to reject stale indices before editing."
     source_file: scripts/add_edge_loop.py
     execution: sync
     affinity: main
+    enforce_thread_affinity: true
     group: modeling
-    timeout_hint_secs: 0
+    timeout_hint_secs: 30
+    next-tools: *component_edit_recovery
     input_schema:
       type: object
       additionalProperties: false
@@ -556,6 +572,7 @@ tools:
         object_name: {type: string, minLength: 1}
         edge_indices: {type: array, minItems: 1, maxItems: 4096, uniqueItems: true, items: {type: integer, minimum: 0}}
         cuts: {type: integer, minimum: 1, maximum: 64, default: 1}
+        expected_revision: *component_edit_revision
     output_schema: *mesh_result_schema
     read_only: false
     destructive: true

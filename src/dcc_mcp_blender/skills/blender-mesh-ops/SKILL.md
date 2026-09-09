@@ -81,9 +81,23 @@ world-space. The optional bounds filter tests each component's centroid.
 
 Pages contain at most 256 records. Pass `next_offset` and the returned
 `revision` as `expected_revision` for subsequent pages, with unchanged filters.
-The token covers mesh identity, coordinates, normals and connectivity; any
-change rejects stale paging. Discard indices after edits. Existing mutation
-tools do not yet consume this query token, so it is not a mutation guard.
+The token covers mesh identity, coordinates, normals and connectivity; changes
+to these reject stale paging. It is process-local, not a durable ID or an
+evaluated/world-space geometry revision. Discard indices after edits or reloads.
+
+For `extrude_faces`, `bevel_edges`, `inset`, and `add_edge_loop`, pass the same
+token as `expected_revision`. The tool checks it on the host main thread
+before changing mode, selection, or geometry. Stale, malformed, unreadable,
+oversized, and non-Object-mode meshes fail without an edit. Query again and
+choose fresh indices; never retry the old indices with the guard removed.
+Omitting the optional token preserves legacy unguarded behavior. Other
+mutation tools do not yet accept this guard.
+
+Use the sequence `inspect_mesh_components -> guarded edit -> inspect_mesh_components`.
+Read the edit's topology evidence before querying the resulting mesh. The
+guard prevents a stale target; it is not rollback or cancellation once the
+native operator starts. UVs, materials, selection, transforms, and modifiers
+are outside this original-mesh revision contract.
 
 The scan rejects meshes above 100,000 total vertices/edges/faces/loops.
 Connectivity lists are capped at 64 entries per relation, with full counts and
