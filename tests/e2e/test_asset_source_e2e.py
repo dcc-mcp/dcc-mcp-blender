@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="Requires native Blender")
@@ -15,7 +17,11 @@ def test_registered_local_library_is_discoverable(tmp_path):
     fixture = tmp_path / "registered_asset_probe.obj"
     fixture.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", encoding="utf-8")
     before = [(library.name, library.path) for library in libraries]
-    library = libraries.new(name="RegisteredDiscoveryProbe", directory=str(tmp_path))
+    # Blender 3.6 exposes a read-only RNA collection; the registration operator
+    # is the common API across legacy and current releases. Never save prefs.
+    assert bpy.ops.preferences.asset_library_add(directory=str(tmp_path)) == {"FINISHED"}
+    library = next(item for item in libraries if Path(item.path).resolve() == tmp_path.resolve())
+    library.name = "RegisteredDiscoveryProbe"
     try:
         result = load_skill("blender-asset-source", "search_assets").main(
             source="asset_library", query="registered_asset_probe", asset_types=["obj"]
@@ -30,5 +36,6 @@ def test_registered_local_library_is_discoverable(tmp_path):
         assert descriptor["name"] == fixture.stem
         assert descriptor["size_bytes"] == fixture.stat().st_size
     finally:
-        libraries.remove(library)
+        index = next(index for index, item in enumerate(libraries) if item.as_pointer() == library.as_pointer())
+        assert bpy.ops.preferences.asset_library_remove(index=index) == {"FINISHED"}
     assert [(library.name, library.path) for library in libraries] == before
