@@ -45,6 +45,18 @@ Supports:
 - **Type filtering** — restrict results to specific formats (blend, fbx, obj, usd, etc.).
 - **Name matching** — case-insensitive substring filter on asset names.
 
+Library registrations come from `bpy.context.preferences.filepaths.asset_libraries`.
+Search is read-only: it does not refresh Asset Browser UI or save preferences.
+`context.asset_library_status` distinguishes `scanned`, `no_libraries`,
+`unavailable`, `partial`, and `error`; missing APIs or unreadable libraries are not empty
+successful library searches. Broken registrations do not hide later valid
+libraries: partial results include explicit status and warnings. With `source=all`, filesystem results can be
+returned with a library warning. Reaching the result budget may truncate search.
+
+This searches supported files directly inside registered local directories,
+not asset-marked data-blocks inside `.blend` files. Remote libraries, catalogs,
+tags, and recursive dependency discovery require separate capabilities.
+
 ## Tools
 
 | Tool | Description |

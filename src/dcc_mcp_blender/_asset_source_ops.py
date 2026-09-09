@@ -137,30 +137,36 @@ def _scan_asset_library(
     query: Optional[str] = None,
     allowed_types: Optional[set[str]] = None,
     max_results: int = _DEFAULT_MAX_RESULTS,
-) -> tuple[List[AssetDescriptor], Optional[dict]]:
-    """Scan Blender's registered asset libraries via ``bpy.data.asset_libraries``."""
+) -> tuple[List[AssetDescriptor], Optional[dict], str]:
+    """Scan Blender's registered asset libraries from file path preferences."""
     results: List[AssetDescriptor] = []
 
-    # Force-refresh catalogues so the search sees the latest state.
-    try:
-        bpy.ops.asset.library_refresh()
-    except Exception:
-        pass
-
-    libraries = getattr(bpy.data, "asset_libraries", None)
+    preferences = getattr(getattr(bpy, "context", None), "preferences", None)
+    libraries = getattr(getattr(preferences, "filepaths", None), "asset_libraries", None)
 
     if libraries is None or not hasattr(libraries, "__iter__"):
-        return results, None
+        return (
+            results,
+            skill_error(
+                "Asset library API unavailable",
+                "Blender preferences.filepaths.asset_libraries is unavailable in this runtime.",
+                asset_library_status="unavailable",
+            ),
+            "unavailable",
+        )
 
+    failures = []
     try:
+        libraries = list(libraries)
+        if not libraries:
+            return results, None, "no_libraries"
         for lib in libraries:
             lib_path = getattr(lib, "path", None)
             if not lib_path:
+                failures.append(f"Registered library '{getattr(lib, 'name', '')}' has no directory path.")
                 continue
             lib_dir = Path(lib_path)
-            if not lib_dir.is_dir():
-                continue
-            sub_results, _ = _scan_filesystem(
+            sub_results, scan_error = _scan_filesystem(
                 lib_dir,
                 query=query,
                 allowed_types=allowed_types,
@@ -170,12 +176,22 @@ def _scan_asset_library(
                 desc["source"] = "asset_library"
                 desc["metadata"]["library_name"] = getattr(lib, "name", "")
             results.extend(sub_results)
+            if scan_error:
+                failures.append(f"Registered library '{getattr(lib, 'name', '')}': {scan_error['error']}")
             if len(results) >= max_results:
                 break
     except Exception as exc:
-        return results, skill_exception(exc, message="Failed to scan asset libraries")
+        failures.append(str(exc))
 
-    return results, None
+    if failures:
+        status = "partial" if results else "error"
+        return (
+            results,
+            skill_error("Failed to scan asset libraries", "; ".join(failures), asset_library_status=status),
+            status,
+        )
+
+    return results, None, "scanned"
 
 
 def search_assets(
@@ -223,6 +239,7 @@ def search_assets(
     all_results: List[AssetDescriptor] = []
     warnings: List[str] = []
     truncated = False
+    library_status = None
 
     try:
         import bpy
@@ -275,17 +292,17 @@ def search_assets(
             )
 
     # Asset library scan.
-    if source in ("asset_library", "all") and bpy is not None:
-        lib_results, lib_error = _scan_asset_library(
+    if source in ("asset_library", "all"):
+        lib_results, lib_error, library_status = _scan_asset_library(
             bpy,
             query=query,
             allowed_types=allowed,
             max_results=max_results - len(all_results),
         )
         if lib_error:
-            if not all_results:
+            if not all_results and not lib_results:
                 return lib_error
-            warnings.append(lib_error.get("message", "Asset library scan had errors"))
+            warnings.append(lib_error.get("error", "Asset library scan had errors"))
         all_results.extend(lib_results)
         if len(all_results) >= max_results:
             all_results = all_results[:max_results]
@@ -299,6 +316,8 @@ def search_assets(
     )
     if search_path:
         context["path"] = str(search_path)
+    if library_status:
+        context["asset_library_status"] = library_status
     if warnings:
         context["warnings"] = warnings
     if truncated:

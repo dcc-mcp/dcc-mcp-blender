@@ -65,6 +65,9 @@ tools:
               type: integer
             source:
               type: string
+            asset_library_status:
+              type: string
+              enum: [scanned, no_libraries, unavailable, partial, error]
     read_only: true
     destructive: false
     idempotent: true
