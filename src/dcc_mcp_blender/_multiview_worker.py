@@ -15,9 +15,9 @@ def prepare_wire(scene, radius, max_source_edges=100000):
     import bpy
 
     surface = bpy.data.materials.new("DCC Wire Surface")
-    surface.diffuse_color = (0.65, 0.68, 0.72, 1)
+    surface.diffuse_color = (0.35, 0.38, 0.42, 1)
     line = bpy.data.materials.new("DCC Source Mesh Edges")
-    line.diffuse_color = (0.015, 0.02, 0.03, 1)
+    line.diffuse_color = (0.008, 0.008, 0.008, 1)
     for material in (surface, line):
         material.use_nodes = True
         shader = material.node_tree.nodes.get("Principled BSDF")
@@ -29,7 +29,7 @@ def prepare_wire(scene, radius, max_source_edges=100000):
         raise ValueError("Wire pass exceeds its bounded source edge budget")
     for obj in objects:
         if obj.type != "MESH":
-            if obj.type not in {"CAMERA", "LIGHT"}:
+            if obj.type != "CAMERA":
                 obj.hide_render = True
             continue
         if obj.hide_render:
@@ -63,10 +63,9 @@ def prepare_wire(scene, radius, max_source_edges=100000):
     # CPU ray tracing avoids requiring an OpenGL context on headless workers.
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 16
-    scene.cycles.use_denoising = False
-    if scene.world is None:
-        scene.world = bpy.data.worlds.new("DCC Wire World")
+    scene.cycles.samples = 64
+    scene.cycles.use_denoising = True
+    scene.world = bpy.data.worlds.new("DCC Wire World")
     scene.world.color = (0.15, 0.15, 0.15)
     scene.world.use_nodes = True
     background = scene.world.node_tree.nodes.get("Background")
