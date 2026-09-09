@@ -41,6 +41,7 @@ MESH_OPS_TOOLS = {
     "separate_mesh",
     "combine_meshes",
     "create_primitive",
+    "create_pointed_arch",
     "delete_history",
     "extrude_faces",
     "freeze_transforms",
