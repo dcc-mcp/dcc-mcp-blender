@@ -11,7 +11,7 @@ it does not mark an entire phase complete when a single slice lands.
 | Phase | Deliverables | Status |
 | --- | --- | --- |
 | 0: acceptance baseline | Current LTS CI/Python/README; nonempty real-host test evidence; truthful library discovery; version/context-aware discovery; Windows gateway CLI acceptance | In progress |
-| 1: existing workflows | Mesh component inspection and revision-guarded edits; UV seam/pin/island/UDIM editing; Geometry Nodes interfaces, attributes and evaluated geometry; asset dependency inspection | Pending implementation and native acceptance |
+| 1: existing workflows | Mesh component inspection and revision-guarded edits; UV seam/pin/island/UDIM editing; Geometry Nodes interfaces, attributes and evaluated geometry; asset dependency inspection | In progress: component queries/guards and basic interface socket CRUD submitted; remaining workflows still pending |
 | 2: character and procedural workflows | Action Slots/NLA/curve editing; bone constraints, weights, real retargeting; native Curves/Hair; scoped simulation configuration and cache jobs | Pending; current-version Action read/delete compatibility is only a first slice |
 | 3: missing domains | Sculpt/Paint; Grease Pencil; VSE; tracking/masking; dedicated Compositor workflows | Pending implementation and native acceptance |
 | 4: end-to-end benchmarks | Mesh-to-export, character-to-bake, and shot-to-final-media through the supported gateway/CLI route | Pending; requires preceding capabilities |

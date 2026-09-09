@@ -170,3 +170,121 @@ tools:
     destructive: false
     idempotent: true
     annotations: *read_only_annotations
+
+  - name: inspect_geometry_node_interface
+    description: >-
+      Inspect up to 256 Geometry Nodes interface items with socket identifiers,
+      basic defaults, group-user count and a revision for guarded edits. Blender 4+.
+    source_file: scripts/inspect_geometry_node_interface.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 5
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [group_name]
+      properties:
+        group_name: {type: string, minLength: 1}
+    output_schema: *geometry_nodes_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: create_geometry_node_socket
+    description: >-
+      Create a typed input/output socket on a local Geometry Nodes group using
+      its current interface revision. Changes affect every user of this group.
+    source_file: scripts/create_geometry_node_socket.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    next-tools: &interface_recovery
+      on-success: [inspect_geometry_node_interface]
+      on-failure: [inspect_geometry_node_interface]
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [group_name, name, socket_type, in_out, expected_revision]
+      properties:
+        group_name: {type: string, minLength: 1}
+        name:
+          type: string
+          minLength: 1
+          maxLength: 63
+          description: Unique name in this direction, at most 63 UTF-8 bytes.
+        socket_type:
+          type: string
+          enum: [NodeSocketGeometry, NodeSocketFloat, NodeSocketInt, NodeSocketBool, NodeSocketVector, NodeSocketColor, NodeSocketString]
+        in_out: {type: string, enum: [INPUT, OUTPUT]}
+        expected_revision: &interface_revision
+          type: string
+          pattern: '^gn-interface-v1:[0-9a-f]{64}$'
+          description: Exact current revision from inspect_geometry_node_interface; never guess or reuse after edits.
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations: &interface_mutating_annotations
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: update_geometry_node_socket
+    description: >-
+      Update a socket name, description or basic default by identifier and current
+      revision. Preserves socket identity and affects all users of the local group.
+    source_file: scripts/update_geometry_node_socket.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    next-tools: *interface_recovery
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [group_name, socket_identifier, expected_revision]
+      properties:
+        group_name: {type: string, minLength: 1}
+        socket_identifier: {type: string, minLength: 1, maxLength: 128}
+        expected_revision: *interface_revision
+        new_name: {type: string, minLength: 1, maxLength: 63, description: At most 63 UTF-8 bytes.}
+        description: {type: string, maxLength: 1024, description: At most 1024 UTF-8 bytes; empty clears the description.}
+        default_value:
+          description: >-
+            JSON value matching the discovered socket type: finite number/integer
+            within +/-1000000, boolean, string up to 1024 UTF-8 bytes, vector of
+            three numbers, or color of four numbers. Geometry has no default.
+            Omit or use null to leave unchanged. Provide at least one update.
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations: *interface_mutating_annotations
+
+  - name: remove_geometry_node_socket
+    description: >-
+      Remove a socket by identifier and current interface revision. Destructive:
+      Blender may disconnect its links and discard per-instance input values.
+    source_file: scripts/remove_geometry_node_socket.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    next-tools: *interface_recovery
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [group_name, socket_identifier, expected_revision]
+      properties:
+        group_name: {type: string, minLength: 1}
+        socket_identifier: {type: string, minLength: 1, maxLength: 128}
+        expected_revision: *interface_revision
+    output_schema: *geometry_nodes_result_schema
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations: *interface_mutating_annotations
