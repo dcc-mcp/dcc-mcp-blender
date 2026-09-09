@@ -134,3 +134,17 @@ def test_corrupt_earlier_image_does_not_claim_running_worker_stopped(tmp_path):
     context = multiview_context(dict(job_id="test", job_directory=str(tmp_path), process=process))
     assert context["status"] == "running"
     assert context["items"][0]["status"] == "failed"
+
+
+@pytest.mark.parametrize("budget", [0, 500001, True, 1.5])
+def test_source_edge_budget_is_validated(tmp_path, monkeypatch, budget):
+    import sys
+
+    from dcc_mcp_blender._multiview_ops import start_multiview_render_job
+
+    bpy = MagicMock()
+    bpy.context.scene.objects.get.return_value.type = "CAMERA"
+    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    result = start_multiview_render_job(str(tmp_path), ["Camera"], max_source_edges=budget)
+    assert not result["success"]
+    bpy.ops.wm.save_as_mainfile.assert_not_called()

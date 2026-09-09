@@ -37,4 +37,7 @@ def main() -> int:
 if __name__ == "__main__":
     # Bypass Blender C++ cleanup in Linux background mode; sys.exit() can
     # otherwise try to destroy uninitialized X11/OpenGL resources.
-    os._exit(main())
+    result = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(result)

@@ -223,6 +223,7 @@ tools:
         resolution_x: {type: integer, minimum: 16, maximum: 4096, default: 1200}
         resolution_y: {type: integer, minimum: 16, maximum: 4096, default: 1200}
         wire_radius: {type: number, exclusiveMinimum: 0, maximum: 1, default: 0.008, description: Source mesh edge tube radius in local object units.}
+        max_source_edges: {type: integer, minimum: 1, maximum: 500000, default: 100000, description: Explicit source edge budget checked before submission and again in the worker.}
     output_schema:
       type: object
       required: [success]

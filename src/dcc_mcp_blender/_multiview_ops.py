@@ -13,7 +13,13 @@ from dcc_mcp_blender._multiview_receipt import multiview_context, write_receipt
 
 
 def start_multiview_render_job(
-    output_directory, camera_names, passes=("beauty", "wire"), resolution_x=1200, resolution_y=1200, wire_radius=0.008
+    output_directory,
+    camera_names,
+    passes=("beauty", "wire"),
+    resolution_x=1200,
+    resolution_y=1200,
+    wire_radius=0.008,
+    max_source_edges=100000,
 ):
     try:
         import bpy
@@ -51,12 +57,18 @@ def start_multiview_render_job(
             camera = bpy.context.scene.objects.get(name)
             if camera is None or camera.type != "CAMERA":
                 raise ValueError("Not a camera in the active scene: " + name)
+        if (
+            isinstance(max_source_edges, bool)
+            or not isinstance(max_source_edges, int)
+            or not 1 <= max_source_edges <= 500000
+        ):
+            raise ValueError("max_source_edges must be an integer from 1 to 500000")
         if "wire" in passes:
             edge_count = sum(
                 len(obj.data.edges) for obj in bpy.context.scene.objects if obj.type == "MESH" and not obj.hide_render
             )
-            if edge_count > 100000:
-                raise ValueError("Wire pass exceeds 100000 source edges")
+            if edge_count > max_source_edges:
+                raise ValueError("Wire pass exceeds max_source_edges ({})".format(max_source_edges))
         job_id = uuid.uuid4().hex
         directory = root / ("dcc-mcp-multiview-" + job_id)
         directory.mkdir(parents=True, exist_ok=False)
@@ -67,6 +79,7 @@ def start_multiview_render_job(
             resolution_x=resolution_x,
             resolution_y=resolution_y,
             wire_radius=wire_radius,
+            max_source_edges=max_source_edges,
         )
         (directory / "request.json").write_text(json.dumps(request), encoding="utf-8")
         result = dict(
