@@ -5,6 +5,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+import yaml
+
 ROOT = pathlib.Path(__file__).parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 E2E_WORKFLOW = ROOT / ".github" / "workflows" / "e2e.yml"
@@ -12,6 +14,42 @@ SCRIPTS_DIR = ROOT / ".github" / "scripts"
 RUN_BLENDER_E2E = SCRIPTS_DIR / "run_blender_e2e.py"
 RUN_DOCKER_E2E = SCRIPTS_DIR / "run_docker_blender_e2e.sh"
 START_MCP_SERVER = SCRIPTS_DIR / "start_mcp_server.py"
+
+
+def test_current_lts_matrix_uses_official_verified_archives_on_all_platforms():
+    jobs = yaml.safe_load(E2E_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    entries = jobs["e2e"]["strategy"]["matrix"]["include"]
+    for version, python in (("5.2.1", "3.13"), ("4.5.13", "3.11")):
+        rows = [row for row in entries if row["blender-version"] == version]
+        assert {row["os"] for row in rows} == {"windows", "macos", "linux"}
+        for row in rows:
+            assert row["blender-python"] == python
+            assert row["blender-url"].startswith("https://download.blender.org/release/")
+            assert re.fullmatch(r"[0-9a-f]{64}", row["blender-sha256"])
+
+
+def test_python_runtime_donor_matches_blender_and_archive_hash_is_checked():
+    steps = yaml.safe_load(E2E_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["e2e"]["steps"]
+    donor = next(step for step in steps if step.get("name") == "Setup Python for Windows runtime DLLs")
+    assert donor["with"]["python-version"] == "${{ matrix.blender-python }}"
+    for platform in ("Windows", "macOS", "Linux"):
+        step = next(step for step in steps if step.get("name") == "Download Blender ({})".format(platform))
+        assert "matrix.blender-sha256" in step["run"]
+    verify = next(step for step in steps if step.get("name") == "Verify Blender Python")
+    assert "matrix.blender-python" in verify["run"]
+    assert "matrix.blender-version" in verify["run"]
+
+
+def test_unit_matrix_covers_latest_blender_python():
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    assert "3.13" in jobs["test"]["strategy"]["matrix"]["python-version"]
+
+
+def test_multi_instance_smoke_requires_second_listener():
+    text = E2E_WORKFLOW.read_text(encoding="utf-8")
+    assert "skipping multi-instance test" not in text
+    assert 'kill -0 "$SERVER2_PID"' in text
+    assert "trap " in text
 
 
 def test_mcporter_calls_use_registered_tool_names():

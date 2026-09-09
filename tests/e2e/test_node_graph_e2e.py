@@ -41,7 +41,7 @@ class TestNodeGraphE2E:
             material_name="E2E Node Material",
             inputs={"Metallic": 0.35, "Roughness": 0.62},
         )
-        assert updated["success"] is True
+        assert updated["success"] is True, updated
 
         create_node = load_skill("blender-shader-nodes", "create_node")
         node = create_node.main(

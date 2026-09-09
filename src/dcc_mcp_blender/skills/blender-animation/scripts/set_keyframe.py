@@ -6,6 +6,8 @@ from typing import List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._animation_ops import action_fcurves
+
 VALID_DATA_PATHS = ["location", "rotation_euler", "scale", "hide_viewport", "hide_render"]
 
 
@@ -51,8 +53,7 @@ def set_keyframe(
             for path in paths:
                 obj.keyframe_insert(data_path=path, frame=actual_frame)
                 if mode is not None:
-                    action = getattr(getattr(obj, "animation_data", None), "action", None)
-                    for fcurve in getattr(action, "fcurves", []):
+                    for _, fcurve in action_fcurves(obj):
                         if getattr(fcurve, "data_path", None) != path:
                             continue
                         for key in getattr(fcurve, "keyframe_points", []):
