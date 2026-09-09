@@ -148,3 +148,14 @@ def test_source_edge_budget_is_validated(tmp_path, monkeypatch, budget):
     result = start_multiview_render_job(str(tmp_path), ["Camera"], max_source_edges=budget)
     assert not result["success"]
     bpy.ops.wm.save_as_mainfile.assert_not_called()
+
+
+def test_worker_resolves_relative_executable_before_changing_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    popen = MagicMock()
+    monkeypatch.setattr(jobs.subprocess, "Popen", popen)
+    output = tmp_path / "output"
+    output.mkdir()
+    jobs._launch_worker(["cache/Blender.app/Blender", "--background"], output, output / "out", output / "err")
+    assert popen.call_args.args[0][0] == str((tmp_path / "cache/Blender.app/Blender").resolve())
+    assert popen.call_args.kwargs["cwd"] == str(output)

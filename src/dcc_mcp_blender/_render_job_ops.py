@@ -26,6 +26,12 @@ _LOCK = threading.Lock()
 
 
 def _launch_worker(command, directory, stdout_path, stderr_path):
+    command = list(command)
+    # Blender may report its relative launch path on macOS. Resolve it before
+    # Popen switches cwd to the output directory; bare PATH commands stay bare.
+    executable = Path(command[0])
+    if executable.parent != Path("."):
+        command[0] = str(executable.resolve())
     env = os.environ.copy()
     env["DCC_MCP_BACKGROUND_RENDER"] = "1"
     popen_kwargs = {"env": env, "cwd": str(directory)}
