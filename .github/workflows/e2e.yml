@@ -144,7 +144,7 @@ jobs:
             blender-sha256: "241dbfa6dac2c3b5e15bb1c132e0fcf16f7bf6e5bf3959440b6c8052b7b26d08"
 
           - os: linux
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             blender-version: "5.2.1"
             blender-python: "3.13"
             blender-url: "https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz"
@@ -152,7 +152,7 @@ jobs:
             blender-sha256: "a31f524fa99a527d3d52b7f5aaa68c34e1a19d5a1c9473f79c5cc610fd5b10e9"
 
           - os: linux
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             blender-version: "4.5.13"
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.5/blender-4.5.13-linux-x64.tar.xz"
@@ -223,8 +223,11 @@ jobs:
       - name: Install Blender runtime dependencies (Linux)
         if: matrix.os == 'linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl1 libegl1 libxrender1 libxi6 libxkbcommon0 libsm6
+          # Only Ubuntu packages are required; unrelated preinstalled vendor
+          # repositories must not gate Blender on their mirror sync state.
+          test -f /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=- update
+          sudo apt-get -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=- install -y libgl1 libegl1 libxrender1 libxi6 libxkbcommon0 libsm6
 
       - name: Download Blender (Linux)
         if: matrix.os == 'linux' && steps.cache-blender.outputs.cache-hit != 'true'
