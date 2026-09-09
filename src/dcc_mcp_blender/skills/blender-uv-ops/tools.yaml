@@ -327,3 +327,95 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: audit_uv_layout
+    timeout_hint_secs: 30
+    description: "Read-only bounded UV quality audit of named source meshes: missing maps, invalid coordinates, degenerate triangles, tile bounds and positive-area overlaps. Budget exhaustion returns complete=false and passed=false."
+    source_file: scripts/audit_uv_layout.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_names]
+      properties:
+        object_names:
+          type: array
+          minItems: 1
+          maxItems: 4096
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+          description: "Explicit source meshes in OBJECT mode; pass scene mesh names for a scene audit."
+        uv_map:
+          type: string
+          minLength: 1
+          description: "Named UV map; omit to inspect each object's active map without changing it."
+        tile_policy:
+          type: string
+          enum: [unit, udim, unrestricted]
+          default: unit
+          description: "unit=[0,1]^2; udim=U in [0,10] and V>=0, allows tile crossings; unrestricted skips tile bounds."
+        check_overlap: {type: boolean, default: true}
+        overlap_scope:
+          type: string
+          enum: [per_object, selection]
+          default: per_object
+          description: "selection also checks overlap between objects sharing one UV space."
+        allow_stacked:
+          type: boolean
+          default: false
+          description: "Allow exactly coincident UV triangles, including opposite winding; partial overlaps still fail."
+        max_triangles: {type: integer, minimum: 1, maximum: 200000, default: 50000}
+        max_pair_tests: {type: integer, minimum: 1, maximum: 2000000, default: 200000}
+        max_report_items: {type: integer, minimum: 0, maximum: 1000, default: 100}
+        area_epsilon:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 0.0001
+          default: 0.0000000001
+          description: "Area tolerance in UV square units. Coordinates beyond magnitude 1e12 are invalid."
+    output_schema: *uv_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: export_uv_layout
+    timeout_hint_secs: 30
+    description: "Export actual source polygon UV edges to a labelled SVG sheet without changing UVs, selection or mode. Refuses overwrite, missing maps, invalid coordinates and budget exhaustion."
+    source_file: scripts/export_uv_layout.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_names, output_path]
+      properties:
+        object_names:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        output_path:
+          type: string
+          minLength: 1
+          description: "Absolute new .svg path; parent directory must exist. Existing output is never overwritten."
+        uv_map: {type: string, minLength: 1}
+        resolution: {type: integer, minimum: 256, maximum: 8192, default: 2048}
+        max_triangles: {type: integer, minimum: 1, maximum: 200000, default: 50000}
+    output_schema: *uv_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true

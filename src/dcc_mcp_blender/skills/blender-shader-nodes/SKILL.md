@@ -8,8 +8,8 @@ metadata:
     dcc: blender
     version: "1.0.0"
     tags: [blender, shader-nodes, geometry-nodes, node-graph, sockets, links, materials, procedural]
-    search-hint: "shader nodes, material nodes, node graph, sockets, links, principled bsdf, texture node, geometry node tree"
-    search-aliases: [node editor, shader graph, material graph, create node, connect nodes, set socket, principled shader, BSDF, texture input, geometry nodes modifier]
+    search-hint: "shader nodes, material nodes, node graph, sockets, links, principled bsdf, texture node, geometry node tree, metallic, metalness, roughness, existing PBR material"
+    search-aliases: [node editor, shader graph, material graph, create node, connect nodes, set socket, principled shader, BSDF, texture input, geometry nodes modifier, metallic, roughness, metalness, PBR material adjustment]
     intent: "Inspect and edit Blender shader/compositing/geometry node graphs — create nodes, connect sockets, set values, and manage node trees."
     recall-context:
       app_type: blender
