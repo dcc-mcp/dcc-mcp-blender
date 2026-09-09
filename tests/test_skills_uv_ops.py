@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -128,6 +129,37 @@ def _bpy_for(obj):
     bpy.ops.uv.smart_project.return_value = {"FINISHED"}
     bpy.ops.uv.pack_islands.return_value = {"FINISHED"}
     return bpy
+
+
+@pytest.mark.parametrize("tool", ["unwrap_uvs", "project_uvs", "pack_uvs"])
+def test_uv_operator_reacquires_layer_after_edit_mode_invalidates_rna(tool):
+    class ExpiringLayer(FakeUVLayer):
+        expired = False
+
+        def __getattribute__(self, name):
+            if name in {"name", "data"} and self.expired:
+                raise ReferenceError("UV RNA storage was replaced by mode transition")
+            return super().__getattribute__(name)
+
+    obj = _mesh_obj()
+    old_layer = ExpiringLayer("Original", len(obj.data.loops))
+    obj.data.uv_layers = FakeUVLayers(len(obj.data.loops), [old_layer])
+    bpy = _bpy_for(obj)
+
+    def mode_set(mode):
+        if mode == "OBJECT":
+            old_layer.expired = True
+            fresh = FakeUVLayer("Fresh", len(obj.data.loops), [(2, 2), (4, 2), (4, 4), (2, 4)])
+            obj.data.uv_layers = FakeUVLayers(len(obj.data.loops), [fresh])
+        return {"FINISHED"}
+
+    bpy.ops.object.mode_set.side_effect = mode_set
+    arguments = {} if tool == "pack_uvs" else {"method": "smart"}
+    result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), bpy, object_name=obj.name, **arguments)
+    assert result["success"], result
+    assert result["context"]["uv_map"] == "Fresh"
+    if tool == "pack_uvs":
+        assert result["context"]["normalized_coordinate_count"] == 4
 
 
 def test_tools_yaml_declares_modern_contract():
