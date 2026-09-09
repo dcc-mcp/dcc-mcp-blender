@@ -325,6 +325,11 @@ def _interface_sockets(group: Any) -> list[Any]:
 
 
 def _modifier_get(modifier: Any, key: str) -> Any:
+    # Blender 5.2 replaces modifier IDProperties with RNA input properties.
+    properties = getattr(modifier, "properties", None)
+    if properties is not None:
+        socket = getattr(properties.inputs, key, None)
+        return getattr(socket, "value", None)
     getter = getattr(modifier, "get", None)
     if callable(getter):
         return getter(key)
@@ -335,6 +340,13 @@ def _modifier_get(modifier: Any, key: str) -> Any:
 
 
 def _modifier_set(modifier: Any, key: str, value: Any) -> None:
+    properties = getattr(modifier, "properties", None)
+    if properties is not None:
+        socket = getattr(properties.inputs, key, None)
+        if socket is None or not hasattr(socket, "value"):
+            raise ValueError("Input has no writable value: {}".format(key))
+        socket.value = value
+        return
     try:
         modifier[key] = value
     except TypeError:

@@ -28,6 +28,31 @@ def _action(obj: Any) -> Any | None:
     return getattr(getattr(obj, "animation_data", None), "action", None)
 
 
+def action_fcurves(obj: Any):
+    """Yield (owning collection, curve) for this object's assigned action slot.
+
+    Blender 4.4+ layered actions can be shared by several data-blocks. Never
+    fall back to another slot, or use the legacy first-slot facade for them.
+    """
+    action = _action(obj)
+    if action is None:
+        return
+    if getattr(action, "is_action_layered", False) is True:
+        slot = getattr(obj.animation_data, "action_slot", None)
+        if slot is None:
+            return
+        for layer in action.layers:
+            for strip in layer.strips:
+                for bag in getattr(strip, "channelbags", ()):
+                    if bag.slot_handle == slot.handle:
+                        for curve in bag.fcurves:
+                            yield bag.fcurves, curve
+    else:
+        collection = getattr(action, "fcurves", ())
+        for curve in collection:
+            yield collection, curve
+
+
 def _frame_from_keyframe(point: Any) -> float:
     co = getattr(point, "co", None)
     if co is None:
@@ -53,7 +78,7 @@ def get_keyframes(object_name: str, data_path: str | None = None) -> dict:
         curves = []
         keyframe_count = 0
         if action is not None:
-            for fcurve in getattr(action, "fcurves", []):
+            for _, fcurve in action_fcurves(obj):
                 if not _fcurve_matches(fcurve, data_path):
                     continue
                 frames = [_frame_from_keyframe(point) for point in getattr(fcurve, "keyframe_points", [])]
@@ -106,7 +131,7 @@ def delete_keyframes(
         deleted = 0
         affected_curves = 0
         if action is not None:
-            for fcurve in list(getattr(action, "fcurves", [])):
+            for collection, fcurve in list(action_fcurves(obj)):
                 if not _fcurve_matches(fcurve, data_path):
                     continue
                 removed_on_curve = 0
@@ -126,7 +151,7 @@ def delete_keyframes(
                     if callable(update):
                         update()
                 if not getattr(fcurve, "keyframe_points", []):
-                    remove = getattr(action.fcurves, "remove", None)
+                    remove = getattr(collection, "remove", None)
                     if callable(remove):
                         remove(fcurve)
         return skill_success(

@@ -1,8 +1,8 @@
 name: E2E (Blender)
 
 # End-to-end tests that run inside a real Blender interpreter in background mode.
-# Linux also runs against containerized Blender images; Windows and macOS
-# download Blender directly from the official mirror and use its bundled Python.
+# Current LTS releases use SHA256-verified official archives on all platforms.
+# Legacy Linux coverage additionally runs against containerized Blender images.
 #
 # Key design decisions:
 #   - E2E tests run INSIDE Blender's Python via `blender --background --python`
@@ -11,15 +11,15 @@ name: E2E (Blender)
 #     we copy the system's vcruntime140.dll into Blender's Python directory
 #
 # Blender version -> Bundled Python:
+#   Blender 5.2.x  -> Python 3.13  (current LTS)
+#   Blender 4.5.x  -> Python 3.11  (previous active LTS)
 #   Blender 4.4.x  -> Python 3.11
 #   Blender 4.3.x  -> Python 3.11
 #   Blender 4.2.x  -> Python 3.11  (LTS)
 #   Blender 3.6.x  -> Python 3.10  (LTS)
 #
-# Test matrix (to keep CI cost reasonable):
-#   Linux   : 3.6.5 (LTS), 4.2.0 (LTS), 4.3.2, 4.4.3 (latest), Docker images
-#   Windows : 4.2.0 (LTS), 4.4.3 (latest)
-#   macOS   : 4.2.0 (LTS), 4.4.3 (latest, arm64)
+# Current matrix: 5.2.1 LTS and 4.5.13 LTS on Linux, Windows and macOS arm64.
+# Legacy matrix: Linux 3.6.5/4.2.0/4.3.2/4.4.3; Windows/macOS 4.2.0/4.4.3.
 #
 # References:
 #   https://download.blender.org/release/
@@ -78,10 +78,27 @@ jobs:
           # ── Windows ────────────────────────────────────────────────────────
           - os: windows
             runner: windows-2025-vs2026
+            blender-version: "5.2.1"
+            blender-python: "3.13"
+            blender-url: "https://download.blender.org/release/Blender5.2/blender-5.2.1-windows-x64.zip"
+            blender-dir: "blender-5.2.1-windows-x64"
+            blender-sha256: "0e631dad7d0cad6d5d18abdd2e2550f6c0213215334eda00ddbd3d22b96ecb2c"
+
+          - os: windows
+            runner: windows-2025-vs2026
+            blender-version: "4.5.13"
+            blender-python: "3.11"
+            blender-url: "https://download.blender.org/release/Blender4.5/blender-4.5.13-windows-x64.zip"
+            blender-dir: "blender-4.5.13-windows-x64"
+            blender-sha256: "b5fdf800ce65fa2f209e8f68d02667e4d720fa1c42f247c72d1882ab04decba6"
+
+          - os: windows
+            runner: windows-2025-vs2026
             blender-version: "4.4.3"
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.4/blender-4.4.3-windows-x64.zip"
             blender-dir: "blender-4.4.3-windows-x64"
+            blender-sha256: "60a9703b07f2cf42509f699ccdec4f5ede71c1932f6c14329f0e14c023e27d5c"
 
           - os: windows
             runner: windows-2025-vs2026
@@ -89,16 +106,34 @@ jobs:
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip"
             blender-dir: "blender-4.2.0-windows-x64"
+            blender-sha256: "b6e72874f8cb5c4ed77f9b03d7f1fde851b9455a7ff02a1e1119c876318ebc65"
 
           # ── macOS ──────────────────────────────────────────────────────────
           # macos-13 was retired Dec 2025; macos-latest is now macOS 15 (arm64)
           # Use arm64 Blender build to match the runner architecture
           - os: macos
             runner: macos-latest
+            blender-version: "5.2.1"
+            blender-python: "3.13"
+            blender-url: "https://download.blender.org/release/Blender5.2/blender-5.2.1-macos-arm64.dmg"
+            blender-dir: "blender-5.2.1-macos-arm64"
+            blender-sha256: "6409e21de80994db5f4c4a34486b6fd43cea21085b912f7491c53e923acb65a3"
+
+          - os: macos
+            runner: macos-latest
+            blender-version: "4.5.13"
+            blender-python: "3.11"
+            blender-url: "https://download.blender.org/release/Blender4.5/blender-4.5.13-macos-arm64.dmg"
+            blender-dir: "blender-4.5.13-macos-arm64"
+            blender-sha256: "663ce944257c61ff1d6aa09e15c8f57bbd8d59023adb2fa7edde33a9ed960b53"
+
+          - os: macos
+            runner: macos-latest
             blender-version: "4.4.3"
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.4/blender-4.4.3-macos-arm64.dmg"
             blender-dir: "blender-4.4.3-macos-arm64"
+            blender-sha256: "9b592fdc758b9069c210494f10108b06ef82fd65a4aa8c0cc07d6eba0585578b"
 
           - os: macos
             runner: macos-latest
@@ -106,20 +141,34 @@ jobs:
             blender-python: "3.11"
             blender-url: "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-arm64.dmg"
             blender-dir: "blender-4.2.0-macos-arm64"
+            blender-sha256: "241dbfa6dac2c3b5e15bb1c132e0fcf16f7bf6e5bf3959440b6c8052b7b26d08"
+
+          - os: linux
+            runner: ubuntu-latest
+            blender-version: "5.2.1"
+            blender-python: "3.13"
+            blender-url: "https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz"
+            blender-dir: "blender-5.2.1-linux-x64"
+            blender-sha256: "a31f524fa99a527d3d52b7f5aaa68c34e1a19d5a1c9473f79c5cc610fd5b10e9"
+
+          - os: linux
+            runner: ubuntu-latest
+            blender-version: "4.5.13"
+            blender-python: "3.11"
+            blender-url: "https://download.blender.org/release/Blender4.5/blender-4.5.13-linux-x64.tar.xz"
+            blender-dir: "blender-4.5.13-linux-x64"
+            blender-sha256: "da4e69b06b75b9e642d106496c50e7e240218b411d2f6e18271c1d1d819cef91"
 
     steps:
       - uses: actions/checkout@v6
 
-      # NOTE: Keep at Python 3.11 — this step provides MSVC runtime DLLs
-      # compatible with Blender's bundled Python 3.11.  Upgrading would copy
-      # python3.dll from a newer CPython into Blender's bin/, breaking _core.pyd
-      # imports on Windows ("DLL load failed: The specified module could not be
-      # found").  The Renovate bot must NOT bump this version.
+      # python3.dll must match the bundled CPython minor version, including
+      # Python 3.13 for Blender 5.2. Never independently bump this donor.
       - name: Setup Python for Windows runtime DLLs
         if: matrix.os == 'windows'
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.blender-python }}
 
       # ── Cache Blender download ─────────────────────────────────────────────
       - name: Cache Blender
@@ -127,7 +176,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: blender-cache
-          key: blender-${{ matrix.blender-version }}-${{ matrix.os }}
+          key: blender-verified-${{ matrix.blender-version }}-${{ matrix.os }}-${{ matrix.blender-sha256 }}
 
       # ── Windows: download + extract ───────────────────────────────────────
       - name: Download Blender (Windows)
@@ -136,6 +185,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path blender-cache
           Invoke-WebRequest -Uri "${{ matrix.blender-url }}" -OutFile "blender-cache\blender.zip"
+          $actual = (Get-FileHash -LiteralPath "blender-cache\blender.zip" -Algorithm SHA256).Hash
+          if ($actual -ne "${{ matrix.blender-sha256 }}") { throw "Blender archive SHA256 mismatch" }
           Expand-Archive -Path "blender-cache\blender.zip" -DestinationPath "blender-cache\" -Force
 
       - name: Set Blender Python path (Windows)
@@ -154,7 +205,8 @@ jobs:
         if: matrix.os == 'macos' && steps.cache-blender.outputs.cache-hit != 'true'
         run: |
           mkdir -p blender-cache
-          curl -L "${{ matrix.blender-url }}" -o blender-cache/blender.dmg
+          curl --fail --location "${{ matrix.blender-url }}" -o blender-cache/blender.dmg
+          echo "${{ matrix.blender-sha256 }}  blender-cache/blender.dmg" | shasum -a 256 -c -
 
       - name: Mount and extract Blender (macOS)
         if: matrix.os == 'macos'
@@ -168,16 +220,41 @@ jobs:
           echo "BLENDER_BIN=$BLENDER_BIN" >> $GITHUB_ENV
           echo "Using Blender Python: $BLENDER_PYTHON"
 
+      - name: Install Blender runtime dependencies (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxrender1 libxi6 libxkbcommon0 libsm6
+
+      - name: Download Blender (Linux)
+        if: matrix.os == 'linux' && steps.cache-blender.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p blender-cache
+          curl --fail --location "${{ matrix.blender-url }}" -o blender-cache/blender.tar.xz
+          echo "${{ matrix.blender-sha256 }}  blender-cache/blender.tar.xz" | sha256sum -c -
+          tar -xf blender-cache/blender.tar.xz -C blender-cache
+
+      - name: Set Blender Python path (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          BLENDER_PYTHON=$(find "blender-cache/${{ matrix.blender-dir }}" -path '*/python/bin/python3.*' -type f | head -1)
+          test -n "$BLENDER_PYTHON"
+          echo "BLENDER_PYTHON=$BLENDER_PYTHON" >> "$GITHUB_ENV"
+          echo "BLENDER_BIN=blender-cache/${{ matrix.blender-dir }}/blender" >> "$GITHUB_ENV"
+
       # ── Install package into Blender's Python ─────────────────────────────
       - name: Verify Blender Python
         shell: bash
         run: |
           echo "BLENDER_PYTHON=$BLENDER_PYTHON"
           "$BLENDER_PYTHON" --version
+          "$BLENDER_PYTHON" -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.blender-python }}', sys.version"
+          "$BLENDER_BIN" --background --factory-startup --python-exit-code 1 --python-expr "import bpy; assert bpy.app.version_string.split()[0] == '${{ matrix.blender-version }}', bpy.app.version_string"
 
       - name: Install package into Blender Python
         shell: bash
         run: |
+          "$BLENDER_PYTHON" -m ensurepip --upgrade
           "$BLENDER_PYTHON" -m pip install --upgrade pip
           "$BLENDER_PYTHON" -m pip install -e ".[dev]"
 
@@ -254,7 +331,7 @@ jobs:
       - name: Run E2E tests (Blender background mode)
         shell: bash
         run: |
-          "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/run_blender_e2e.py"
+          "$BLENDER_BIN" --background --factory-startup --python-exit-code 1 --python "$GITHUB_WORKSPACE/.github/scripts/run_blender_e2e.py"
 
       # ── MCP connectivity test ─────────────────────────────────────────────
       - name: Setup Node.js for mcporter
@@ -269,11 +346,8 @@ jobs:
         run: npm install -g mcporter
 
       - name: Test MCP connectivity and progressive loading
-        # Blender on Windows: Blender's bundled libuv triggers
-        # UV_HANDLE_CLOSING assertion failure in the MCP HTTP server
-        # (confirmed on 4.2.0 and 4.4.3); runner environment issue, not a
-        # code regression.  Other matrix entries (Linux, macOS) still
-        # cover MCP connectivity.
+        # Preserve the existing legacy Windows exclusions pending diagnosis.
+        # Current LTS Windows entries MUST exercise separate-process MCP.
         if: ${{ !(matrix.os == 'windows' && (matrix.blender-version == '4.2.0' || matrix.blender-version == '4.4.3')) }}
         shell: bash
         run: |
@@ -282,6 +356,7 @@ jobs:
           rm -f "$MCP_URL_FILE"
           "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/start_mcp_server.py" &
           SERVER_PID=$!
+          trap 'kill "$SERVER_PID" ${SERVER2_PID:+"$SERVER2_PID"} 2>/dev/null || true' EXIT
           echo "Server PID: $SERVER_PID"
 
           # Wait for Blender to publish the OS-assigned listener URL.
@@ -437,7 +512,17 @@ jobs:
           #       port and verify it can be reached independently.            ──
           "$BLENDER_BIN" --background --python "$GITHUB_WORKSPACE/.github/scripts/start_mcp_server2.py" &
           SERVER2_PID=$!
-          sleep 10
+          URL2_FILE="$RUNNER_TEMP/mcp_server2_url"
+          for attempt in $(seq 1 60); do
+            if [ -s "$URL2_FILE" ]; then
+              break
+            fi
+            if ! kill -0 "$SERVER2_PID" 2>/dev/null; then
+              echo "Second Blender exited before publishing the MCP URL" >&2
+              exit 1
+            fi
+            sleep 1
+          done
 
           # Read the second instance URL and call it
           URL2_FILE="$RUNNER_TEMP/mcp_server2_url"
@@ -461,7 +546,8 @@ jobs:
           "
             echo "Multi-instance gateway test: PASSED"
           else
-            echo "WARNING: second instance URL file not found, skipping multi-instance test"
+            echo "Second instance URL file not found" >&2
+            exit 1
           fi
 
           # Stop both instances

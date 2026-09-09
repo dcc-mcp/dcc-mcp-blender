@@ -70,7 +70,7 @@ Download the platform-specific ZIP from the GitHub Release and install it with
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
 [![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.20.0-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-core)
-[![Blender](https://img.shields.io/badge/Blender-3.6%20LTS%20%7C%204.2%20LTS%20%7C%204.3%20%7C%204.4-orange.svg)](https://www.blender.org/download/releases/)
+[![Blender CI targets](https://img.shields.io/badge/Blender%20CI-5.2%20LTS%20%7C%204.5%20LTS-orange.svg)](https://www.blender.org/download/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -214,6 +214,31 @@ See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SK
 ---
 
 ## Installation
+
+### Blender compatibility
+
+The current CI targets are **Blender 5.2.1 LTS** (bundled Python 3.13) and
+**Blender 4.5.13 LTS** (Python 3.11), using SHA256-verified official archives
+on Windows x64, Linux x64, and macOS arm64. See the
+[official release list](https://www.blender.org/releases/) and
+[exact-version E2E matrix](.github/workflows/e2e.yml).
+
+Legacy coverage remains for Blender 3.6.5, 4.2.0, 4.3.2, and 4.4.3 on Linux,
+plus 4.2.0/4.4.3 on Windows and macOS. These are compatibility targets, not
+a claim that Blender upstream still maintains those releases. The extension
+ZIP requires Blender 4.2+; older versions use the Python installation path.
+
+Blender 5.2 Geometry Nodes inputs use RNA properties; animation readback,
+deletion, and interpolation use the object's assigned Action Slot. Older
+modifier properties and legacy Actions retain their compatibility paths.
+Windows runtime DLLs must match Blender's Python minor version.
+
+CI runs real background Blender tests and separate-process MCP smoke tests.
+The legacy Windows 4.2.0/4.4.3 MCP smoke exclusions remain explicit; they do
+not apply to the new LTS entries. Background tests do not establish GUI,
+GPU, shared-gateway CLI, or whole-software workflow acceptance. Consult the
+[capability coverage and delivery phases](docs/capability-coverage.md) for
+known gaps; raw Python execution is not counted as typed workflow coverage.
 
 ### Agent install (recommended)
 
