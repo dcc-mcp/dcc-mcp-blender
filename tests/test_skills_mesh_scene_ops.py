@@ -29,6 +29,7 @@ NEW_OBJECT_TOOLS = {
 }
 
 MESH_OPS_TOOLS = {
+    "inspect_mesh_components",
     "add_edge_loop",
     "array_instances",
     "assign_material",
