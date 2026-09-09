@@ -175,6 +175,8 @@ def test_tools_yaml_declares_modern_contract():
         "unwrap_uvs",
         "pack_uvs",
         "normalize_uvs",
+        "audit_uv_layout",
+        "export_uv_layout",
     }
     tools = {tool["name"]: tool for tool in doc["tools"]}
     assert set(tools) == expected
