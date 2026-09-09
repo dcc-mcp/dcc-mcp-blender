@@ -31,13 +31,12 @@ def main() -> int:
             "--override-ini=addopts=",
         ]
     )
+    sys.stdout.flush()
+    sys.stderr.flush()
     return 0 if exit_code == 5 else exit_code
 
 
 if __name__ == "__main__":
     # Bypass Blender C++ cleanup in Linux background mode; sys.exit() can
     # otherwise try to destroy uninitialized X11/OpenGL resources.
-    result = main()
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(result)
+    os._exit(main())
