@@ -34,6 +34,74 @@ tools:
       idempotent_hint: true
       open_world_hint: false
 
+  - name: inspect_mesh_components
+    description: >
+      Inspect bounded vertex, edge, or face coordinates, normals and adjacency
+      from the original Object-mode mesh. Local-space centroid/normal filters
+      and revision-pinned pagination help choose component indices before edits.
+    source_file: scripts/inspect_mesh_components.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 5
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        component:
+          type: string
+          enum: [vertex, edge, face]
+          default: vertex
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 256
+          default: 64
+        expected_revision:
+          type: string
+          pattern: '^mesh-query-v1:[0-9a-f]{64}$'
+          description: Revision returned by the preceding page; rejects stale indices.
+        bounds_min:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+          description: Inclusive local-space centroid minimum; requires bounds_max.
+        bounds_max:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+          description: Inclusive local-space centroid maximum; requires bounds_min.
+        normal_direction:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+          description: Nonzero local-space direction for vertex/face filtering; unsupported for edges.
+        normal_min_dot:
+          type: number
+          minimum: -1
+          maximum: 1
+          default: 0.9
+    output_schema: *mesh_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: cleanup_mesh
     description: "Run common Blender mesh cleanup operators: merge doubles, fix normals, and delete loose geometry."
     source_file: scripts/cleanup_mesh.py

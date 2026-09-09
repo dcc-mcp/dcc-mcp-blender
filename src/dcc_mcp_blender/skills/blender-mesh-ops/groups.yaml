@@ -4,6 +4,7 @@ groups:
     default_active: true
     tools:
       - get_poly_count
+      - inspect_mesh_components
       - cleanup_mesh
       - triangulate_mesh
       - separate_mesh
