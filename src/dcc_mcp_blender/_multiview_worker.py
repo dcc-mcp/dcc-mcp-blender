@@ -11,17 +11,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _multiview_receipt import png_evidence, read_receipt, write_receipt  # noqa: E402
 
 
-def prepare_wire(scene, radius):
+def prepare_wire(scene, radius, max_source_edges=100000):
     import bpy
 
     surface = bpy.data.materials.new("DCC Wire Surface")
     surface.diffuse_color = (0.65, 0.68, 0.72, 1)
     line = bpy.data.materials.new("DCC Source Mesh Edges")
     line.diffuse_color = (0.015, 0.02, 0.03, 1)
+    for material in (surface, line):
+        material.use_nodes = True
+        shader = material.node_tree.nodes.get("Principled BSDF")
+        shader.inputs["Base Color"].default_value = material.diffuse_color
+        shader.inputs["Roughness"].default_value = 1
     objects = list(scene.objects)
     edge_count = sum(len(obj.data.edges) for obj in objects if obj.type == "MESH" and not obj.hide_render)
-    if edge_count > 100000:
-        raise ValueError("Wire pass exceeds 100000 source edges")
+    if type(max_source_edges) is not int or not 1 <= max_source_edges <= 500000 or edge_count > max_source_edges:
+        raise ValueError("Wire pass exceeds its bounded source edge budget")
     for obj in objects:
         if obj.type != "MESH":
             if obj.type not in {"CAMERA", "LIGHT"}:
@@ -55,17 +60,19 @@ def prepare_wire(scene, radius):
         for collection in obj.users_collection:
             collection.objects.link(overlay)
         overlay.matrix_world = obj.matrix_world.copy()
-    scene.render.engine = "BLENDER_WORKBENCH"
-    shading = scene.display.shading
-    shading.light = "STUDIO"
-    shading.color_type = "MATERIAL"
-    shading.show_shadows = True
-    shading.show_cavity = False
-    shading.show_specular_highlight = False
-    shading.background_type = "WORLD"
+    # CPU ray tracing avoids requiring an OpenGL context on headless workers.
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 16
+    scene.cycles.use_denoising = False
     if scene.world is None:
         scene.world = bpy.data.worlds.new("DCC Wire World")
     scene.world.color = (0.15, 0.15, 0.15)
+    scene.world.use_nodes = True
+    background = scene.world.node_tree.nodes.get("Background")
+    if background is not None:
+        background.inputs["Color"].default_value = (0.6, 0.6, 0.6, 1)
+        background.inputs["Strength"].default_value = 1
     return edge_count
 
 
@@ -93,7 +100,11 @@ def run(directory):
                 raise ValueError("Camera missing in the saved scene")
             scene.camera = camera
             if item["pass"] == "wire":
-                item["source_edge_count"] = prepare_wire(scene, request["wire_radius"])
+                item["source_edge_count"] = prepare_wire(
+                    scene, request["wire_radius"], request.get("max_source_edges", 100000)
+                )
+            if scene.render.engine == "CYCLES":
+                scene.cycles.device = "CPU"
             scene.render.resolution_x = request["resolution_x"]
             scene.render.resolution_y = request["resolution_y"]
             scene.render.resolution_percentage = 100

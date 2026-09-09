@@ -23,7 +23,8 @@ def test_multiview_images_and_source_topology(tmp_path):
         camera.location = position
         camera.rotation_euler = (-camera.location).to_track_quat("-Z", "Y").to_euler()
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.render.engine = "CYCLES"
+    bpy.context.scene.cycles.samples = 1
     scene.render.resolution_x = 333
     before = (bpy.data.filepath, scene.render.resolution_x, cube.modifiers[0].show_render, len(bpy.data.objects))
     result = start_multiview_render_job(str(tmp_path), ["Front", "Side"], resolution_x=64, resolution_y=64)
@@ -54,7 +55,6 @@ def test_multiview_images_and_source_topology(tmp_path):
 
 
 def test_worker_preserves_partial_failure(tmp_path):
-    import importlib.util
     import json
     from pathlib import Path
 
@@ -66,7 +66,8 @@ def test_worker_preserves_partial_failure(tmp_path):
     bpy.ops.object.camera_add(location=(4, -6, 3))
     camera = bpy.context.active_object
     camera.rotation_euler = (-camera.location).to_track_quat("-Z", "Y").to_euler()
-    bpy.context.scene.render.engine = "BLENDER_WORKBENCH"
+    bpy.context.scene.render.engine = "CYCLES"
+    bpy.context.scene.cycles.samples = 1
     bpy.ops.wm.save_as_mainfile(filepath=str(tmp_path / "scene.blend"))
     (tmp_path / "request.json").write_text(
         json.dumps(dict(job_id="partial", resolution_x=32, resolution_y=32, wire_radius=0.01))
@@ -83,12 +84,24 @@ def test_worker_preserves_partial_failure(tmp_path):
             ],
         ),
     )
-    spec = importlib.util.spec_from_file_location(
-        "partial_worker", Path(_render_job_ops.__file__).with_name("_multiview_worker.py")
+    worker_path = Path(_render_job_ops.__file__).with_name("_multiview_worker.py")
+    process = _render_job_ops._launch_worker(
+        [
+            bpy.app.binary_path,
+            "--background",
+            "--factory-startup",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(worker_path),
+            "--",
+            str(tmp_path),
+        ],
+        tmp_path,
+        tmp_path / "stdout.log",
+        tmp_path / "stderr.log",
     )
-    worker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(worker)
-    worker.run(tmp_path)
+    assert process.wait(timeout=120) == 0, (tmp_path / "stderr.log").read_text()
     result = get_render_job("partial", str(tmp_path))["context"]
     assert result["status"] == "failed"
     assert result["items"][0]["status"] == "failed"

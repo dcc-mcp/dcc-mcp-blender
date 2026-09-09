@@ -45,7 +45,7 @@ Use `start_multiview_render_job` for a bounded camera list (up to 8) and
 scene without changing the live filename, selection, materials, or settings.
 The worker uses factory startup with automatic scripts disabled. External
 assets must remain accessible; add-on-generated render dependencies are not
-loaded. Beauty uses the saved render engine but bypasses compositor and
+loaded. Beauty uses the saved render engine (Cycles uses CPU) but bypasses compositor and
 sequencer to contain file output. Resolution is explicit and border rendering
 is disabled. Cameras render the current saved frame; camera animation markers
 are not used to select views.
@@ -54,7 +54,7 @@ Wire shows original mesh edges as physical tubes over the same unmodified
 mesh surfaces. Modifiers and shape keys are disabled, non-mesh geometry is omitted, and
 hidden render objects remain hidden. This is source topology, not evaluated
 modifier topology or a screen-space overlay. Radius is in local object units
-and scales with the object. Requests exceeding 100,000 source edges are
+and scales with the object. The wire pass uses Cycles CPU. Requests exceeding the explicit max_source_edges budget (default 100,000; maximum 500,000) are
 rejected. Each PNG is decoded by Blender, dimension checked, and hashed;
 status reads verify the entire file hash. Failed images retain individual
 errors and do not make the batch successful.
