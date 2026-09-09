@@ -30,7 +30,7 @@ def _launch_worker(command, directory, stdout_path, stderr_path):
     # Blender may report its relative launch path on macOS. Resolve it before
     # Popen switches cwd to the output directory; bare PATH commands stay bare.
     executable = Path(command[0])
-    if executable.parent != Path("."):
+    if os.sep in command[0] or (os.altsep and os.altsep in command[0]):
         command[0] = str(executable.resolve())
     env = os.environ.copy()
     env["DCC_MCP_BACKGROUND_RENDER"] = "1"
