@@ -464,6 +464,11 @@ def project_uvs(object_name: str, method: str = "planar", axis: str = "z", margi
             after_uv = _mesh_uv_context(obj)
             if "FINISHED" not in operator_result:
                 return _uv_operator_failed(object_name, "UV projection", operator_result, before_uv, after_uv)
+            # Edit/Object mode transitions can replace CustomData storage.
+            # Never dereference the pre-operator MeshUVLoopLayer RNA proxy.
+            layer = _get_uv_layer(obj.data)
+            if layer is None:
+                raise RuntimeError("UV layer unavailable after projection")
             return skill_success(
                 f"Projected UVs on {object_name} using {method_key}",
                 uv_map=layer.name,
@@ -566,6 +571,9 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
         after_uv = _mesh_uv_context(obj)
         if "FINISHED" not in operator_result:
             return _uv_operator_failed(object_name, "UV unwrap", operator_result, before_uv, after_uv)
+        layer = _get_uv_layer(obj.data)
+        if layer is None:
+            raise RuntimeError("UV layer unavailable after unwrap")
         return skill_success(
             f"Unwrapped UVs on {object_name} using {method_key}",
             uv_map=layer.name,
@@ -611,6 +619,9 @@ def pack_uvs(
             margin=float(margin),
             rotate=bool(rotate),
         )
+        layer = _get_uv_layer(obj.data)
+        if layer is None:
+            raise RuntimeError("UV layer unavailable after packing")
         if normalize:
             normalize_result = _normalize_layer(layer, float(margin))
         else:
