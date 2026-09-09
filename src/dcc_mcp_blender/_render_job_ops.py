@@ -25,6 +25,18 @@ _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
 
+def _launch_worker(command, directory, stdout_path, stderr_path):
+    env = os.environ.copy()
+    env["DCC_MCP_BACKGROUND_RENDER"] = "1"
+    popen_kwargs = {"env": env, "cwd": str(directory)}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    else:
+        popen_kwargs["start_new_session"] = True
+    with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+        return subprocess.Popen(command, stdout=stdout, stderr=stderr, **popen_kwargs)
+
+
 def _output_format_spec(output_format: str) -> Tuple[str, bytes]:
     name = str(output_format).strip().upper()
     try:
@@ -169,15 +181,7 @@ def start_render_job(
                 factory_startup=factory_startup,
                 output_format=output_format,
             )
-            env = os.environ.copy()
-            env["DCC_MCP_BACKGROUND_RENDER"] = "1"
-            popen_kwargs: Dict[str, Any] = {"env": env, "cwd": str(output_dir)}
-            if os.name == "nt":
-                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            else:
-                popen_kwargs["start_new_session"] = True
-            with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
-                process = subprocess.Popen(command, stdout=stdout, stderr=stderr, **popen_kwargs)
+            process = _launch_worker(command, output_dir, stdout_path, stderr_path)
 
         job = {
             "job_id": job_id,
@@ -204,19 +208,37 @@ def start_render_job(
         return skill_exception(exc, message="Failed to start background render job")
 
 
-def get_render_job(job_id: str) -> dict:
+def get_render_job(job_id: str, job_directory: str = None) -> dict:
     with _LOCK:
         job = _JOBS.get(job_id)
     if job is None:
-        return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
-    return skill_success("Render job status", **_job_context(job))
+        if job_directory is None:
+            return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
+        job = dict(job_id=job_id, kind="multiview", job_directory=job_directory)
+    try:
+        return skill_success("Render job status", **_job_context(job))
+    except (OSError, ValueError, KeyError) as exc:
+        return skill_error("Render receipt unavailable", str(exc))
 
 
-def cancel_render_job(job_id: str) -> dict:
+def cancel_render_job(job_id: str, job_directory: str = None) -> dict:
     with _LOCK:
         job = _JOBS.get(job_id)
     if job is None:
-        return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
+        if job_directory is None:
+            return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
+        job = dict(job_id=job_id, kind="multiview", job_directory=job_directory)
+    if job.get("kind") == "multiview":
+        from dcc_mcp_blender._multiview_receipt import TERMINAL, multiview_context
+
+        try:
+            context = multiview_context(job)
+            if context["status"] not in TERMINAL:
+                (Path(job["job_directory"]) / "cancel").touch()
+                context["cancellation_requested"] = True
+            return skill_success("Multiview cancellation requested at the next image boundary", **context)
+        except (OSError, ValueError, KeyError) as exc:
+            return skill_error("Render receipt unavailable", str(exc))
     _job_context(job)
     if job["status"] not in {"completed", "failed", "cancelled"}:
         process = job.get("process")
@@ -227,6 +249,10 @@ def cancel_render_job(job_id: str) -> dict:
 
 
 def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
+    if job.get("kind") == "multiview":
+        from dcc_mcp_blender._multiview_receipt import multiview_context
+
+        return multiview_context(job)
     process = job.get("process")
     output_format = str(job.get("output_format", "OPEN_EXR_MULTILAYER")).strip().upper()
     _output_format_spec(output_format)
