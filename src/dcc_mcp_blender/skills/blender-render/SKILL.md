@@ -39,3 +39,30 @@ Use `render_scene` for short stills. Use `start_render_job` for animation or
 multi-layer EXR or display-ready PNG output so the interactive Blender process
 remains responsive; poll with `get_render_job` and cancel only through the
 returned job id.
+
+Use `start_multiview_render_job` for a bounded camera list (up to 8) and
+`beauty`/`wire` PNG deliverables. It saves an isolated copy of the current
+scene without changing the live filename, selection, materials, or settings.
+The worker uses factory startup with automatic scripts disabled. External
+assets must remain accessible; add-on-generated render dependencies are not
+loaded. Beauty uses the saved render engine but bypasses compositor and
+sequencer to contain file output. Resolution is explicit and border rendering
+is disabled. Cameras render the current saved frame; camera animation markers
+are not used to select views.
+
+Wire shows original mesh edges as physical tubes over the same unmodified
+mesh surfaces. Modifiers and shape keys are disabled, non-mesh geometry is omitted, and
+hidden render objects remain hidden. This is source topology, not evaluated
+modifier topology or a screen-space overlay. Radius is in local object units
+and scales with the object. Requests exceeding 100,000 source edges are
+rejected. Each PNG is decoded by Blender, dimension checked, and hashed;
+status reads verify the entire file hash. Failed images retain individual
+errors and do not make the batch successful.
+
+Poll using the existing `get_render_job(job_id)` and retain `job_directory`.
+After an adapter restart, `get_render_job(job_id, job_directory)` recovers
+terminal receipts; a nonterminal receipt returns `unknown` with its last
+recorded state because no live process handle has been observed. No PID from
+a disk file is trusted. Multiview cancellation writes an owned marker and
+is cooperative between images; it cannot interrupt an in-progress render.
+`cancel_render_job` accepts `job_directory` for the same recovery case.
