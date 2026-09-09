@@ -19,6 +19,7 @@ metadata:
       create primitive, loft sections, lathe profile, extrude faces, bevel edges,
       inset faces, boolean, edge loop, array instances, mirror, pivot, freeze transforms,
       auto UV, UV projection, assign material, select by material
+      inspect mesh components, vertex coordinates, edge adjacency, face normals
     search-aliases: [polygon edit, hard surface modeling, fuselage loft, revolve profile, rotor array, pivot origin, mesh cleanup, topology fix, UV projection, material binding]
     intent: "Build and verify polygon models through the shared cross-DCC modeling vocabulary."
     recall-context:
@@ -70,3 +71,22 @@ existing names, and does not cut the wall behind the opening, create glass,
 assign material, bevel, or unwrap UVs. Follow with the corresponding typed
 tools. Recess the glazing and cut the wall separately so the depth remains
 visible; a coplanar opaque wall can hide the entire reveal.
+
+## Component discovery
+
+Use `inspect_mesh_components` before choosing vertex, edge, or face indices.
+It reads the original mesh in Object mode without changing selection or mode.
+Coordinates, centroids, and normal filters are object-local, not evaluated or
+world-space. The optional bounds filter tests each component's centroid.
+
+Pages contain at most 256 records. Pass `next_offset` and the returned
+`revision` as `expected_revision` for subsequent pages, with unchanged filters.
+The token covers mesh identity, coordinates, normals and connectivity; any
+change rejects stale paging. Discard indices after edits. Existing mutation
+tools do not yet consume this query token, so it is not a mutation guard.
+
+The scan rejects meshes above 100,000 total vertices/edges/faces/loops.
+Connectivity lists are capped at 64 entries per relation, with full counts and
+`connectivity_complete=false` when truncated. A rejected scan never returns
+a partial revision. For example, query faces with `normal_direction=[0,0,1]`
+and `normal_min_dot=0.9` to find locally upward-facing faces.
