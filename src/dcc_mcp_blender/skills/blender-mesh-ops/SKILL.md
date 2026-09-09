@@ -55,3 +55,18 @@ reporting success.
 Prefer `blender-objects` for object transforms and selection, `blender-mesh` for
 modifier management, `blender-uv-ops` for UVs, and `blender-scripting` only
 after checking this typed surface.
+
+### Solid pointed arches
+
+`create_pointed_arch` creates a closed, all-quad U-shaped solid for deep door
+and window surrounds. Load the `modeling` group first. `width` is the clear
+opening, `spring_height` is the jamb height, `rise` is the pointed head rise,
+`frame_width` is horizontal jamb / vertical crown thickness, and `depth` is
+physical reveal depth. Curved head thickness is not a constant normal offset.
+The opening bottom center is the origin; X spans width, Z height, and the
+solid occupies Y=0 through Y=depth. Use object transforms to orient it on a
+side wall. The tool leaves selection and active object unchanged, rejects
+existing names, and does not cut the wall behind the opening, create glass,
+assign material, bevel, or unwrap UVs. Follow with the corresponding typed
+tools. Recess the glazing and cut the wall separately so the depth remains
+visible; a coplanar opaque wall can hide the entire reveal.

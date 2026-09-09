@@ -21,6 +21,7 @@ MODELING_TOOLS = {
     "bevel_edges",
     "boolean_op",
     "create_primitive",
+    "create_pointed_arch",
     "delete_history",
     "extrude_faces",
     "freeze_transforms",
