@@ -17,6 +17,7 @@ groups:
     default_active: false
     tools:
       - create_primitive
+      - create_pointed_arch
       - loft_sections
       - lathe_profile
       - extrude_faces

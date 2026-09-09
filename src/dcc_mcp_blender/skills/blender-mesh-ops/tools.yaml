@@ -709,3 +709,43 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: create_pointed_arch
+    description: "Create a closed solid pointed-arch door/window frame with real jamb, crown and reveal depth. Local X is width, Z is height, and depth extends from Y=0 toward +Y; origin is the opening bottom center. Does not cut a wall or create a door."
+    source_file: scripts/create_pointed_arch.py
+    group: modeling
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 10
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [name, width, spring_height, rise, frame_width, depth]
+      properties:
+        name: {type: string, minLength: 1, description: Unique object name. Existing names are rejected.}
+        width: {type: number, exclusiveMinimum: 0, description: Clear opening width in scene units.}
+        spring_height: {type: number, exclusiveMinimum: 0, description: Height of the straight jambs.}
+        rise: {type: number, exclusiveMinimum: 0, description: Opening crown height above the spring line.}
+        frame_width: {type: number, exclusiveMinimum: 0, description: Horizontal jamb and vertical crown thickness; curved thickness varies.}
+        depth: {type: number, exclusiveMinimum: 0, description: Solid reveal depth along local positive Y.}
+        segments: {type: integer, minimum: 2, maximum: 128, default: 16, description: Segments per half arch.}
+        location:
+          type: array
+          items: {type: number}
+          minItems: 3
+          maxItems: 3
+          default: [0, 0, 0]
+          description: World position of opening bottom center.
+    output_schema: *mesh_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+    call_examples:
+      - arguments: {name: PortalFrame, width: 2.0, spring_height: 3.0, rise: 1.5, frame_width: 0.35, depth: 0.8}
+        note: Solid stone portal with an open threshold and closed jamb feet.
