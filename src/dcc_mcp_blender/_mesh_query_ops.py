@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
@@ -42,6 +42,56 @@ def _revision(obj: Any) -> str:
     for face in mesh.polygons:
         append(["f", list(face.vertices), _vector(face.normal)])
     return "mesh-query-v1:" + digest.hexdigest()
+
+
+def mesh_revision(obj: Any, expected_revision: Optional[str] = None) -> Tuple[Optional[str], Optional[dict]]:
+    """Read or check a bounded revision without selection, mode changes or adjacency allocation."""
+    if expected_revision is not None and (
+        not isinstance(expected_revision, str)
+        or not expected_revision.startswith("mesh-query-v1:")
+        or len(expected_revision) != 78
+        or any(character not in "0123456789abcdef" for character in expected_revision[14:])
+    ):
+        return None, skill_error(
+            "Invalid revision",
+            "Use the unchanged revision returned by inspect_mesh_components.",
+            error_code="invalid_mesh_revision",
+            mutation_applied=False,
+        )
+    try:
+        if obj.mode != "OBJECT" or obj.data.is_editmode:
+            return None, skill_error(
+                "Object mode required",
+                "Leave Edit/Sculpt/Paint mode explicitly before querying or using a component revision.",
+                error_code="mesh_revision_mode_required",
+                mutation_applied=False,
+            )
+        mesh = obj.data
+        if sum(len(items) for items in (mesh.vertices, mesh.edges, mesh.polygons, mesh.loops)) > MAX_SCAN_ELEMENTS:
+            return None, skill_error(
+                "Mesh scan limit exceeded",
+                "Use a smaller mesh; component revisions are never partial.",
+                error_code="mesh_revision_scan_limit",
+                mutation_applied=False,
+            )
+        revision = _revision(obj)
+        if expected_revision is not None and revision != expected_revision:
+            return None, skill_error(
+                "Mesh revision changed",
+                "Discard previous component indices and query again without expected_revision.",
+                error_code="stale_mesh_revision",
+                current_revision=revision,
+                mutation_applied=False,
+            )
+        return revision, None
+    except Exception as exc:
+        return None, skill_error(
+            "Mesh revision unavailable",
+            "The original mesh could not be read safely. Inspect the object before retrying.",
+            error_code="mesh_revision_unavailable",
+            error_type=type(exc).__name__,
+            mutation_applied=False,
+        )
 
 
 def _connectivity(mesh: Any) -> dict:
@@ -145,13 +195,6 @@ def inspect_mesh_components(
         return skill_error("Invalid offset", "Offset must be an integer within the scan bound.")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_PAGE_SIZE:
         return skill_error("Invalid limit", "Limit must be an integer between 1 and 256.")
-    if expected_revision is not None and (
-        not isinstance(expected_revision, str)
-        or not expected_revision.startswith("mesh-query-v1:")
-        or len(expected_revision) != 78
-        or any(character not in "0123456789abcdef" for character in expected_revision[14:])
-    ):
-        return skill_error("Invalid revision", "Use the unchanged revision returned by this tool.")
     try:
         if (bounds_min is None) != (bounds_max is None):
             raise ValueError("Provide both bounds_min and bounds_max")
@@ -176,22 +219,11 @@ def inspect_mesh_components(
         obj = bpy.data.objects.get(object_name)
         if obj is None or obj.type != "MESH":
             return skill_error("Mesh not found", "Choose an existing mesh object.")
-        if obj.mode != "OBJECT" or obj.data.is_editmode:
-            return skill_error("Object mode required", "Leave Edit/Sculpt/Paint mode explicitly before inspecting.")
+        revision, error = mesh_revision(obj, expected_revision)
+        if error:
+            return error
         mesh = obj.data
         counts = {"vertex": len(mesh.vertices), "edge": len(mesh.edges), "face": len(mesh.polygons)}
-        if sum(counts.values()) + len(mesh.loops) > MAX_SCAN_ELEMENTS:
-            return skill_error(
-                "Mesh scan limit exceeded", "Use a smaller mesh; this tool never returns partial revisions."
-            )
-        revision = _revision(obj)
-        if expected_revision is not None and revision != expected_revision:
-            return skill_error(
-                "Mesh revision changed",
-                "Discard previous component indices and query again without expected_revision.",
-                error_code="stale_mesh_revision",
-                current_revision=revision,
-            )
         connectivity = _connectivity(mesh)
         records = []
         stop = min(offset, counts[component])

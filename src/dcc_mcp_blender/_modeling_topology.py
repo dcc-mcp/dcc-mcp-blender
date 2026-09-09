@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Optional, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception
 
+from dcc_mcp_blender._mesh_query_ops import mesh_revision
 from dcc_mcp_blender._modeling_common import (
     bounded_indices,
     mesh_evidence_counts,
@@ -40,7 +41,13 @@ def _topology_exception_receipt(obj, before, exc, operation) -> dict:
     )
 
 
-def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, segments: int = 1) -> dict:
+def bevel_edges(
+    object_name: str,
+    edge_indices: Sequence[int],
+    width: float,
+    segments: int = 1,
+    expected_revision: Optional[str] = None,
+) -> dict:
     """Bevel explicit edges and require a host topology delta."""
     obj = None
     before = None
@@ -59,6 +66,10 @@ def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, seg
         obj, error = mesh_object(bpy, object_name)
         if error:
             return error
+        if expected_revision is not None:
+            _, error = mesh_revision(obj, expected_revision)
+            if error:
+                return error
         selected, error = bounded_indices(edge_indices, "edge_indices", len(obj.data.edges))
         if error:
             return error
@@ -80,10 +91,13 @@ def bevel_edges(object_name: str, edge_indices: Sequence[int], width: float, seg
                 before=before,
                 after=after,
             )
+        parameters = {"edge_indices": selected, "segments": segments, "width": width_value}
+        if expected_revision is not None:
+            parameters["expected_revision"] = expected_revision
         return topology_result(
             "Bevel edges",
             obj,
-            {"edge_indices": selected, "segments": segments, "width": width_value},
+            parameters,
             before,
             after,
             "edge_count",
@@ -102,6 +116,7 @@ def extrude_faces(
     face_indices: Sequence[int],
     distance: float = 0.0,
     direction: Sequence[float] = (0.0, 0.0, 1.0),
+    expected_revision: Optional[str] = None,
 ) -> dict:
     """Extrude explicit faces and require a host topology delta."""
     obj = None
@@ -122,6 +137,10 @@ def extrude_faces(
         obj, error = mesh_object(bpy, object_name)
         if error:
             return error
+        if expected_revision is not None:
+            _, error = mesh_revision(obj, expected_revision)
+            if error:
+                return error
         selected, error = bounded_indices(face_indices, "face_indices", len(obj.data.polygons))
         if error:
             return error
@@ -144,10 +163,13 @@ def extrude_faces(
                 before=before,
                 after=after,
             )
+        parameters = {"direction": direction_value, "distance": distance_value, "face_indices": selected}
+        if expected_revision is not None:
+            parameters["expected_revision"] = expected_revision
         return topology_result(
             "Extrude faces",
             obj,
-            {"direction": direction_value, "distance": distance_value, "face_indices": selected},
+            parameters,
             before,
             after,
             "face_count",
@@ -166,6 +188,7 @@ def inset(
     face_indices: Sequence[int],
     thickness: float,
     depth: float = 0.0,
+    expected_revision: Optional[str] = None,
 ) -> dict:
     """Inset explicit faces and require a host topology delta."""
     obj = None
@@ -184,6 +207,10 @@ def inset(
         obj, error = mesh_object(bpy, object_name)
         if error:
             return error
+        if expected_revision is not None:
+            _, error = mesh_revision(obj, expected_revision)
+            if error:
+                return error
         selected, error = bounded_indices(face_indices, "face_indices", len(obj.data.polygons))
         if error:
             return error
@@ -205,10 +232,13 @@ def inset(
                 before=before,
                 after=after,
             )
+        parameters = {"depth": depth_value, "face_indices": selected, "thickness": thickness_value}
+        if expected_revision is not None:
+            parameters["expected_revision"] = expected_revision
         return topology_result(
             "Inset faces",
             obj,
-            {"depth": depth_value, "face_indices": selected, "thickness": thickness_value},
+            parameters,
             before,
             after,
             "face_count",
@@ -222,7 +252,9 @@ def inset(
         return skill_exception(exc, message=f"Failed to inset faces on {object_name}")
 
 
-def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) -> dict:
+def add_edge_loop(
+    object_name: str, edge_indices: Sequence[int], cuts: int = 1, expected_revision: Optional[str] = None
+) -> dict:
     """Subdivide an explicit edge ring and require a host topology delta."""
     obj = None
     before = None
@@ -235,6 +267,10 @@ def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) 
         obj, error = mesh_object(bpy, object_name)
         if error:
             return error
+        if expected_revision is not None:
+            _, error = mesh_revision(obj, expected_revision)
+            if error:
+                return error
         selected, error = bounded_indices(edge_indices, "edge_indices", len(obj.data.edges))
         if error:
             return error
@@ -256,10 +292,13 @@ def add_edge_loop(object_name: str, edge_indices: Sequence[int], cuts: int = 1) 
                 before=before,
                 after=after,
             )
+        parameters = {"cuts": cuts, "edge_indices": selected}
+        if expected_revision is not None:
+            parameters["expected_revision"] = expected_revision
         return topology_result(
             "Add edge loop",
             obj,
-            {"cuts": cuts, "edge_indices": selected},
+            parameters,
             before,
             after,
             "edge_count",

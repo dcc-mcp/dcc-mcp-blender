@@ -22,6 +22,19 @@ Version-specific unavailable capabilities must report that state explicitly.
 Long-running operations require bounded admission, status, cancellation and
 terminal artifact validation. Existing unrelated worktrees remain independent.
 
+### Submitted slices (not phase completion)
+
+- #206: current LTS/Python CI and compatibility, nonempty native test evidence,
+  and UV handle lifetime repair. Version/context discovery and gateway
+  workflow acceptance remain open.
+- #207: registered local asset-library directory discovery. Native asset
+  catalogs and dependency inspection remain open.
+- #208: bounded original-mesh component discovery with revision-pinned pages.
+- Follow-up: optional revision checks before extrude, bevel, inset, and edge
+  subdivision. Unguarded callers and other mutation tools are not protected.
+
+These slices do not establish full Phase 1 coverage or the Phase 4 benchmarks.
+
 ## Domain gaps
 
 | Domain | Existing foundation | Remaining workflow coverage |
