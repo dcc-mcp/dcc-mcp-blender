@@ -21,7 +21,7 @@ def _integer(value, label, low, high):
         raise ValueError("{} must be an integer in [{}, {}]".format(label, low, high))
 
 
-def _objects(object_names, uv_map, max_triangles):
+def _objects(object_names, uv_map, max_triangles, triangle_limit=200000):
     import bpy
 
     if not isinstance(object_names, list) or not 1 <= len(object_names) <= 4096:
@@ -32,7 +32,7 @@ def _objects(object_names, uv_map, max_triangles):
         raise ValueError("object_names must be unique")
     if uv_map is not None and (not isinstance(uv_map, str) or not uv_map.strip()):
         raise ValueError("uv_map must be null (active per object) or a non-empty name")
-    _integer(max_triangles, "max_triangles", 1, 200000)
+    _integer(max_triangles, "max_triangles", 1, triangle_limit)
     objects = []
     for name in object_names:
         obj = bpy.data.objects.get(name)
@@ -246,13 +246,17 @@ def audit_uv_layout(
         return skill_exception(exc, message="UV audit failed")
 
 
-def export_uv_layout(object_names, output_path, uv_map=None, resolution=2048, max_triangles=50000):
-    """Export actual polygon UV edges to a new SVG, one labelled panel per object."""
+def export_uv_layout(
+    object_names, output_path, uv_map=None, resolution=2048, max_triangles=50000, layout_mode="panels"
+):
+    """Export polygon UV edges to a new SVG as object panels or a shared atlas."""
     try:
         _integer(resolution, "resolution", 256, 8192)
-        objects = _objects(object_names, uv_map, max_triangles)
-        if len(objects) > 64:
-            raise ValueError("SVG export supports at most 64 objects per sheet")
+        objects = _objects(object_names, uv_map, max_triangles, triangle_limit=500000)
+        if layout_mode not in ("panels", "overlay"):
+            raise ValueError("layout_mode must be panels or overlay")
+        if layout_mode == "panels" and len(objects) > 64:
+            raise ValueError("Panel export supports at most 64 objects; use overlay for a shared atlas")
         if not isinstance(output_path, str) or not output_path:
             raise ValueError("output_path must be a non-empty absolute SVG path")
         path = Path(output_path)
@@ -277,6 +281,10 @@ def export_uv_layout(object_names, output_path, uv_map=None, resolution=2048, ma
                 for a, b in zip(points, points[1:] + points[:1]):
                     edges.add(tuple(sorted((a, b))))
             panels.append((obj.name, layer.name, coords, sorted(edges)))
+        if layout_mode == "overlay":
+            coords = [point for panel in panels for point in panel[2]]
+            edges = sorted({edge for panel in panels for edge in panel[3]})
+            panels = [("Shared UV space ({} objects)".format(len(objects)), uv_map or "active maps", coords, edges)]
         columns = math.ceil(math.sqrt(len(panels)))
         rows = math.ceil(len(panels) / columns)
         size = resolution / columns
@@ -332,7 +340,9 @@ def export_uv_layout(object_names, output_path, uv_map=None, resolution=2048, ma
             format="SVG",
             width=resolution,
             height=height,
-            object_count=len(panels),
+            object_count=len(objects),
+            panel_count=len(panels),
+            layout_mode=layout_mode,
             edge_count=sum(len(p[3]) for p in panels),
             triangles_read=consumed,
             mutation_applied=False,

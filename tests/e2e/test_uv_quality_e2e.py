@@ -33,6 +33,9 @@ def test_uv_quality_named_map_and_source_state(tmp_path):
     assert result["success"], result
     assert result["context"]["edge_count"] == 4  # no tessellation diagonal
     ElementTree.parse(path)
+    atlas = export([obj.name], str(tmp_path / "atlas.svg"), uv_map="Named", layout_mode="overlay")
+    assert atlas["success"] and atlas["context"]["panel_count"] == 1
+    assert atlas["context"]["edge_count"] == 4
     assert bpy.context.view_layer.objects.active == active
     assert list(bpy.context.selected_objects) == selected
     assert obj.data.uv_layers.active_index == 0

@@ -180,3 +180,16 @@ def test_invalid_xml_name_never_creates_broken_artifact(install, tmp_path):
     path = tmp_path / "layout.svg"
     assert not export_uv_layout([obj.name], str(path))["success"]
     assert not path.exists()
+
+
+def test_shared_atlas_accepts_large_object_sets_without_moving_uvs(install, tmp_path):
+    objects = [mesh(str(i)) for i in range(65)]
+    install(*objects)
+    names = [o.name for o in objects]
+    path = tmp_path / "atlas.svg"
+    assert not export_uv_layout(names, str(path))["success"]
+    result = context(export_uv_layout(names, str(path), layout_mode="overlay"))
+    assert result["object_count"] == 65 and result["panel_count"] == 1
+    assert result["edge_count"] == 3  # coincident edges are drawn once
+    assert objects[0].data.uv_layers.active.data[0].uv == TRI[0]
+    assert not export_uv_layout(names, str(tmp_path / "bad.svg"), layout_mode="wrong")["success"]
