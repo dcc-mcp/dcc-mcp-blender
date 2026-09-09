@@ -69,3 +69,6 @@ Use `export_uv_layout` to write actual polygon UV edges to a new SVG path.
 Each object gets its own labelled panel, fitted to its coordinates with the
 unit-tile border shown; panels do not imply shared texel scale. Export is a
 layout visualization, not a quality pass. It neither packs nor repairs UVs.
+The default `panels` mode accepts at most 64 objects. Choose `layout_mode=overlay`
+to display up to 4096 objects in their shared UV coordinate space. Set an
+explicit `max_triangles` budget (up to 500000) for larger atlas exports.
