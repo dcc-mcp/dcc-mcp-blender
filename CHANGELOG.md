@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.5](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.4...v0.2.5) (2026-09-10)
+
+
+### Features
+
+* publish Blender assets for ComfyUI ([#215](https://github.com/dcc-mcp/dcc-mcp-blender/issues/215)) ([9a74660](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9a74660e121f7320591880579684d40204ebcfeb))
+
+
+### Bug Fixes
+
+* make camera tool contracts discoverable and safe ([#212](https://github.com/dcc-mcp/dcc-mcp-blender/issues/212)) ([6f583af](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6f583af3a31af034011825aa5b4389e37a730738))
+
+
+### Documentation
+
+* link to the available website gallery ([f7e8936](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f7e89363a2cf66241877282b67591db5e0dd4285))
+* showcase crate lookdev and UV evidence ([7ba4ea6](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7ba4ea62cf593be192ce789f7ecc7e49dd2d7b14))
+
 ## [0.2.4](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.3...v0.2.4) (2026-09-10)
 
 
