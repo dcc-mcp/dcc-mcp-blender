@@ -2,28 +2,63 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import struct
+import sys
+import time
+import uuid
 from pathlib import Path
 
 TERMINAL = {"completed", "failed", "cancelled"}
+_IO_RETRY_TIMEOUT = 0.1
+_IO_RETRY_ATTEMPTS = 10
+_IO_RETRY_INTERVAL = 0.01
+
+
+def _retry_receipt_io(operation, *, reading=False):
+    """Bound retries for transient Windows sharing/access conflicts only."""
+    deadline = time.monotonic() + _IO_RETRY_TIMEOUT
+    for attempt in range(_IO_RETRY_ATTEMPTS):
+        try:
+            return operation()
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            retryable = winerror in {5, 32, 33} or (
+                reading and winerror is None and isinstance(exc, PermissionError) and exc.errno == errno.EACCES
+            )
+            remaining = deadline - time.monotonic()
+            if sys.platform != "win32" or not retryable or attempt + 1 == _IO_RETRY_ATTEMPTS or remaining <= 0:
+                raise
+            time.sleep(min(_IO_RETRY_INTERVAL, remaining))
+            if time.monotonic() >= deadline:
+                raise
 
 
 def write_receipt(directory, receipt):
     path = Path(directory) / "result.json"
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(receipt), encoding="utf-8")
-    temporary.replace(path)
+    temporary = path.with_name(".{}.{}.tmp".format(path.name, uuid.uuid4().hex))
+    stream = temporary.open("x", encoding="utf-8")
+    try:
+        with stream:
+            stream.write(json.dumps(receipt))
+        _retry_receipt_io(lambda: temporary.replace(path))
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def read_receipt(directory, job_id):
     if not Path(directory).is_absolute():
         raise ValueError("job_directory must be absolute")
     path = Path(directory) / "result.json"
-    if path.stat().st_size > 1_000_000:
-        raise ValueError("Render receipt exceeds the size limit")
-    result = json.loads(path.read_text(encoding="utf-8"))
+
+    def read_text():
+        if path.stat().st_size > 1_000_000:
+            raise ValueError("Render receipt exceeds the size limit")
+        return path.read_text(encoding="utf-8")
+
+    result = json.loads(_retry_receipt_io(read_text, reading=True))
     if not isinstance(result, dict) or result.get("job_id") != job_id or result.get("kind") != "multiview":
         raise ValueError("Render receipt does not match this multiview job")
     items = result.get("items")
