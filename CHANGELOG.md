@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.2.4](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.3...v0.2.4) (2026-09-10)
+
+
+### Features
+
+* add bounded live RNA queries and modifier readback ([5b79eac](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5b79eac942748a984afad757d19ed393b3ec49e0))
+* add bounded mesh component discovery ([63833b3](https://github.com/dcc-mcp/dcc-mcp-blender/commit/63833b3eb8ae5a0b57dda5e2785a441d8aac5645))
+* add bounded UV quality audit and layout export ([5f5d04d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5f5d04d4c98cafd3b5b4454039aad0207f01f179))
+* add isolated multiview and wire render jobs ([661e136](https://github.com/dcc-mcp/dcc-mcp-blender/commit/661e136273bd4aaa0760ebb310257fd05f64c26e))
+* add revision-guarded Geometry Nodes interfaces ([8651ccc](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8651cccbb0c911d7840bc6a689af90c104d677c4))
+* add solid pointed arch modeling tool ([a4d7cfe](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a4d7cfeb979c425b72a08456de2dacfc8ab2f99c))
+* export shared UV atlases with explicit budgets ([99a92cd](https://github.com/dcc-mcp/dcc-mcp-blender/commit/99a92cd28fb9f426807aa85f773fd7f99da99b89))
+* guard component edits with mesh revisions ([e1d6394](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e1d6394723653c452bc49483b908f7eb4f2375b8))
+
+
+### Bug Fixes
+
+* discover registered Blender asset libraries ([d46aa1e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d46aa1e29436ff9e579a9d6eb348e54deb203934))
+* flush E2E output before returning to process exit ([8493109](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8493109651f5d5359271c39afe8dd2c3ad02475e))
+* improve wire pass contrast and remove render noise ([7946b1e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7946b1e728ef93fa9c7cf9da27ac01b14b568745))
+* isolate registered asset library scan failures ([e5c7511](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e5c7511bf82fcf67b13a11d01632530aa688c831))
+* preserve receipt failures during temporary cleanup ([8e61b64](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8e61b642ac251fbb5228f8a48da3b47884519657))
+* preserve skill search limits with semantic recall ([2ea9f56](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2ea9f56bb0f9c2e359d813c38e6485838710564b))
+* refresh UV handles after native mode changes ([3bf0359](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3bf035939114c95c9663d8bf5030b4c051481ce5))
+* reject shared edit meshes in UV quality tools ([5d780c6](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5d780c609d23b8a8d3e9968a5b051567a6c4efae))
+* require nonempty native Blender test evidence ([de3479d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/de3479dabfffdf6d21c838c3d168ac34db202f4c))
+* resolve Blender executable before changing worker directory ([fdaa4e9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fdaa4e9e367872c740ee62e0b0315effa5a9e0ab))
+* resolve explicitly relative Blender launch paths ([1dee11d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1dee11dbbd0df07177a54acdf070db34b45f6458))
+* respect active material image resources ([54c02b9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/54c02b988f5325a2f2b7b1e14c01e0add43a3d2c))
+* retry transient Windows render receipt conflicts ([e8de8a1](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e8de8a1e340352f0ae923cd689ebff7d056f70cd))
+* scope simulation cache operations ([364e46e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/364e46ee844234f0a5d0098bfa8e5313e44d86af))
+* support bounded larger meshes and headless CPU wire rendering ([5d54013](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5d54013a63596f49551a6ad0fb3eb62381dcc056))
+* support current Blender LTS APIs and CI ([3e0978f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3e0978f0592cdb0218364f671558f82e54ad9eec))
+* validate material node trees and image resources ([368aba4](https://github.com/dcc-mcp/dcc-mcp-blender/commit/368aba404efbe37ae96ab90eb41668306a8efc49))
+
 ## [0.2.3](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.2...v0.2.3) (2026-08-25)
 
 
