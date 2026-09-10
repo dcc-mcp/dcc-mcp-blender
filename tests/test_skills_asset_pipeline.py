@@ -158,6 +158,65 @@ class TestValidationSkills:
         assert result["context"]["report"]["passed"] is False
         assert "MATERIAL_IMAGE_MISSING" in _codes(result)
 
+    @pytest.mark.parametrize("missing_datablock", [True, False])
+    def test_validate_materials_reports_missing_environment_image(self, tmp_path, missing_datablock):
+        image = (
+            None
+            if missing_datablock
+            else SimpleNamespace(
+                name="Environment", source="FILE", filepath=str(tmp_path / "missing.exr"), packed_file=None
+            )
+        )
+        bpy = _bpy_with_image(image)
+        bpy.data.objects[0].material_slots[0].material.node_tree.nodes[0].type = "TEX_ENVIRONMENT"
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": True},
+        )
+
+        assert result["success"] is True
+        assert result["context"]["report"]["passed"] is False
+        assert "MATERIAL_IMAGE_MISSING" in _codes(result)
+
+    @pytest.mark.parametrize("require_nodes", [False, True])
+    def test_validate_materials_does_not_inspect_disabled_node_tree(self, require_nodes):
+        bpy = _bpy_with_image(None)
+        material = bpy.data.objects[0].material_slots[0].material
+        material.use_nodes = False
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": require_nodes},
+        )
+
+        assert result["success"] is True
+        assert result["context"]["report"]["passed"] is (not require_nodes)
+        assert _codes(result) == ({"MATERIAL_NODES_DISABLED"} if require_nodes else {"MATERIALS_VALID"})
+        assert material.use_nodes is False
+        assert material.node_tree.nodes[0].image is None
+
+    @pytest.mark.parametrize("missing_image", [False, True])
+    def test_validate_materials_inspects_nodes_when_legacy_toggle_is_absent(self, missing_image):
+        image = None if missing_image else SimpleNamespace(name="Internal", source="GENERATED")
+        bpy = _bpy_with_image(image)
+        del bpy.data.objects[0].material_slots[0].material.use_nodes
+
+        result = load_and_call(
+            "blender-validation/scripts/validate_materials.py",
+            bpy,
+            object_names=["Cube"],
+            rules={"require_nodes": True},
+        )
+
+        assert result["success"] is True
+        assert result["context"]["report"]["passed"] is (not missing_image)
+        assert _codes(result) == ({"MATERIAL_IMAGE_MISSING"} if missing_image else {"MATERIALS_VALID"})
+
     @pytest.mark.parametrize("source,packed", [("GENERATED", False), ("VIEWER", False), ("FILE", True)])
     def test_validate_materials_does_not_require_external_files_for_internal_images(self, source, packed):
         image = SimpleNamespace(

@@ -104,6 +104,55 @@ class TestMaterialValidationE2E:
             assert "MATERIAL_IMAGE_MISSING" in {issue["code"] for issue in report["issues"]}
             assert (image.filepath, image.has_data, image.is_dirty) == before
 
+    @pytest.mark.parametrize("missing_datablock", [True, False])
+    def test_missing_environment_image_fails_without_loading_it(self, tmp_path, missing_datablock):
+        image = None
+        if not missing_datablock:
+            image = bpy.data.images.new("MissingEnvironment", width=1, height=1)
+            image.source = "FILE"
+            image.filepath = str(tmp_path / "missing.exr")
+        texture = self.material.node_tree.nodes.new("ShaderNodeTexEnvironment")
+        texture.image = image
+        shader = self.material.node_tree.nodes.get("Principled BSDF")
+        self.material.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
+        assert texture.type == "TEX_ENVIRONMENT"
+        before = (image.filepath, image.has_data, image.is_dirty) if image else None
+
+        report = self._report()
+
+        assert report["passed"] is False
+        assert "MATERIAL_IMAGE_MISSING" in {issue["code"] for issue in report["issues"]}
+        assert texture.image == image
+        if image:
+            assert (image.filepath, image.has_data, image.is_dirty) == before
+
+    @pytest.mark.parametrize("require_nodes", [False, True])
+    def test_image_checks_follow_native_material_node_state(self, require_nodes):
+        texture = self._texture(None)
+        tree = self.material.node_tree
+        # New Blender versions may retain a no-op use_nodes setter or remove it.
+        if hasattr(self.material, "use_nodes"):
+            self.material.use_nodes = False
+        nodes_enabled = bool(getattr(self.material, "use_nodes", True))
+        assert self.material.node_tree == tree
+        assert texture.outputs["Color"].is_linked
+
+        result = self.validate(object_names=[self.obj.name], rules={"require_nodes": require_nodes})
+
+        assert result["success"] is True
+        report = result["context"]["report"]
+        codes = {issue["code"] for issue in report["issues"]}
+        if nodes_enabled:
+            # Do not claim disabled-tree coverage if the native API cannot disable it.
+            assert report["passed"] is False
+            assert codes == {"MATERIAL_IMAGE_MISSING"}
+        else:
+            assert report["passed"] is (not require_nodes)
+            assert codes == ({"MATERIAL_NODES_DISABLED"} if require_nodes else {"MATERIALS_VALID"})
+        assert bool(getattr(self.material, "use_nodes", True)) is nodes_enabled
+        assert self.material.node_tree == tree
+        assert texture.image is None
+
     @pytest.mark.parametrize("packed", [False, True])
     def test_generated_and_packed_images_need_no_external_file(self, packed):
         image = bpy.data.images.new("InternalFixture", width=1, height=1)
