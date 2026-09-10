@@ -9,6 +9,7 @@ from xml.etree import ElementTree
 import pytest
 
 from dcc_mcp_blender._uv_quality import _intersection_area, audit_uv_layout, export_uv_layout
+from tests.conftest import load_and_call
 
 TRI = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
 
@@ -19,6 +20,7 @@ def mesh(name="Mesh", triangles=(TRI,), with_uv=True):
     uv_layers = NS(active=layer if with_uv else None, get=lambda name: layer if name == "UVMap" and with_uv else None)
     polygons = [NS(index=i, loop_indices=tuple(range(3 * i, 3 * i + 3))) for i in range(len(triangles))]
     data = NS(
+        is_editmode=False,
         uv_layers=uv_layers,
         loops=list(range(len(coords))),
         polygons=polygons,
@@ -137,6 +139,29 @@ def test_object_validation_and_edit_mode_fail_closed(install):
     obj.mode = "EDIT"
     assert not audit_uv_layout(["Mesh"])["success"]
     assert obj.mode == "EDIT"
+
+
+@pytest.mark.parametrize("tool", ["audit_uv_layout", "export_uv_layout"])
+def test_shared_edit_mesh_is_rejected_through_skill_entry_without_changes(tool, tmp_path):
+    editor = mesh("Editing")
+    editor.mode = "EDIT"
+    editor.data.is_editmode = True
+    alias = NS(name="Alias", type="MESH", mode="OBJECT", data=editor.data)
+    host = NS(data=NS(objects={editor.name: editor, alias.name: alias}))
+    before = [item.uv for item in editor.data.uv_layers.active.data]
+    path = tmp_path / "shared.svg"
+    arguments = {"object_names": [alias.name]}
+    if tool == "export_uv_layout":
+        arguments["output_path"] = str(path)
+
+    result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), host, **arguments)
+
+    assert result["success"] is False, result
+    assert "OBJECT mode" in result["_meta"]["dcc.error"]["message"]
+    assert not path.exists()
+    assert editor.mode == "EDIT" and alias.mode == "OBJECT"
+    assert editor.data.is_editmode is True
+    assert [item.uv for item in editor.data.uv_layers.active.data] == before
 
 
 def test_export_true_edges_xml_escaping_and_no_overwrite(install, tmp_path):

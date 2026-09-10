@@ -65,3 +65,44 @@ def test_real_triangle_stacks(tmp_path):
     result = audit([obj.name])
     assert result["context"]["issue_counts"] == {"overlap_pairs": 1}
     assert audit([obj.name], allow_stacked=True)["context"]["passed"]
+
+
+@pytest.mark.parametrize("tool", ["audit_uv_layout", "export_uv_layout"])
+def test_shared_edit_mesh_rejected_without_flushing_uvs_or_exporting(tool, tmp_path):
+    import bmesh
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_plane_add()
+    editor = bpy.context.object
+    alias = bpy.data.objects.new("SharedMeshAlias", editor.data)
+    bpy.context.scene.collection.objects.link(alias)
+    alias.select_set(False)
+    bpy.ops.object.mode_set(mode="EDIT")
+    path = tmp_path / "shared.svg"
+    try:
+        assert editor.mode == "EDIT" and alias.mode == "OBJECT"
+        assert alias.data.is_editmode is True
+        edit_mesh = bmesh.from_edit_mesh(editor.data)
+        uv_layer = edit_mesh.loops.layers.uv.active
+        assert uv_layer is not None
+        loops = [loop for face in edit_mesh.faces for loop in face.loops]
+        loops[0][uv_layer].uv = (0.25, 0.75)
+        coordinates = [tuple(loop[uv_layer].uv) for loop in loops]
+        active = bpy.context.view_layer.objects.active
+        selected = list(bpy.context.selected_objects)
+        arguments = {"object_names": [alias.name]}
+        if tool == "export_uv_layout":
+            arguments["output_path"] = str(path)
+
+        result = load_skill("blender-uv-ops", tool).main(**arguments)
+
+        assert result["success"] is False, result
+        assert "OBJECT mode" in result["_meta"]["dcc.error"]["message"]
+        assert editor.mode == "EDIT" and alias.mode == "OBJECT"
+        assert alias.data.is_editmode is True
+        assert bpy.context.view_layer.objects.active == active
+        assert list(bpy.context.selected_objects) == selected
+        assert [tuple(loop[uv_layer].uv) for loop in loops] == coordinates
+        assert not path.exists()
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")

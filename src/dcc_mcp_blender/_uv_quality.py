@@ -38,8 +38,9 @@ def _objects(object_names, uv_map, max_triangles, triangle_limit=200000):
         obj = bpy.data.objects.get(name)
         if obj is None or obj.type != "MESH":
             raise ValueError("Mesh object not found: {}".format(name))
-        if obj.mode != "OBJECT":
-            raise ValueError("Object must be in OBJECT mode: {}".format(name))
+        # An object-mode alias may share a mesh being edited by another object.
+        if obj.mode != "OBJECT" or obj.data.is_editmode:
+            raise ValueError("Object must be in OBJECT mode and its shared mesh must not be edited: {}".format(name))
         objects.append(obj)
     return objects
 
