@@ -6,7 +6,7 @@ from typing import Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
-from dcc_mcp_blender._camera_validation import positive_number
+from dcc_mcp_blender._camera_validation import camera_number
 
 VALID_CAMERA_TYPES = {"PERSP", "ORTHO", "PANO"}
 
@@ -57,7 +57,7 @@ def set_camera_properties(
             ("ortho_scale", ortho_scale),
         ):
             if value is not None:
-                positive_number(value, key)
+                camera_number(value, key)
         near = clip_start if clip_start is not None else cam.clip_start
         far = clip_end if clip_end is not None else cam.clip_end
         if (clip_start is not None or clip_end is not None) and near >= far:

@@ -25,7 +25,15 @@ def _make_camera_obj(name="Camera"):
 
 class TestCreateCamera:
     @pytest.mark.parametrize(
-        "args", [{"lens": 0}, {"lens": float("nan")}, {"location": []}, {"location": [0, 0, float("inf")]}]
+        "args",
+        [
+            {"lens": 0},
+            {"lens": 0.5},
+            {"lens": 1e39},
+            {"lens": float("nan")},
+            {"location": []},
+            {"location": [0, 0, float("inf")]},
+        ],
     )
     def test_invalid_request_does_not_allocate_camera(self, args):
         bpy = make_mock_bpy()
@@ -108,6 +116,10 @@ class TestSetCameraProperties:
             {"camera_type": "ORTHO", "lens": float("nan")},
             {"lens": 85, "clip_end": float("inf")},
             {"lens": True},
+            {"lens": 0.5},
+            {"lens": 85, "clip_start": 1e-9},
+            {"lens": 85, "clip_end": 1e-9},
+            {"lens": 85, "ortho_scale": 1e39},
         ],
     )
     def test_invalid_request_preserves_every_property(self, args):
@@ -140,7 +152,23 @@ class TestSetCameraProperties:
         assert result["success"] is True
         assert result["context"]["ortho_scale"] == 3.2
         assert result["context"]["lens"] == 50
+        assert (obj.data.type, obj.data.ortho_scale) == ("ORTHO", 3.2)
         assert (obj.data.clip_start, obj.data.clip_end) == (0.02, 20)
+
+    def test_native_lower_bounds_are_applied(self):
+        bpy = make_mock_bpy()
+        obj = _make_camera_obj()
+        bpy.data.objects.get.return_value = obj
+        result = load_and_call(
+            "blender-camera/scripts/set_camera_properties.py",
+            bpy,
+            name="Camera",
+            lens=1,
+            clip_start=1e-6,
+            ortho_scale=0,
+        )
+        assert result["success"] is True
+        assert (obj.data.lens, obj.data.clip_start, obj.data.ortho_scale) == (1, 1e-6, 0)
 
     def test_set_lens(self):
         bpy = make_mock_bpy()

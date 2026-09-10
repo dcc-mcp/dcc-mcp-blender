@@ -25,7 +25,8 @@ tools:
         description: World position [x, y, z] in scene units.
       lens:
         type: number
-        exclusiveMinimum: 0
+        minimum: 1
+        maximum: 3.4028234663852886e+38
         default: 50.0
         description: Focal length in millimetres.
       set_as_active:
@@ -108,7 +109,8 @@ tools:
       name: *id001
       lens:
         type: number
-        exclusiveMinimum: 0
+        minimum: 1
+        maximum: 3.4028234663852886e+38
         description: Focal length in millimetres; does not affect orthographic framing.
       camera_type:
         type: string
@@ -118,15 +120,18 @@ tools:
         - PANO
       clip_start:
         type: number
-        exclusiveMinimum: 0
+        minimum: 0.000001
+        maximum: 3.4028234663852886e+38
         description: Near clipping distance; must be less than the effective far distance.
       clip_end:
         type: number
-        exclusiveMinimum: 0
+        minimum: 0.000001
+        maximum: 3.4028234663852886e+38
         description: Far clipping distance; must exceed the effective near distance.
       ortho_scale:
         type: number
-        exclusiveMinimum: 0
+        minimum: 0
+        maximum: 3.4028234663852886e+38
         description: Orthographic view width in scene units.
     required:
     - name

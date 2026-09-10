@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
-from dcc_mcp_blender._camera_validation import camera_location, positive_number
+from dcc_mcp_blender._camera_validation import camera_location, camera_number
 
 
 def create_camera(
@@ -30,7 +30,7 @@ def create_camera(
         import bpy
 
         loc = location if location is not None else [0.0, -8.0, 3.0]
-        positive_number(lens, "lens")
+        camera_number(lens, "lens")
         camera_location(loc)
         cam_data = bpy.data.cameras.new(name=name or "Camera")
         cam_data.lens = lens
