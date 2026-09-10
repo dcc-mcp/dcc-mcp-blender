@@ -33,10 +33,14 @@ def test_multiview_images_and_source_topology(tmp_path):
     directory = result["context"]["job_directory"]
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        context = get_render_job(job_id)["context"]
+        response = get_render_job(job_id)
+        assert response["success"], response
+        context = response["context"]
+        assert "status" in context, response
         if context["status"] in {"completed", "failed", "cancelled"}:
             break
-        time.sleep(0.1)
+        # Exercise Windows receipt replacement while readers poll frequently.
+        time.sleep(0.002)
     assert context["status"] == "completed", context
     assert len(context["items"]) == 4
     assert all(item["image"]["width"] == 64 and item["image"]["height"] == 64 for item in context["items"])
@@ -51,7 +55,9 @@ def test_multiview_images_and_source_topology(tmp_path):
     from dcc_mcp_blender import _render_job_ops
 
     del _render_job_ops._JOBS[job_id]
-    assert get_render_job(job_id, directory)["context"]["status"] == "completed"
+    recovered = get_render_job(job_id, directory)
+    assert recovered["success"], recovered
+    assert recovered["context"]["status"] == "completed", recovered
 
 
 def test_worker_preserves_partial_failure(tmp_path):
@@ -102,7 +108,9 @@ def test_worker_preserves_partial_failure(tmp_path):
         tmp_path / "stderr.log",
     )
     assert process.wait(timeout=120) == 0, (tmp_path / "stderr.log").read_text()
-    result = get_render_job("partial", str(tmp_path))["context"]
+    response = get_render_job("partial", str(tmp_path))
+    assert response["success"], response
+    result = response["context"]
     assert result["status"] == "failed"
     assert result["items"][0]["status"] == "failed"
     assert result["items"][1]["status"] == "completed"
