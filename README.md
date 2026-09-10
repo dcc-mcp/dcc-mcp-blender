@@ -6,6 +6,23 @@
   <img src="docs/assets/dcc-mcp-blender.svg" alt="DCC-MCP · BLENDER" width="600">
 </p>
 
+## Showcase: weathered crate and material reconstruction
+
+![Blender Cycles crate with Designer materials](docs/showcase/crate-lookdev/render.png)
+
+A 2.2 m reference-guided crate with layered broken wood, SD height displacement,
+rusted steel reflections and verified floor contact. Modeling, UVs and lookdev
+are editable in Blender; paint, grain, scratches and rust are authored in
+Substance 3D Designer.
+
+| UV coordinates | Checker on the model |
+| --- | --- |
+| ![Actual BoardUV and WoodDetailUV coordinates](docs/showcase/crate-lookdev/uv-layout.png) | ![UV checker rendered in Blender](docs/showcase/crate-lookdev/uv-checker.png) |
+
+[Scene, detail renders and UV explanation](docs/showcase/crate-lookdev/README.md) ·
+[Designer materials and full node workflow](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/tree/main/docs/showcase/crate-lookdev) ·
+[Website gallery](https://dcc-mcp.github.io/showcase#blender-designer-crate)
+
 ## Agent workflow
 
 AI agents should use the shared gateway through `dcc-mcp-cli`; IDE users may

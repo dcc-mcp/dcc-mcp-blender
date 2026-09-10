@@ -1,0 +1,36 @@
+{
+  "source_repository": "https://github.com/dcc-mcp/dcc-mcp-substance3d-designer",
+  "source_commit": "f81044b311e712883ece3a32733fb63215f091ae",
+  "files": [
+    {
+      "path": "render.png",
+      "source_path": "docs/showcase/crate-lookdev/render.png",
+      "sha256": "5a80bc5aece619b5c95ed3882e7e14296388e0a3b8cfc7bbd13be6c59576c6ff",
+      "bytes": 3219088
+    },
+    {
+      "path": "detail.png",
+      "source_path": "docs/showcase/crate-lookdev/detail.png",
+      "sha256": "f7ee8828dfa154e3542861130621507b3fa4463e0d2d5e0215e188f45862d828",
+      "bytes": 2609450
+    },
+    {
+      "path": "splinters.png",
+      "source_path": "docs/showcase/crate-lookdev/splinters.png",
+      "sha256": "fd7471df61e7a95bdf388e27df3d2098d2495dffd9aafc5a06dbb578c0670b76",
+      "bytes": 2498127
+    },
+    {
+      "path": "uv-layout.png",
+      "source_path": "docs/showcase/crate-lookdev/uv-layout.png",
+      "sha256": "fee29383ac3a3138509ff0084b9852817ead8bee7b86c88bf8aec1aaef30d025",
+      "bytes": 66982
+    },
+    {
+      "path": "uv-checker.png",
+      "source_path": "docs/showcase/crate-lookdev/uv-checker.png",
+      "sha256": "2416c80e6a25d3fc8e8cabc9d2520ade3ff62209254f717565cbc6169ad40c6e",
+      "bytes": 2202465
+    }
+  ]
+}
