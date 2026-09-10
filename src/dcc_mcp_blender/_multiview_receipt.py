@@ -45,7 +45,12 @@ def write_receipt(directory, receipt):
             stream.write(json.dumps(receipt))
         _retry_receipt_io(lambda: temporary.replace(path))
     finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            # Best-effort cleanup of our unique file must not mask the write
+            # or serialization failure. Later writers never reuse this path.
+            pass
 
 
 def read_receipt(directory, job_id):

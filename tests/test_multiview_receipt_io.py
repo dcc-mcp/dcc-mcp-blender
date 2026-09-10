@@ -234,3 +234,33 @@ def test_overlapping_writers_use_independent_temporary_files(tmp_path, monkeypat
     assert len(set(pending)) == 2
     assert read_receipt(tmp_path, "test") == final
     assert list(tmp_path.iterdir()) == [tmp_path / "result.json"]
+
+
+@pytest.mark.parametrize("failure", [errno.ENOSPC, errno.EIO, "serialization"])
+def test_cleanup_error_does_not_mask_original_write_failure(tmp_path, monkeypatch, failure):
+    original = _receipt()
+    write_receipt(tmp_path, original)
+    updated = _receipt("failed")
+    primary_error = None
+    if failure == "serialization":
+        updated["invalid"] = object()
+    else:
+        primary_error = OSError(failure, "Primary receipt write failure")
+
+        def fail_replace(path, target):
+            raise primary_error
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+
+    def fail_cleanup(path, **kwargs):
+        raise PermissionError("Temporary receipt cleanup denied")
+
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+    with pytest.raises(TypeError if failure == "serialization" else OSError) as raised:
+        write_receipt(tmp_path, updated)
+
+    if primary_error is not None:
+        assert raised.value is primary_error
+    else:
+        assert "not JSON serializable" in str(raised.value)
+    assert read_receipt(tmp_path, "test") == original
