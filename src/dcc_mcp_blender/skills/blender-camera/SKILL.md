@@ -34,3 +34,12 @@ metadata:
 # blender-camera
 
 Blender camera management skill.
+
+Use `set_camera_properties` with `lens` in millimetres for perspective focal
+length, and `ortho_scale` in scene units for orthographic framing. Changing
+`lens` does not change the orthographic view width. `list_cameras` reports
+both values and the clipping range for readback.
+
+Camera requests validate numeric values and the effective clipping range
+before changing camera properties. Invalid requests leave those properties
+unchanged. Discover the explicit tool schemas and call examples before use.
