@@ -190,6 +190,61 @@ class TestSearchAssetsFilesystem:
 
 
 class TestSearchAssetsAssetLibrary:
+    def test_permission_exception_does_not_hide_later_valid_library(self, tmp_path, monkeypatch):
+        restricted = tmp_path / "restricted"
+        restricted.mkdir()
+        valid = tmp_path / "valid"
+        _touch(valid / "hero.obj")
+        bpy = _library_bpy(
+            [
+                SimpleNamespace(name="Restricted", path=str(restricted)),
+                SimpleNamespace(name="Valid", path=str(valid)),
+            ]
+        )
+        original_is_dir = Path.is_dir
+
+        def is_dir(path):
+            if path == restricted:
+                raise PermissionError("Directory access denied")
+            return original_is_dir(path)
+
+        monkeypatch.setattr(Path, "is_dir", is_dir)
+        result = load_and_call("blender-asset-source/scripts/search_assets.py", bpy, source="asset_library")
+
+        assert result["success"], result
+        context = result["context"]
+        assert context["count"] == 1
+        assert context["asset_library_status"] == "partial"
+        assert "Restricted" in context["warnings"][0]
+        assert context["descriptors"][0]["name"] == "hero"
+        assert context["descriptors"][0]["metadata"]["library_name"] == "Valid"
+
+    def test_all_library_exceptions_return_error_with_each_failed_library(self, tmp_path, monkeypatch):
+        restricted = tmp_path / "restricted"
+        offline = tmp_path / "offline"
+        bpy = _library_bpy(
+            [
+                SimpleNamespace(name="Restricted", path=str(restricted)),
+                SimpleNamespace(name="Offline", path=str(offline)),
+            ]
+        )
+        original_is_dir = Path.is_dir
+
+        def is_dir(path):
+            if path == restricted:
+                raise PermissionError("Directory access denied")
+            if path == offline:
+                raise OSError("Library device offline")
+            return original_is_dir(path)
+
+        monkeypatch.setattr(Path, "is_dir", is_dir)
+        result = load_and_call("blender-asset-source/scripts/search_assets.py", bpy, source="asset_library")
+
+        assert result["success"] is False
+        assert result["context"]["asset_library_status"] == "error"
+        assert "Restricted" in result["error"]
+        assert "Offline" in result["error"]
+
     def test_broken_library_does_not_hide_later_valid_library(self, tmp_path):
         _touch(tmp_path / "hero.obj")
         bpy = _library_bpy(

@@ -161,23 +161,28 @@ def _scan_asset_library(
         if not libraries:
             return results, None, "no_libraries"
         for lib in libraries:
-            lib_path = getattr(lib, "path", None)
-            if not lib_path:
-                failures.append(f"Registered library '{getattr(lib, 'name', '')}' has no directory path.")
-                continue
-            lib_dir = Path(lib_path)
-            sub_results, scan_error = _scan_filesystem(
-                lib_dir,
-                query=query,
-                allowed_types=allowed_types,
-                max_results=max_results - len(results),
-            )
-            for desc in sub_results:
-                desc["source"] = "asset_library"
-                desc["metadata"]["library_name"] = getattr(lib, "name", "")
-            results.extend(sub_results)
-            if scan_error:
-                failures.append(f"Registered library '{getattr(lib, 'name', '')}': {scan_error['error']}")
+            library_name = ""
+            try:
+                library_name = getattr(lib, "name", "")
+                lib_path = getattr(lib, "path", None)
+                if not lib_path:
+                    failures.append(f"Registered library '{library_name}' has no directory path.")
+                    continue
+                lib_dir = Path(lib_path)
+                sub_results, scan_error = _scan_filesystem(
+                    lib_dir,
+                    query=query,
+                    allowed_types=allowed_types,
+                    max_results=max_results - len(results),
+                )
+                for desc in sub_results:
+                    desc["source"] = "asset_library"
+                    desc["metadata"]["library_name"] = library_name
+                results.extend(sub_results)
+                if scan_error:
+                    failures.append(f"Registered library '{library_name}': {scan_error['error']}")
+            except Exception as exc:
+                failures.append(f"Registered library '{library_name}': {exc}")
             if len(results) >= max_results:
                 break
     except Exception as exc:
