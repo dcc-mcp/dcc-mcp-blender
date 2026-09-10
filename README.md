@@ -21,7 +21,7 @@ Substance 3D Designer.
 
 [Scene, detail renders and UV explanation](docs/showcase/crate-lookdev/README.md) ·
 [Designer materials and full node workflow](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/tree/main/docs/showcase/crate-lookdev) ·
-[Website gallery](https://dcc-mcp.github.io/showcase#blender-designer-crate)
+[Website gallery](https://dcc-mcp.github.io/showcase)
 
 ## Agent workflow
 
