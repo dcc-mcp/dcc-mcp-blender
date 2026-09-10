@@ -296,7 +296,8 @@ def validate_materials(object_names: Optional[List[str]] = None, rules: Optional
     """Validate slots, required node trees, and connected image file presence.
 
     ``require_nodes`` rejects disabled or empty node trees. Image checks cover
-    linked, unmuted nodes within material graphs, not final-output reachability,
+    linked, unmuted image and environment textures in enabled material graphs,
+    not dormant node trees or final-output reachability,
     image decoding, or render fidelity. They never load, reload, or write images.
     Generated/viewer and packed FILE images need no external path. UDIM checks
     use declared tiles only; packed tile coverage, sequence/movie sources, and
@@ -325,7 +326,7 @@ def validate_materials(object_names: Optional[List[str]] = None, rules: Optional
                         )
                     )
                     continue
-                if rules.get("require_nodes") and not bool(getattr(material, "use_nodes", False)):
+                if rules.get("require_nodes") and not bool(getattr(material, "use_nodes", True)):
                     issues.append(
                         _issue(
                             "MATERIAL_NODES_DISABLED",

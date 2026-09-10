@@ -33,7 +33,7 @@ def _connected_images(material):
                 return images, True
             if getattr(node, "mute", False) or not any(output.is_linked for output in node.outputs):
                 continue
-            if node.type == "TEX_IMAGE":
+            if node.type in {"TEX_IMAGE", "TEX_ENVIRONMENT"}:
                 images.append(node)
             elif node.type == "GROUP":
                 stack.append((node.node_tree, depth + 1))
@@ -55,9 +55,10 @@ def _image_issue(material, node, image, code, message, tile=None):
 
 
 def material_image_issues(bpy, material):
-    """Return resource findings for image nodes connected within a material."""
+    """Return resource findings for image nodes in an enabled material graph."""
     tree = getattr(material, "node_tree", None)
-    if tree is None:
+    # Hosts without the legacy toggle always use material node trees.
+    if tree is None or not bool(getattr(material, "use_nodes", True)):
         return []
     issues = []
     nodes, incomplete = _connected_images(material)
