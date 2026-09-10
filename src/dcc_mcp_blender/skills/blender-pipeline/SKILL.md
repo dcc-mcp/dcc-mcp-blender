@@ -1,6 +1,6 @@
 ---
 name: blender-pipeline
-description: "Blender local asset metadata, project context, publish manifests, and package prep"
+description: "Blender asset metadata, project context, publish manifests, package prep, and verified ComfyUI GLB publishing"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
 metadata:
@@ -8,7 +8,7 @@ metadata:
     dcc: blender
     version: "1.0.0"
     tags: [blender, pipeline, metadata, publish, manifest, asset]
-    search-hint: "asset metadata, project context, publish manifest, prepare publish package, local pipeline"
+    search-hint: "asset metadata, project context, publish manifest, prepare publish package, publish GLB to ComfyUI, local pipeline"
     search-aliases: [asset management, publishing, package prep, metadata management, project info, publish to disk, local delivery]
     intent: "Manage local asset metadata, project context, publish manifests, and lightweight publish packages for pipeline delivery."
     recall-context:
@@ -38,3 +38,8 @@ Local-only pipeline helpers for asset metadata and publish preparation.
 This first version writes manifests and lightweight package directories on the
 local filesystem only. It deliberately avoids studio-specific paths, service
 names, hostnames, or external publishing integrations.
+
+`publish_comfyui_asset` produces a verified GLB and `AssetDescriptor` without
+contacting ComfyUI. The artifact works with official ComfyUI workflows; the
+separate `dcc-mcp-comfyui` adapter can optionally stage it for latest-revision
+sync when the `dcc_mcp_sync` node is installed.
