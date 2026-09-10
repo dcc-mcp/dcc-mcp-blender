@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.conftest import load_and_call, make_mock_bpy
 
 
@@ -17,10 +19,21 @@ def _make_camera_obj(name="Camera"):
     obj.data.type = "PERSP"
     obj.data.clip_start = 0.1
     obj.data.clip_end = 1000.0
+    obj.data.ortho_scale = 6.0
     return obj
 
 
 class TestCreateCamera:
+    @pytest.mark.parametrize(
+        "args", [{"lens": 0}, {"lens": float("nan")}, {"location": []}, {"location": [0, 0, float("inf")]}]
+    )
+    def test_invalid_request_does_not_allocate_camera(self, args):
+        bpy = make_mock_bpy()
+        result = load_and_call("blender-camera/scripts/create_camera.py", bpy, **args)
+        assert result["success"] is False
+        bpy.data.cameras.new.assert_not_called()
+        bpy.data.objects.new.assert_not_called()
+
     def test_creates_camera(self):
         bpy = make_mock_bpy()
         cam_data = MagicMock()
@@ -85,6 +98,50 @@ class TestSetActiveCamera:
 
 
 class TestSetCameraProperties:
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {"lens": 85, "camera_type": "INVALID"},
+            {"lens": 85, "clip_start": 1001},
+            {"lens": 85, "clip_end": 0.01},
+            {"camera_type": "ORTHO", "ortho_scale": -1},
+            {"camera_type": "ORTHO", "lens": float("nan")},
+            {"lens": 85, "clip_end": float("inf")},
+            {"lens": True},
+        ],
+    )
+    def test_invalid_request_preserves_every_property(self, args):
+        bpy = make_mock_bpy()
+        obj = _make_camera_obj()
+        bpy.data.objects.get.return_value = obj
+        result = load_and_call("blender-camera/scripts/set_camera_properties.py", bpy, name="Camera", **args)
+        assert result["success"] is False
+        assert (obj.data.lens, obj.data.type, obj.data.clip_start, obj.data.clip_end, obj.data.ortho_scale) == (
+            50,
+            "PERSP",
+            0.1,
+            1000,
+            6,
+        )
+
+    def test_orthographic_framing_and_clipping_readback(self):
+        bpy = make_mock_bpy()
+        obj = _make_camera_obj()
+        bpy.data.objects.get.return_value = obj
+        result = load_and_call(
+            "blender-camera/scripts/set_camera_properties.py",
+            bpy,
+            name="Camera",
+            camera_type="ORTHO",
+            ortho_scale=3.2,
+            clip_start=0.02,
+            clip_end=20,
+        )
+        assert result["success"] is True
+        assert result["context"]["ortho_scale"] == 3.2
+        assert result["context"]["lens"] == 50
+        assert (obj.data.clip_start, obj.data.clip_end) == (0.02, 20)
+
     def test_set_lens(self):
         bpy = make_mock_bpy()
         obj = _make_camera_obj()

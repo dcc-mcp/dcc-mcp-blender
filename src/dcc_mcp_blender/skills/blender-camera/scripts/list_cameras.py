@@ -20,6 +20,9 @@ def list_cameras() -> dict:
                 "name": obj.name,
                 "lens": obj.data.lens,
                 "type": obj.data.type,
+                "ortho_scale": obj.data.ortho_scale,
+                "clip_start": obj.data.clip_start,
+                "clip_end": obj.data.clip_end,
                 "location": list(obj.location),
                 "is_active": obj == active_camera,
             }
