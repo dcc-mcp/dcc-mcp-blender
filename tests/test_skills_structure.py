@@ -5,6 +5,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+import pytest
+
 SKILLS_DIR = pathlib.Path(__file__).parent.parent / "src" / "dcc_mcp_blender" / "skills"
 SKILLS_INDEX = SKILLS_DIR / "SKILLS_INDEX.md"
 
@@ -46,10 +48,12 @@ ALLOWED_STAGES = frozenset(
 )
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<body>.*?)\n---\n", re.DOTALL)
-_DCC_MCP_TAIL = r"dcc-mcp:"
+# `metadata:` has to sit at column 0. An indented `metadata:` belongs to
+# whichever mapping owns that indent, so it is never the block that
+# dcc-mcp-core reads and must not anchor the taxonomy lookup.
+_METADATA_RE = re.compile(r"^metadata:[ \t]*$", re.MULTILINE)
 # Indentation is matched with [ \t] rather than \s so an indent group can never
 # swallow the preceding newline, which inflates its length and drops the key.
-_DCC_MCP_RE = re.compile(r"^(?P<indent>[ \t]+)" + _DCC_MCP_TAIL + r"[ \t]*$", re.MULTILINE)
 _SCALAR_RE = re.compile(
     r"^(?P<indent>[ \t]+)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):[ \t]*(?P<value>\S+)[ \t]*$", re.MULTILINE
 )
@@ -128,40 +132,81 @@ def _bundled_skill_dirs() -> list[pathlib.Path]:
     return sorted((path for path in SKILLS_DIR.iterdir() if path.is_dir()), key=lambda path: path.name)
 
 
+def _indent_width(line: str) -> int:
+    """Number of leading spaces/tabs on ``line``."""
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _nested_block(lines: list[str], parent_indent: int) -> list[str]:
+    """Return the leading run of ``lines`` nested deeper than ``parent_indent``.
+
+    The run stops at the first non-blank line that is not indented deeper than
+    the owning key: that line is a sibling or a dedented parent, never a child.
+    """
+    collected = []
+    for line in lines:
+        if line.strip() and _indent_width(line) <= parent_indent:
+            break
+        collected.append(line)
+    return collected
+
+
+def _direct_child_indent(lines: list[str]) -> int:
+    """Indent width of the direct children in ``lines``; ``0`` when there are none.
+
+    Every line of a mapping block is indented past its owning key, so a width
+    of ``0`` never describes a real child and doubles as "nothing nested here".
+    """
+    widths = [_indent_width(line) for line in lines if line.strip()]
+    return min(widths) if widths else 0
+
+
+def _find_direct_key(lines: list[str], key: str) -> int:
+    """Return the line index of ``key:`` among ``lines``' direct children.
+
+    Returns ``-1`` when the key is absent, and also when it only appears
+    indented deeper — a grandchild is not a direct child of the mapping that
+    owns ``lines``, and matching it would let a nested decoy stand in for the
+    real field.
+    """
+    child_indent = _direct_child_indent(lines)
+    for index, line in enumerate(lines):
+        if _indent_width(line) == child_indent and line.strip() == key + ":":
+            return index
+    return -1
+
+
 def _frontmatter_skill(skill_md: pathlib.Path) -> dict[str, str]:
     """Return the ``metadata.dcc-mcp`` scalar keys declared in a SKILL.md.
 
-    Only scalars nested directly under ``metadata.dcc-mcp`` are returned.
-    Matching scalars anywhere in the front matter would let a sibling mapping
-    declare ``layer`` / ``stage`` and satisfy the taxonomy assertions without
-    those fields existing where dcc-mcp-core reads them.
+    The lookup is anchored twice: first on the top-level ``metadata:`` key,
+    then on its **direct** ``dcc-mcp:`` child. A ``dcc-mcp:`` mapping parked
+    anywhere else — under a sibling key, or on an indented line inside a folded
+    ``description`` scalar — therefore cannot declare ``layer`` / ``stage`` and
+    satisfy the taxonomy assertions without those fields existing where
+    dcc-mcp-core reads them.
 
-    Deliberately regex-based (no PyYAML import) so the assertion runs on any
-    interpreter, including the Python 3.7 lane, without a Blender host.
+    Deliberately regex/indent based (no PyYAML import) so the assertion runs on
+    any interpreter, including the Python 3.7 lane, without a Blender host.
     """
     text = skill_md.read_text(encoding="utf-8")
     match = _FRONTMATTER_RE.match(text)
     assert match, "%s has no YAML front matter" % skill_md
 
     body = match.group("body")
-    dcc_match = _DCC_MCP_RE.search(body)
-    assert dcc_match, "%s front matter has no 'metadata.dcc-mcp' mapping" % skill_md
+    metadata_match = _METADATA_RE.search(body)
+    assert metadata_match, "%s front matter has no top-level 'metadata' mapping" % skill_md
 
-    parent_indent = len(dcc_match.group("indent"))
-    child_indent = parent_indent + 2
+    metadata_lines = _nested_block(body[metadata_match.end() :].splitlines(), 0)
+    dcc_mcp_index = _find_direct_key(metadata_lines, "dcc-mcp")
+    assert dcc_mcp_index >= 0, "%s front matter has no 'metadata.dcc-mcp' mapping" % skill_md
 
-    # Collect the contiguous run of lines nested under `dcc-mcp:` and stop at
-    # the first sibling key that is not indented deeper than the mapping.
-    block_lines = []
-    for line in body[dcc_match.end() :].splitlines():
-        if line.strip() and not line.startswith(" " * (parent_indent + 1)):
-            break
-        block_lines.append(line)
-    block = "\n".join(block_lines)
+    dcc_mcp_lines = _nested_block(metadata_lines[dcc_mcp_index + 1 :], _direct_child_indent(metadata_lines))
+    child_indent = _direct_child_indent(dcc_mcp_lines)
 
     return {
         match_key.group("key"): match_key.group("value")
-        for match_key in _SCALAR_RE.finditer(block)
+        for match_key in _SCALAR_RE.finditer("\n".join(dcc_mcp_lines))
         if len(match_key.group("indent")) == child_indent
     }
 
@@ -257,6 +302,128 @@ def test_taxonomy_fields_must_live_under_metadata_dcc_mcp(tmp_path):
     assert fields["dcc"] == "blender"
     assert "layer" not in fields
     assert "stage" not in fields
+
+
+def test_dcc_mcp_mapping_outside_top_level_metadata_is_ignored(tmp_path):
+    """A ``dcc-mcp:`` mapping parked outside ``metadata`` must not be read.
+
+    Combines the two ways a decoy can hide from a naive first-match search:
+    under an unrelated top-level key, and under an **indented** ``metadata:``
+    that only looks like the real one. Both declare ``layer`` / ``stage`` while
+    ``metadata.dcc-mcp`` carries neither, so reading either would let the
+    taxonomy tests pass on a SKILL.md dcc-mcp-core cannot score.
+    """
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: blender-decoy\n"
+        'description: "Decoy skill with a dcc-mcp mapping outside the top-level metadata"\n'
+        "x-preview:\n"
+        "  metadata:\n"
+        "    dcc-mcp:\n"
+        "      layer: domain\n"
+        "      stage: authoring\n"
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    dcc: blender\n"
+        '    version: "1.0.0"\n'
+        "---\n"
+        "\n"
+        "# blender-decoy\n",
+        encoding="utf-8",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["dcc"] == "blender"
+    assert "layer" not in fields
+    assert "stage" not in fields
+
+
+def test_indented_dcc_mcp_inside_a_description_scalar_is_ignored(tmp_path):
+    """An indented ``dcc-mcp:`` inside a folded ``description`` is prose, not config.
+
+    ``_FRONTMATTER_RE`` is non-greedy, so the description still sits inside the
+    front-matter body: an indented ``dcc-mcp:`` written there is text, and only
+    appears as a mapping to a line-oriented parser.
+    """
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: blender-decoy\n"
+        "description: >\n"
+        "  Mentions a nested mapping in prose:\n"
+        "    dcc-mcp:\n"
+        "      layer: domain\n"
+        "      stage: authoring\n"
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    dcc: blender\n"
+        '    version: "1.0.0"\n'
+        "---\n"
+        "\n"
+        "# blender-decoy\n",
+        encoding="utf-8",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["dcc"] == "blender"
+    assert "layer" not in fields
+    assert "stage" not in fields
+
+
+def test_metadata_without_a_dcc_mcp_child_is_rejected(tmp_path):
+    """``metadata`` that never declares ``dcc-mcp`` must fail loudly.
+
+    ``dcc-mcp-preview`` is a near-miss key: prefix matching would accept it and
+    then report an empty taxonomy instead of a missing one.
+    """
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: blender-decoy\n"
+        'description: "Decoy skill whose metadata has no dcc-mcp child"\n'
+        "metadata:\n"
+        "  source: bundled\n"
+        "  dcc-mcp-preview:\n"
+        "    layer: domain\n"
+        "    stage: authoring\n"
+        "---\n"
+        "\n"
+        "# blender-decoy\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AssertionError, match="metadata.dcc-mcp"):
+        _frontmatter_skill(skill_md)
+
+
+def test_dcc_mcp_nested_below_metadata_is_rejected(tmp_path):
+    """``metadata.catalog.dcc-mcp`` is a grandchild, not ``metadata.dcc-mcp``.
+
+    dcc-mcp-core reads the taxonomy at exactly ``metadata.dcc-mcp``, so a
+    mapping nested one level deeper is misplaced and must be reported rather
+    than silently adopted.
+    """
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: blender-decoy\n"
+        'description: "Decoy skill with dcc-mcp nested one level too deep"\n'
+        "metadata:\n"
+        "  catalog:\n"
+        "    dcc-mcp:\n"
+        "      layer: domain\n"
+        "      stage: authoring\n"
+        "---\n"
+        "\n"
+        "# blender-decoy\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AssertionError, match="metadata.dcc-mcp"):
+        _frontmatter_skill(skill_md)
 
 
 def test_skills_index_documents_stage_policy_and_task_chains():
