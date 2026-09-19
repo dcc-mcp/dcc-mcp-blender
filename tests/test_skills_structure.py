@@ -46,7 +46,13 @@ ALLOWED_STAGES = frozenset(
 )
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<body>.*?)\n---\n", re.DOTALL)
-_SCALAR_RE = re.compile(r"^(?P<indent>\s+)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):\s*(?P<value>\S+)\s*$", re.MULTILINE)
+_DCC_MCP_TAIL = r"dcc-mcp:"
+# Indentation is matched with [ \t] rather than \s so an indent group can never
+# swallow the preceding newline, which inflates its length and drops the key.
+_DCC_MCP_RE = re.compile(r"^(?P<indent>[ \t]+)" + _DCC_MCP_TAIL + r"[ \t]*$", re.MULTILINE)
+_SCALAR_RE = re.compile(
+    r"^(?P<indent>[ \t]+)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):[ \t]*(?P<value>\S+)[ \t]*$", re.MULTILINE
+)
 
 EXPECTED_SKILLS = [
     "blender-scene",
@@ -125,6 +131,11 @@ def _bundled_skill_dirs() -> list[pathlib.Path]:
 def _frontmatter_skill(skill_md: pathlib.Path) -> dict[str, str]:
     """Return the ``metadata.dcc-mcp`` scalar keys declared in a SKILL.md.
 
+    Only scalars nested directly under ``metadata.dcc-mcp`` are returned.
+    Matching scalars anywhere in the front matter would let a sibling mapping
+    declare ``layer`` / ``stage`` and satisfy the taxonomy assertions without
+    those fields existing where dcc-mcp-core reads them.
+
     Deliberately regex-based (no PyYAML import) so the assertion runs on any
     interpreter, including the Python 3.7 lane, without a Blender host.
     """
@@ -133,14 +144,25 @@ def _frontmatter_skill(skill_md: pathlib.Path) -> dict[str, str]:
     assert match, "%s has no YAML front matter" % skill_md
 
     body = match.group("body")
-    dcc_block = re.search(r"^\s{2}dcc-mcp:\s*$", body, re.MULTILINE)
-    assert dcc_block, "%s front matter has no 'metadata.dcc-mcp' block" % skill_md
+    dcc_match = _DCC_MCP_RE.search(body)
+    assert dcc_match, "%s front matter has no 'metadata.dcc-mcp' mapping" % skill_md
 
-    nested_indent = len(dcc_block.group(0)) - len(dcc_block.group(0).lstrip()) + 2
+    parent_indent = len(dcc_match.group("indent"))
+    child_indent = parent_indent + 2
+
+    # Collect the contiguous run of lines nested under `dcc-mcp:` and stop at
+    # the first sibling key that is not indented deeper than the mapping.
+    block_lines = []
+    for line in body[dcc_match.end() :].splitlines():
+        if line.strip() and not line.startswith(" " * (parent_indent + 1)):
+            break
+        block_lines.append(line)
+    block = "\n".join(block_lines)
+
     return {
         match_key.group("key"): match_key.group("value")
-        for match_key in _SCALAR_RE.finditer(body)
-        if len(match_key.group("indent")) == nested_indent
+        for match_key in _SCALAR_RE.finditer(block)
+        if len(match_key.group("indent")) == child_indent
     }
 
 
@@ -202,6 +224,39 @@ def test_infrastructure_skills_keep_their_ranking_penalty():
             errors.append("%s: layer=%r expected %r" % (skill_dir.name, actual, expected))
 
     assert not errors, "Skill layer errors:\n" + "\n".join("  - %s" % error for error in errors)
+
+
+def test_taxonomy_fields_must_live_under_metadata_dcc_mcp(tmp_path):
+    """A sibling mapping must not satisfy the taxonomy assertions.
+
+    Guards the front-matter parser: matching four-space scalars anywhere in the
+    front matter would let an unrelated mapping declare ``layer`` / ``stage``
+    and let the taxonomy tests pass on a SKILL.md that never declares them
+    under ``metadata.dcc-mcp``.
+    """
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: blender-decoy\n"
+        'description: "Decoy skill with taxonomy declared outside dcc-mcp"\n'
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    dcc: blender\n"
+        '    version: "1.0.0"\n'
+        "  decoy:\n"
+        "    layer: domain\n"
+        "    stage: authoring\n"
+        "---\n"
+        "\n"
+        "# blender-decoy\n",
+        encoding="utf-8",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["dcc"] == "blender"
+    assert "layer" not in fields
+    assert "stage" not in fields
 
 
 def test_skills_index_documents_stage_policy_and_task_chains():
