@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: scene
     version: "1.0.0"
     tags: [blender, scene-assembly, merge, append, link, view-layers, references]
     search-hint: "merge scene, append blend, link blend, view layer, external reference, library linking, scene assembly"

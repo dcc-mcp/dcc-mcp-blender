@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: render
     version: "1.0.0"
     tags: [blender, render, viewport, camera]
     search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview"

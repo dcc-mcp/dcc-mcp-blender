@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: scene
     version: "1.0.0"
     tags: [blender, camera, viewport]
     search-hint: "camera, lens, focal length, active camera, perspective, create camera, list cameras"

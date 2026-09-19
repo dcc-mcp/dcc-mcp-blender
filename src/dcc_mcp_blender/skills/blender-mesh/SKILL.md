@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: authoring
     version: "1.0.0"
     tags: [blender, mesh, modifier, geometry]
     search-hint: "modifier, subdivision, smooth, apply modifier, mesh edit, list modifiers, mesh info"

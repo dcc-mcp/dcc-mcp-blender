@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: bootstrap
     version: "1.0.0"
     tags: [blender, scene, hierarchy]
     search-hint: "new scene, open, save, list objects, hierarchy, scene info, session, diagnostics"

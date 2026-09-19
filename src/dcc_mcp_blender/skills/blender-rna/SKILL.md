@@ -7,6 +7,7 @@ metadata:
   dcc-mcp:
     dcc: blender
     layer: domain
+    stage: diagnostics
     version: "1.0.0"
     tags: [blender, rna, discovery, read-only, modifiers]
     search-hint: "RNA type search property schema enum limits modifier parameter readback Blender API introspection"

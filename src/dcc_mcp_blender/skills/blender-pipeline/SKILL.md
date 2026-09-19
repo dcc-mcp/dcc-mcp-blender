@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: pipeline
     version: "1.0.0"
     tags: [blender, pipeline, metadata, publish, manifest, asset]
     search-hint: "asset metadata, project context, publish manifest, prepare publish package, publish GLB to ComfyUI, local pipeline"

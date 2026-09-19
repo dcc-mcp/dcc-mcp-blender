@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.0.0"
     tags: [blender, shader-nodes, geometry-nodes, node-graph, sockets, links, materials, procedural]
     search-hint: "shader nodes, material nodes, node graph, sockets, links, principled bsdf, texture node, geometry node tree, metallic, metalness, roughness, existing PBR material"

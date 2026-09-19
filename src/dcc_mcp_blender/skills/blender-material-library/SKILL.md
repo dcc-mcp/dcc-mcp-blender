@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.0.0"
     tags: [blender, material, lookdev, texture, color-management, preset]
     search-hint: "material presets, assign texture, material connections, shader assignment, color management, images"

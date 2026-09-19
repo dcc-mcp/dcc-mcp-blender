@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.0.0"
     tags: [blender, node-graph, compositor, nodes, shader, geometry-nodes]
     search-hint: "node graph, compositor nodes, material nodes, geometry nodes, all node graphs, node tree discovery"

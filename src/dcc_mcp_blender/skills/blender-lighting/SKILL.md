@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.0.0"
     tags: [blender, lighting, lights, world]
     search-hint: "create light, point, sun, area, spot, energy, color, world background, environment lighting, list lights"

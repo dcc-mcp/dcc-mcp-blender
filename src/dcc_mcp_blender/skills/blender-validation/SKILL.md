@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: validation
     version: "1.0.0"
     tags: [blender, validation, pipeline, scene-checks, export-readiness]
     search-hint: "validate scene, validate mesh, material validation, animation validation, export readiness, severity report"

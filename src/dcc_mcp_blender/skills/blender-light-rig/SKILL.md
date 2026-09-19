@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.1.0"
     tags: [blender, lighting, light-rig, hdri, world, lookdev, animation]
     search-hint: "three point light rig, softbox, hdri world, animate hdri rotation, rotating lookdev lighting, group lights, view transform, lighting summary"

@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: lookdev
     version: "1.0.0"
     tags: [blender, bake, texture, lighting, ambient-occlusion, transfer-map]
     search-hint: "texture bake, bake ambient occlusion, bake lighting, transfer maps, bake targets"
