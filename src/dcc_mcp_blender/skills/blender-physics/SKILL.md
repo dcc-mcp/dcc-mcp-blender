@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: simulation
     version: "2.0.0"
     tags: [blender, physics, rigid-body, soft-body, cloth, collision, force-field, particle, constraint, simulation, cache]
     search-hint: "rigid body, soft body, physics, cloth modifier, collision modifier, force field, particle system, rigid body constraint, simulation cache, bake, mass, friction, restitution"

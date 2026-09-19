@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: animation
     version: "1.0.0"
     tags: [blender, driver, expression, animation, rigging, constraints]
     search-hint: "driver, expression, fcurve driver, scripted expression, driver variable, evaluate driver, add driver, remove driver"

@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: authoring
     version: "1.0.0"
     tags: [blender, geometry, export, mesh]
     search-hint: "create sphere, save blend, export fbx, export obj, file exists"

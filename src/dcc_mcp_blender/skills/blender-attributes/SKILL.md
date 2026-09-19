@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: authoring
     version: "1.0.0"
     tags: [blender, attributes, custom-properties, object-data]
     search-hint: "custom property, attribute, object data, custom attribute, id property, metadata"

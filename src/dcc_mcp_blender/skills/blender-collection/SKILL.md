@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: scene
     version: "1.0.0"
     tags: [blender, collection, hierarchy, organization]
     search-hint: "collection, group, organize, hierarchy, link object, list collections"

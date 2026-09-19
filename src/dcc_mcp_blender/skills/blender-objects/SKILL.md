@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: scene
     version: "1.0.0"
     tags: [blender, objects, transform]
     search-hint: "create object, delete, move, rotate, scale, duplicate, select, rename, parent, hide, bounds"

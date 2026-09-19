@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: authoring
     version: "1.0.0"
     tags: [blender, geometry-nodes, node-graph, sockets, links, procedural, modifiers]
     search-hint: "geometry nodes modifier, procedural nodes, node group, modifier input, assign geometry node group, interface socket create update remove, socket identifier and default"

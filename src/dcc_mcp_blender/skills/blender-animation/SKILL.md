@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: animation
     version: "1.0.0"
     tags: [blender, animation, keyframes, curves, baking, timeline]
     search-hint: "keyframe, animation, frame range, action, timeline, fcurve, delete keyframes, bake animation"

@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: pipeline
     version: "1.0.0"
     tags: [blender, asset, source, search, discovery, import]
     search-hint: "search assets, find assets, asset browser, asset library, browse files, discover 3D files, asset source"

@@ -6,6 +6,8 @@ allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
     dcc: blender
+    layer: domain
+    stage: diagnostics
     version: "1.0.0"
     tags: [blender, development, diagnostics, addon, reload, ui, debug]
     search-hint: "addon diagnostics, reload modules, run check, development, debug server, UI snapshot, Python environment"
