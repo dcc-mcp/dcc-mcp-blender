@@ -50,8 +50,11 @@ ALLOWED_STAGES = frozenset(
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<body>.*?)\n---\n", re.DOTALL)
 # `metadata:` has to sit at column 0. An indented `metadata:` belongs to
 # whichever mapping owns that indent, so it is never the block that
-# dcc-mcp-core reads and must not anchor the taxonomy lookup.
-_METADATA_RE = re.compile(r"^metadata:[ \t]*$", re.MULTILINE)
+# dcc-mcp-core reads and must not anchor the taxonomy lookup. The trailing
+# `(?:#.*)?` keeps the anchor working when the key carries an end-of-line
+# comment (`metadata: # taxonomy`): YAML ignores that comment, so the block it
+# opens is still the one dcc-mcp-core scores.
+_METADATA_RE = re.compile(r"^metadata:[ \t]*(?:#.*)?$", re.MULTILINE)
 # Indentation is matched with [ \t] rather than \s so an indent group can never
 # swallow the preceding newline, which inflates its length and drops the key.
 _SCALAR_RE = re.compile(
@@ -137,14 +140,54 @@ def _indent_width(line: str) -> int:
     return len(line) - len(line.lstrip(" \t"))
 
 
+def _strip_comment(line: str) -> str:
+    """Return ``line`` without its trailing YAML comment.
+
+    ``#`` only opens a comment at the start of a line or after a space/tab, and
+    never inside a quoted scalar, so ``description: "rank #1"`` keeps its ``#``
+    while ``dcc-mcp: # taxonomy`` collapses to ``dcc-mcp:``. A comment-only line
+    becomes an empty line instead of disappearing: the scanners below key off
+    line positions, so dropping lines would shift them.
+    """
+    quote = ""
+    previous = ""
+    for index, char in enumerate(line):
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "\"'":
+            # A quote only opens a scalar at the start of a value; a mid-word
+            # apostrophe (`blender's`) stays plain text.
+            if previous in (" ", "\t"):
+                quote = char
+        elif char == "#" and (index == 0 or previous in (" ", "\t")):
+            return line[:index]
+        previous = char
+    return line
+
+
+def _strip_comments(lines: list[str]) -> list[str]:
+    """Return ``lines`` with every YAML comment stripped, one entry per input line.
+
+    Idempotent, so a scanner may run it on lines another scanner already cleaned
+    without changing the result.
+    """
+    return [_strip_comment(line) for line in lines]
+
+
 def _nested_block(lines: list[str], parent_indent: int) -> list[str]:
     """Return the leading run of ``lines`` nested deeper than ``parent_indent``.
 
     The run stops at the first non-blank line that is not indented deeper than
     the owning key: that line is a sibling or a dedented parent, never a child.
+
+    Comments are stripped first, so a comment-only line — at any indent,
+    column 0 included — is blank and cannot end the run. The lines returned
+    are stripped too, which is what lets ``_SCALAR_RE`` read a value written as
+    ``layer: domain # note``.
     """
     collected = []
-    for line in lines:
+    for line in _strip_comments(lines):
         if line.strip() and _indent_width(line) <= parent_indent:
             break
         collected.append(line)
@@ -156,8 +199,10 @@ def _direct_child_indent(lines: list[str]) -> int:
 
     Every line of a mapping block is indented past its owning key, so a width
     of ``0`` never describes a real child and doubles as "nothing nested here".
+    Comments are stripped first: a comment indented shallower than the block is
+    not a child and must not define the child indent.
     """
-    widths = [_indent_width(line) for line in lines if line.strip()]
+    widths = [_indent_width(line) for line in _strip_comments(lines) if line.strip()]
     return min(widths) if widths else 0
 
 
@@ -168,9 +213,12 @@ def _find_direct_key(lines: list[str], key: str) -> int:
     indented deeper — a grandchild is not a direct child of the mapping that
     owns ``lines``, and matching it would let a nested decoy stand in for the
     real field.
+
+    Comments are stripped first, so ``dcc-mcp: # taxonomy`` still counts as the
+    ``dcc-mcp:`` child.
     """
     child_indent = _direct_child_indent(lines)
-    for index, line in enumerate(lines):
+    for index, line in enumerate(_strip_comments(lines)):
         if _indent_width(line) == child_indent and line.strip() == key + ":":
             return index
     return -1
@@ -424,6 +472,177 @@ def test_dcc_mcp_nested_below_metadata_is_rejected(tmp_path):
 
     with pytest.raises(AssertionError, match="metadata.dcc-mcp"):
         _frontmatter_skill(skill_md)
+
+
+def _write_front_matter(tmp_path: pathlib.Path, body: str) -> pathlib.Path:
+    """Write a throwaway SKILL.md whose front matter is exactly ``body``."""
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text("---\n" + body + "---\n\n# blender-comment-fixture\n", encoding="utf-8")
+    return skill_md
+
+
+def test_comment_stripping_keeps_a_hash_inside_a_quoted_scalar():
+    """Only a comment-forming ``#`` is stripped; a literal one is kept.
+
+    ``#`` opens a comment at the start of a line or after a space/tab, but never
+    inside a quoted scalar and never mid-token, so values such as
+    ``"rank #1"`` or a URL fragment survive intact.
+    """
+    assert _strip_comment("  dcc-mcp: # taxonomy") == "  dcc-mcp: "
+    assert _strip_comment("# column 0 comment") == ""
+    assert _strip_comment('  note: "rank #1"') == '  note: "rank #1"'
+    assert _strip_comment("  url: https://example.com#anchor") == "  url: https://example.com#anchor"
+
+
+def test_metadata_key_may_carry_an_end_of_line_comment(tmp_path):
+    """``metadata: # taxonomy`` must still anchor the taxonomy lookup.
+
+    Regression from PR #217: the anchored parser demanded a bare ``metadata:``
+    line, so a trailing comment failed the anchor assertion on a file the
+    pre-#217 parser read fine. Comments carry no meaning in YAML, so the anchor
+    has to survive one.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture with a commented metadata anchor"\n'
+        "metadata: # taxonomy\n"
+        "  dcc-mcp:\n"
+        "    layer: domain\n"
+        "    stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["layer"] == "domain"
+    assert fields["stage"] == "authoring"
+
+
+def test_column_zero_comment_between_metadata_and_dcc_mcp_is_skipped(tmp_path):
+    """A column 0 comment above ``dcc-mcp:`` must not end the ``metadata:`` block.
+
+    Regression from PR #217: ``_nested_block`` stopped at the first non-blank line
+    that is not indented past ``metadata:``, and a full-line comment at column 0
+    is exactly such a line, so the ``dcc-mcp:`` child below it was never found.
+    The pre-#217 parser searched the whole body and accepted this file.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture with a column 0 comment inside metadata"\n'
+        "metadata:\n"
+        "# taxonomy lives below\n"
+        "  dcc-mcp:\n"
+        "    layer: domain\n"
+        "    stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["layer"] == "domain"
+    assert fields["stage"] == "authoring"
+
+
+def test_dcc_mcp_key_may_carry_an_end_of_line_comment(tmp_path):
+    """``dcc-mcp: # taxonomy`` counts as the ``dcc-mcp:`` child.
+
+    Pre-existing limitation, recorded here rather than fixed in PR #217: that
+    parser required a bare ``dcc-mcp:`` line and rejected this file outright,
+    and the pre-#217 parser did the same for its own ``dcc-mcp:`` search. The
+    expected behaviour is acceptance — dcc-mcp-core reads the mapping the same
+    way with or without the comment -- and the comment-tolerant scanner now
+    delivers it.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture with a commented dcc-mcp key"\n'
+        "metadata:\n"
+        "  dcc-mcp: # taxonomy\n"
+        "    layer: domain\n"
+        "    stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["layer"] == "domain"
+    assert fields["stage"] == "authoring"
+
+
+def test_layer_value_may_carry_an_end_of_line_comment(tmp_path):
+    """``layer: domain # note`` reads as ``domain``, comment excluded.
+
+    Pre-existing limitation, recorded here rather than fixed in PR #217: no
+    parser stripped end-of-line comments from scalar lines, so the pre-#217
+    parser dropped ``layer`` from this file and the taxonomy tests reported it
+    missing. That failure direction is a false FAIL, never a false PASS, but the
+    value is unambiguous in YAML, so the scanner now reads it.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture with a commented layer value"\n'
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    layer: domain # the layer\n"
+        "    stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["layer"] == "domain"
+    assert fields["stage"] == "authoring"
+
+
+def test_comment_indented_shallower_than_the_block_is_skipped(tmp_path):
+    """A comment indented shallower than its block must not truncate that block.
+
+    Pre-existing limitation, recorded here rather than fixed in PR #217: the
+    block run stopped at the first line not indented past ``dcc-mcp:``, so a
+    comment at indent 2 inside a four-space block ended the run and dropped
+    every scalar below it — ``stage`` here, while ``layer`` still parsed.
+    Comments are not structure, so the run now continues past them.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture with a shallow comment inside the block"\n'
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    layer: domain\n"
+        "  # stage follows\n"
+        "    stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["layer"] == "domain"
+    assert fields["stage"] == "authoring"
+
+
+def test_a_commented_out_taxonomy_field_stays_missing(tmp_path):
+    """Comment tolerance must never invent a field.
+
+    The failure direction has to stay "false FAIL": a taxonomy that exists only
+    inside a comment must keep failing the taxonomy assertions rather than
+    silently satisfying them.
+    """
+    skill_md = _write_front_matter(
+        tmp_path,
+        "name: blender-comment-fixture\n"
+        'description: "Fixture whose taxonomy is commented out"\n'
+        "metadata:\n"
+        "  dcc-mcp:\n"
+        "    dcc: blender\n"
+        "    # layer: thin-harness\n"
+        "    # stage: authoring\n",
+    )
+
+    fields = _frontmatter_skill(skill_md)
+
+    assert fields["dcc"] == "blender"
+    assert "layer" not in fields
+    assert "stage" not in fields
 
 
 def test_skills_index_documents_stage_policy_and_task_chains():
