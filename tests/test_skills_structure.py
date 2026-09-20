@@ -148,12 +148,30 @@ def _strip_comment(line: str) -> str:
     while ``dcc-mcp: # taxonomy`` collapses to ``dcc-mcp:``. A comment-only line
     becomes an empty line instead of disappearing: the scanners below key off
     line positions, so dropping lines would shift them.
+
+    A quoted scalar ends at the first *unescaped* quote of the same kind: in a
+    double-quoted scalar a backslash escapes the next character, so ``\"`` is a
+    literal quote, and in a single-quoted scalar a quote is escaped by doubling
+    it, so ``''`` is a literal quote. Closing on an escaped quote ends the
+    scalar early and lets a ``#`` inside the value open a comment.
     """
     quote = ""
     previous = ""
-    for index, char in enumerate(line):
+    escaped = False
+    index = 0
+    while index < len(line):
+        char = line[index]
         if quote:
-            if char == quote:
+            if escaped:
+                # Already consumed by the backslash that escaped it, so it can
+                # never delimit the scalar.
+                escaped = False
+            elif char == "\\" and quote == '"':
+                escaped = True
+            elif char == quote == "'" and line[index + 1 : index + 2] == "'":
+                # A doubled single quote is one literal quote: eat the pair.
+                index += 1
+            elif char == quote:
                 quote = ""
         elif char in "\"'":
             # A quote only opens a scalar at the start of a value; a mid-word
@@ -163,6 +181,7 @@ def _strip_comment(line: str) -> str:
         elif char == "#" and (index == 0 or previous in (" ", "\t")):
             return line[:index]
         previous = char
+        index += 1
     return line
 
 
@@ -492,6 +511,30 @@ def test_comment_stripping_keeps_a_hash_inside_a_quoted_scalar():
     assert _strip_comment("# column 0 comment") == ""
     assert _strip_comment('  note: "rank #1"') == '  note: "rank #1"'
     assert _strip_comment("  url: https://example.com#anchor") == "  url: https://example.com#anchor"
+
+
+def test_comment_stripping_consumes_escaped_quotes_in_quoted_scalars():
+    """A quoted scalar ends at the first *unescaped* quote of the same kind.
+
+    In a double-quoted scalar a backslash escapes the next character, so ``\\"``
+    is a literal quote; in a single-quoted scalar a quote is escaped by doubling
+    it, so ``''`` is a literal quote. Closing on the escaped quote ends the
+    scalar early, and every ``#`` left after it then opens a comment that
+    truncates the value.
+    """
+    # Double-quoted: `\"` is a literal quote, so the scalar runs to the last `"`
+    # and the `#1` inside it is part of the value.
+    assert _strip_comment('  note: "say \\" hi #1"') == '  note: "say \\" hi #1"'
+    # Single-quoted: `''` is a literal quote, same shape.
+    assert _strip_comment("  note: 'say '' hi #1'") == "  note: 'say '' hi #1'"
+    # An escaped quote must not reopen the comment scan: the trailing comment is
+    # still the only one stripped.
+    assert _strip_comment('  layer: "do\\"main" # owner') == '  layer: "do\\"main" '
+    # Same value with a `#` past the escaped quote, where closing early truncates.
+    assert _strip_comment('  layer: "do\\"main #x" # owner') == '  layer: "do\\"main #x" '
+    assert _strip_comment("  layer: 'don''t #x' # owner") == "  layer: 'don''t #x' "
+    # An escaped backslash escapes itself, so the quote after it still closes.
+    assert _strip_comment('  path: "a\\\\" # real') == '  path: "a\\\\" '
 
 
 def test_metadata_key_may_carry_an_end_of_line_comment(tmp_path):
