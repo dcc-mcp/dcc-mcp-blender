@@ -38,6 +38,9 @@ class _Pixels(list):
     Indexing materialises the data; len() does not. A probe on every supported
     Blender confirmed len() already reports the full size while has_data is
     still False, so length is not a usable signal.
+
+    Assigning image.filepath is what discards the decoded buffer, which is why
+    the decode has to happen after that assignment rather than before it.
     """
 
     def __init__(self, owner, count=16):
@@ -49,25 +52,61 @@ class _Pixels(list):
         return super().__getitem__(index)
 
 
+class _Image:
+    """Stand-in for bpy.types.Image.
+
+    filepath is a real property because assigning it is what discards the
+    decoded pixel buffer in Blender. That interaction is the whole point of the
+    ordering in save_image, so the fake has to reproduce it: a SimpleNamespace
+    cannot, since its type is immutable.
+    """
+
+    def __init__(self, name, filepath, size, source, packed, tiles):
+        self.name = name
+        self._filepath = filepath
+        self.filepath_raw = filepath
+        self.size = list(size)
+        self.source = source
+        self.is_dirty = False
+        self.has_data = False
+        self.colorspace_settings = SimpleNamespace(name="sRGB")
+        self.packed_file = SimpleNamespace() if packed else None
+        self.tiles = list(tiles)
+        self.pixels = _Pixels(self)
+        self.reload = MagicMock()
+        # Blender refuses to save an image with no decoded data, so honour
+        # has_data. Without this the fake would happily "save" an undecodeable
+        # image and the ordering bug would go unnoticed.
+        self.save = MagicMock(side_effect=self._save)
+        self.pack = MagicMock(side_effect=lambda: setattr(self, "packed_file", SimpleNamespace()))
+        self.unpack = MagicMock(side_effect=lambda method="USE_ORIGINAL": setattr(self, "packed_file", None))
+
+    def _save(self):
+        """Mirror Blender: refuse without decoded data, otherwise write.
+
+        Writing to self.filepath is what makes the ordering meaningful. If this
+        only raised, a decode that happened too early would still look fine
+        because nothing would ever be written either way.
+        """
+        if not self.has_data:
+            raise RuntimeError(f"Image {self.name!r} does not have any image data")
+        target = Path(self._filepath)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"SAVED")
+
+    @property
+    def filepath(self):
+        return self._filepath
+
+    @filepath.setter
+    def filepath(self, value):
+        if value != self._filepath:
+            self.has_data = False
+        self._filepath = value
+
+
 def _make_image(name="Tex", filepath="/tmp/tex.png", size=(64, 32), packed=False, source="FILE", tiles=()):
-    image = SimpleNamespace(
-        name=name,
-        filepath=filepath,
-        filepath_raw=filepath,
-        size=list(size),
-        source=source,
-        is_dirty=False,
-        has_data=False,
-        colorspace_settings=SimpleNamespace(name="sRGB"),
-        packed_file=SimpleNamespace() if packed else None,
-        tiles=list(tiles),
-    )
-    image.pixels = _Pixels(image)
-    image.reload = MagicMock()
-    image.save = MagicMock()
-    image.pack = MagicMock(side_effect=lambda: setattr(image, "packed_file", SimpleNamespace()))
-    image.unpack = MagicMock(side_effect=lambda method="USE_ORIGINAL": setattr(image, "packed_file", None))
-    return image
+    return _Image(name, filepath, size, source, packed, tiles)
 
 
 def _bpy_with_images(*images, collections=()):
@@ -564,7 +603,11 @@ def test_save_image_materialises_pixels_before_saving(tmp_path):
     result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
 
     assert result["success"] is True, result.get("error")
-    assert image.has_data is True, "saving must leave the image decoded"
+    # The tool reports the state it measured at save time. Asserting on the
+    # datablock afterwards would be ambiguous: save_image restores the original
+    # filepath once it is done, and re-association drops the decoded buffer in
+    # this model, so post-restore has_data says nothing about the save itself.
+    assert result["context"]["has_data"] is True, result["context"]
 
 
 def test_save_image_reports_the_written_size(tmp_path):
