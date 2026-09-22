@@ -609,11 +609,13 @@ def test_named_scene_does_not_use_the_context_view_layer():
     active = FakeViewLayer("ShotCam")
     scene, bpy = _scene_with_active_layer(active, FakeViewLayer("ViewLayer"))
 
-    # A second scene whose only view layer shares the default name: the write
-    # must land here and nowhere else.
+    # A second scene that also carries a view layer named after the context
+    # one. If use_active ever leaked into the named-scene path, the write would
+    # silently land on Other's ShotCam instead of its ViewLayer.
     other_scene = FakeScene("Other")
     other_layer = FakeViewLayer("ViewLayer")
-    other_scene.view_layers = FakeViewLayerCollection([other_layer])
+    other_shotcam = FakeViewLayer("ShotCam")
+    other_scene.view_layers = FakeViewLayerCollection([other_layer, other_shotcam])
     bpy.data.scenes = FakeSceneCollection([scene, other_scene])
 
     result = _call("set_view_layer_passes", bpy, scene_name="Other", enable=["mist"])
@@ -621,6 +623,7 @@ def test_named_scene_does_not_use_the_context_view_layer():
     assert result["context"]["scene_name"] == "Other"
     assert result["context"]["view_layer_name"] == "ViewLayer"
     assert other_layer.use_pass_mist is True, "the named scene must be the one written"
+    assert other_shotcam.use_pass_mist is False, "a same-named layer must not capture the write"
     assert scene.view_layers.get("ViewLayer").use_pass_mist is False, "the active scene must stay untouched"
     assert active.use_pass_mist is False
 
