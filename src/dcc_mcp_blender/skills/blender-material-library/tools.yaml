@@ -278,3 +278,151 @@ tools:
     destructive: false
     idempotent: true
     annotations: *mutating_idempotent
+
+  - name: load_image
+    description: "Load an image from disk into the file."
+    source_file: scripts/load_image.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [file_path]
+      properties:
+        file_path:
+          type: string
+          minLength: 1
+        image_name:
+          type: string
+          minLength: 1
+          description: Override the datablock name; defaults to Blender's own name.
+        check_existing:
+          type: boolean
+          default: true
+          description: Reuse an already loaded image for this path instead of creating a duplicate datablock.
+        color_space:
+          type: string
+          minLength: 1
+          description: Color space to assign, for example sRGB or Non-Color. Unknown names are reported in not_applied.
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+
+  - name: save_image
+    description: "Save an image datablock back to disk."
+    source_file: scripts/save_image.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+        file_path:
+          type: string
+          minLength: 1
+          description: Destination path; defaults to the image's current path.
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
+
+  - name: pack_image
+    description: "Embed an image into the .blend file so the file is self-contained."
+    source_file: scripts/pack_image.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent
+
+  - name: unpack_image
+    description: "Write a packed image out to disk and stop embedding it."
+    source_file: scripts/unpack_image.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+        method:
+          type: string
+          enum: [USE_ORIGINAL, WRITE_ORIGINAL, USE_LOCAL, WRITE_LOCAL]
+          default: USE_ORIGINAL
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: image_file_status
+    description: "Report where an image lives (packed, external, missing, unsaved, modified) and whether its file is reachable."
+    source_file: scripts/image_file_status.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
+
+  - name: list_image_tiles
+    description: "List the UDIM tiles of an image. A non-UDIM image reports one tile and is_udim false."
+    source_file: scripts/list_image_tiles.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_name]
+      properties:
+        image_name:
+          type: string
+          minLength: 1
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only
