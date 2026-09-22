@@ -63,9 +63,15 @@ Notes that matter in practice:
   disk has no decoded pixels until one is actually read, and saving it without
   forcing that decode fails with "does not have any image data".
 
-  The tool indexes `image.pixels[0]`, which is what triggers the decode, then
-  checks `has_data` before saving and confirms the file exists afterwards, so a
-  save that writes nothing is a failure rather than a success.
+  The tool sets `image.filepath` to the destination **first**, then indexes
+  `image.pixels[0]`, which is what triggers the decode, then checks `has_data`
+  before saving and confirms the file exists afterwards, so a save that writes
+  nothing is a failure rather than a success.
+
+  The order matters. Assigning `filepath` makes Blender re-associate the
+  datablock with that file and discards any pixel buffer decoded beforehand, so
+  decoding before the assignment produces a check that passes and a save that
+  then fails with "does not have any image data".
 
   Note that `len(image.pixels)` is not a usable probe: on every supported
   version it already reports the full pixel count while `has_data` is still

@@ -104,6 +104,15 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                 "The image was generated or packed; pass file_path explicitly.",
             )
 
+        # Point the image at the destination first. Assigning filepath makes
+        # Blender re-associate the datablock with that file, which discards any
+        # pixel buffer decoded beforehand. Decoding must therefore happen after
+        # this assignment, otherwise the check measures a state that no longer
+        # holds by the time save() runs and the save fails anyway.
+        original = image.filepath
+        if file_path:
+            image.filepath = str(destination)
+
         # Under blender --background an image loaded from disk has no decoded
         # pixels until one is actually read, and image.save() then fails with
         # "does not have any image data".
@@ -124,11 +133,16 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                     filepath=str(destination),
                 )
 
-        # Confirm the decode happened rather than assuming it. If a future
-        # Blender stops materialising on read, this becomes a clear failure
-        # instead of a save that quietly writes nothing.
-        has_data = getattr(image, "has_data", None)
-        if has_data is False:
+        # Confirm the decode held after the reassignment. If a future Blender
+        # stops materialising on read, this is a clear failure rather than a
+        # save that quietly writes nothing.
+        # Captured at the moment of saving. It is read again after the path is
+        # restored below, but that later value is not the one that decided
+        # whether the save could work.
+        saved_has_data = getattr(image, "has_data", None)
+        if saved_has_data is False:
+            if file_path:
+                image.filepath = original
             return skill_error(
                 f"Image has no pixel data to save: {image_name}",
                 "The image could not be decoded, so there is nothing to write. "
@@ -136,31 +150,39 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                 filepath=str(destination),
             )
 
-        original = image.filepath
         try:
-            if file_path:
-                image.filepath = str(destination)
             image.save()
         except Exception as exc:
-            return skill_exception(exc, message=f"Failed to save image {image_name}")
-        finally:
-            if file_path:
-                image.filepath = original
+            # Report the state we measured so the failure is diagnosable
+            # instead of a bare operator error.
+            return skill_exception(
+                exc,
+                message=f"Failed to save image {image_name}",
+                filepath=str(destination),
+                has_data=saved_has_data,
+            )
 
         # Confirm the file exists rather than trusting the call: a save that
         # silently wrote nothing must be reported as a failure.
         if not destination.is_file():
+            if file_path:
+                image.filepath = original
             return skill_error(
                 f"Image was not saved: {image_name}",
                 f"Blender completed the save call but no file exists at '{destination}'.",
                 filepath=str(destination),
+                has_data=saved_has_data,
             )
+
+        if file_path:
+            image.filepath = original
 
         return skill_success(
             f"Saved image {image.name}",
             image=_image_info(image),
             filepath=str(destination),
             size_bytes=destination.stat().st_size,
+            has_data=saved_has_data,
             prompt="Use pack_image or unpack_image to control how the file is stored.",
         )
     except ImportError:
