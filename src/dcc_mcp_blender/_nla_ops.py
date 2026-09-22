@@ -64,6 +64,30 @@ def _animation_data(obj: Any, create: bool) -> Any:
     return data
 
 
+def _action_fcurves(action: Any) -> List[Any]:
+    """Return an action's fcurves, or raise with a version-specific reason.
+
+    Blender 5.0 replaced Action.fcurves with layered animation (layers holding
+    channelbags). There is no shared accessor, so the fcurve tools cannot work
+    there. Raising instead of returning an empty list keeps that from looking
+    like an action with no curves.
+    """
+    fcurves = getattr(action, "fcurves", None)
+    if fcurves is not None:
+        return list(_iter_items(fcurves))
+
+    if getattr(action, "layers", None) is not None or getattr(action, "channelbags", None) is not None:
+        raise _UnsupportedHost(
+            "Blender 5.x replaced Action.fcurves with layered animation. "
+            "Read curves through action.layers[].strips[].channelbags[].fcurves instead."
+        )
+    raise _UnsupportedHost(f"Action {getattr(action, 'name', '')} exposes no fcurves attribute.")
+
+
+class _UnsupportedHost(Exception):
+    """Raised when the running Blender has no API the caller asked for."""
+
+
 def _strip_context(strip: Any) -> Dict[str, Any]:
     return {
         "name": getattr(strip, "name", ""),
@@ -517,6 +541,29 @@ def remove_nla_strip(object_name: str, strip_name: str, track_name: Optional[str
         return skill_exception(exc, message=f"Failed to remove NLA strip {strip_name} from {object_name}")
 
 
+def _list_fcurve_data(action: Any, action_name: str, data_path: Optional[str]) -> List[Dict[str, Any]]:
+    """Collect fcurve summaries for an action, honouring the data_path filter."""
+    fcurves: List[Dict[str, Any]] = []
+    for fcurve in _action_fcurves(action):
+        path = getattr(fcurve, "data_path", "")
+        if data_path and path != data_path and not path.endswith(f".{data_path}"):
+            continue
+        frames = [
+            float(getattr(point.co, "x", 0.0))
+            for point in _iter_items(getattr(fcurve, "keyframe_points", []))
+            if getattr(point, "co", None) is not None
+        ]
+        fcurves.append(
+            {
+                "data_path": path,
+                "array_index": getattr(fcurve, "array_index", None),
+                "keyframe_count": len(frames),
+                "range": [min(frames), max(frames)] if frames else [],
+            }
+        )
+    return fcurves
+
+
 def list_action_fcurves(action_name: str, data_path: Optional[str] = None) -> dict:
     """List the fcurves inside an action.
 
@@ -532,24 +579,11 @@ def list_action_fcurves(action_name: str, data_path: Optional[str] = None) -> di
         if action is None:
             return skill_error(f"Action not found: {action_name}", f"No action named '{action_name}'.")
 
-        fcurves = []
-        for fcurve in _iter_items(getattr(action, "fcurves", [])):
-            path = getattr(fcurve, "data_path", "")
-            if data_path and path != data_path and not path.endswith(f".{data_path}"):
-                continue
-            frames = [
-                float(getattr(point.co, "x", 0.0))
-                for point in _iter_items(getattr(fcurve, "keyframe_points", []))
-                if getattr(point, "co", None) is not None
-            ]
-            fcurves.append(
-                {
-                    "data_path": path,
-                    "array_index": getattr(fcurve, "array_index", None),
-                    "keyframe_count": len(frames),
-                    "range": [min(frames), max(frames)] if frames else [],
-                }
-            )
+        try:
+            fcurves = _list_fcurve_data(action, action_name, data_path)
+        except _UnsupportedHost as exc:
+            return skill_error("Action fcurves unavailable", str(exc))
+
         return skill_success(
             f"Found {len(fcurves)} fcurve(s) in {action_name}",
             action_name=action_name,
@@ -595,8 +629,13 @@ def set_action_fcurve_extrapolation(
         if action is None:
             return skill_error(f"Action not found: {action_name}", f"No action named '{action_name}'.")
 
+        try:
+            curves = _action_fcurves(action)
+        except _UnsupportedHost as exc:
+            return skill_error("Action fcurves unavailable", str(exc))
+
         updated = []
-        for fcurve in _iter_items(getattr(action, "fcurves", [])):
+        for fcurve in curves:
             path = getattr(fcurve, "data_path", "")
             if data_path and path != data_path and not path.endswith(f".{data_path}"):
                 continue

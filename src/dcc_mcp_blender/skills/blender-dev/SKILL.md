@@ -49,7 +49,7 @@ add-ons Blender already knows about. These three cover the rest:
 | Tool | Description |
 |---|---|
 | `install_addon` | Install a `.py` single-file add-on or a `.zip` bundle, then optionally enable it |
-| `remove_addon` | Disable and uninstall an add-on |
+| `remove_addon` | Disable and uninstall an add-on (works in background mode) |
 | `refresh_addons` | Rescan the add-on paths and report the count change |
 
 Two things that otherwise surprise callers:
@@ -62,3 +62,10 @@ Two things that otherwise surprise callers:
   install can succeed while the module never appears. Passing `addon_module`
   lets the tool confirm it; if the name is wrong you get an error naming it
   instead of a silent success.
+- **`remove_addon` does not use Blender's `addon_remove` operator.** That
+  operator calls `context.area.tag_redraw()`, which is `None` under
+  `blender --background`, so it raises there. Removal instead disables through
+  the operator, deletes the module files directly, refreshes, and then confirms
+  the add-on is gone — if it is still registered the call fails rather than
+  reporting success. Single-file add-ons delete the `.py`; packages delete the
+  whole directory.

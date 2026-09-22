@@ -66,4 +66,13 @@ Notes that matter in practice:
   combines with the tracks below it; `influence` scales the contribution.
 - Extrapolation on both strips and fcurves controls the gaps: `HOLD` repeats the
   end value, `NOTHING` falls back to the underlying value.
+- `set_nla_strip` rejects out-of-range `influence`, `scale`, and `repeat` rather
+  than clamping: Blender would silently clamp them, and reporting success while
+  giving a different value is worse than refusing.
 - Removing a track or strip is destructive and cannot be undone.
+
+**Blender 5.x has no `Action.fcurves`.** It was replaced by layered animation
+(`action.layers[].strips[].channelbags[].fcurves`). `list_action_fcurves` and
+`set_action_fcurve_extrapolation` return an explicit "fcurves unavailable" error
+on 5.x instead of reporting an action with no curves. The NLA track and strip
+tools are unaffected and work across every supported version.

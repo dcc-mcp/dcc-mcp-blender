@@ -7,6 +7,7 @@ import importlib.metadata
 import io
 import platform
 import runpy
+import shutil
 import sys
 import time
 import traceback
@@ -715,6 +716,13 @@ def install_addon(
 def remove_addon(addon_module: str) -> dict:
     """Disable and uninstall a Blender add-on.
 
+    Blender's own addon_remove operator calls ``context.area.tag_redraw()``,
+    which is None under ``blender --background``, so the operator raises an
+    AttributeError there. Since background mode is how this adapter normally
+    runs, this disables through the operator (which does work headless), then
+    removes the module files directly and refreshes the cache. Removal is
+    confirmed afterwards, so a silent no-op is not possible.
+
     Args:
         addon_module: Module name of the installed add-on, for example
             ``io_scene_gltf2``.
@@ -734,18 +742,10 @@ def remove_addon(addon_module: str) -> dict:
                     after=_addon_status_data(addon_module),
                 )
 
-        try:
-            bpy.ops.preferences.addon_remove(module=addon_module)
-        except Exception as exc:
-            return skill_exception(
-                exc,
-                message=f"Failed to remove add-on {addon_module}",
-                before=before,
-                after=_addon_status_data(addon_module),
-            )
+        removed_paths = _delete_addon_files(addon_module)
 
-        # Removing leaves the module cache stale, so the post-condition would
-        # otherwise still report the add-on as installed.
+        # Both the operator and the file deletion leave the module cache stale,
+        # so the post-condition would otherwise still report it as installed.
         try:
             bpy.ops.preferences.addon_refresh()
         except Exception:
@@ -759,15 +759,58 @@ def remove_addon(addon_module: str) -> dict:
         if after.get("installed"):
             return skill_error(
                 f"Add-on was not removed: {addon_module}",
-                "Blender completed the remove operation but the add-on is still installed.",
+                "The add-on is still registered after deleting its files. Another "
+                "installed copy may exist, or Blender could not write to the add-on "
+                "directory.",
                 before=before,
                 after=after,
+                removed_paths=removed_paths,
             )
-        return skill_success(f"Removed add-on {addon_module}", before=before, after=after)
+        return skill_success(
+            f"Removed add-on {addon_module}",
+            before=before,
+            after=after,
+            removed_paths=removed_paths,
+            prompt="Use list_addons to confirm the add-on is gone.",
+        )
     except ImportError:
         return skill_error("Blender not available", "bpy or addon_utils could not be imported")
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to remove add-on {addon_module}")
+
+
+def _delete_addon_files(addon_module: str) -> List[str]:
+    """Delete an add-on's module file or package directory and return the paths.
+
+    Returns an empty list when the module is not on disk, which is not an error:
+    an add-on can be built into Blender or installed somewhere else.
+    """
+    import addon_utils
+
+    removed: List[str] = []
+    module = next(
+        (candidate for candidate in _addon_modules() if getattr(candidate, "__name__", None) == addon_module), None
+    )
+    if module is None:
+        return removed
+
+    file_path = getattr(module, "__file__", None)
+    if not file_path:
+        return removed
+
+    path = Path(file_path)
+    if path.name == "__init__.py":
+        # A package: remove the whole directory.
+        target: Path = path.parent
+        shutil.rmtree(target, ignore_errors=True)
+        removed.append(str(target))
+    elif path.exists():
+        path.unlink()
+        removed.append(str(path))
+
+    if removed:
+        addon_utils.modules(refresh=True)
+    return removed
 
 
 def refresh_addons() -> dict:
