@@ -294,6 +294,13 @@ def _ensure_compositor_node(node_tree: Any, node_type: str, preferred_name: str)
             node.label = preferred_name
         except Exception:  # pragma: no cover - read-only node name in exotic trees
             pass
+    if not getattr(node, "label", None):
+        # Keep the node labelled even when the preferred name was taken, so the
+        # graph never renders as a row of unnamed boxes.
+        try:
+            node.label = getattr(node, "name", "") or preferred_name
+        except Exception:  # pragma: no cover - read-only label in exotic trees
+            pass
     return node, True
 
 
@@ -448,11 +455,16 @@ def create_compositor_node(
         )
     # Validate before touching Blender so a rejected payload cannot leave an
     # orphan node behind or flip scene.use_nodes for an operation that failed.
+    # The try/except keeps a non-sequence or non-numeric payload on the same
+    # actionable skill_error instead of leaking a Python traceback.
     node_location = None
     if location is not None:
-        if isinstance(location, (str, bytes)) or len(location) != 2:
+        try:
+            if isinstance(location, (str, bytes)) or len(location) != 2:
+                return skill_error("Invalid location", "location must be [x, y].")
+            node_location = (float(location[0]), float(location[1]))
+        except (TypeError, ValueError, KeyError, OverflowError):
             return skill_error("Invalid location", "location must be [x, y].")
-        node_location = (float(location[0]), float(location[1]))
     try:
         import bpy
 

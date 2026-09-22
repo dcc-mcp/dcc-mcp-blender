@@ -237,3 +237,212 @@ tools:
       open_world_hint: false
     next-tools:
       on-success: [blender_render__get_render_job, blender_render__cancel_render_job]
+
+  - name: get_view_layer_passes
+    description: "Report which AOV / render passes are enabled on a view layer."
+    source_file: scripts/get_view_layer_passes.py
+    execution: sync
+    affinity: main
+    input_schema: &view_layer_target
+      type: object
+      additionalProperties: false
+      properties:
+        scene_name:
+          type: string
+          minLength: 1
+        view_layer_name:
+          type: string
+          minLength: 1
+          description: Defaults to the active view layer.
+    output_schema: &render_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_view_layer_passes
+    description: "Turn AOV / render passes on or off for a view layer. Complements configure_view_layer, which can only enable passes."
+    source_file: scripts/set_view_layer_passes.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        enable:
+          type: array
+          items: {type: string, minLength: 1}
+          description: Pass names to switch on.
+        disable:
+          type: array
+          items: {type: string, minLength: 1}
+          description: Pass names to switch off.
+        scene_name:
+          type: string
+          minLength: 1
+        view_layer_name:
+          type: string
+          minLength: 1
+          description: Defaults to the active view layer.
+    output_schema: *render_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_render_denoise
+    description: "Configure Cycles denoising (enable, denoiser, input passes, prefilter, GPU)."
+    source_file: scripts/set_render_denoise.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        denoiser:
+          type: string
+          enum: [AUTO, OPENIMAGEDENOISE, OPTIX, NONE]
+        input_passes:
+          type: string
+          enum: [RGB, RGB_ALBEDO, RGB_ALBEDO_NORMAL]
+        prefilter:
+          type: string
+          minLength: 1
+        use_gpu:
+          type: boolean
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: get_render_output
+    description: "Report render output configuration (path, format, color mode/depth, EXR codec, multi-layer mode)."
+    source_file: scripts/get_render_output.py
+    execution: sync
+    affinity: main
+    input_schema: &scene_target
+      type: object
+      additionalProperties: false
+      properties:
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: set_render_output
+    description: "Configure render output path, format, color mode/depth, EXR codec, and multi-layer EXR mode."
+    source_file: scripts/set_render_output.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        filepath:
+          type: string
+          minLength: 1
+        file_format:
+          type: string
+          enum: [PNG, JPEG, OPEN_EXR, OPEN_EXR_MULTILAYER, TIFF, TARGA, TARGA_RAW, BMP, HDR, CINEON, DPX, WEBP]
+        color_mode:
+          type: string
+          enum: [RGB, RGBA, BW, RGBA_PREMUL]
+        color_depth:
+          type: string
+          enum: ["8", "10", "12", "16", "16F", "32F"]
+        exr_codec:
+          type: string
+          enum: [NONE, PXR24, ZIP, PIZ, RLE, ZIPS, B44, B44A, DWAA, DWAB]
+        multilayer:
+          type: boolean
+          description: True switches the container to OPEN_EXR_MULTILAYER and renders every layer into that one file. False drops back to OPEN_EXR when the container was multi-layer. Applied after file_format.
+        use_preview:
+          type: boolean
+        use_file_extension:
+          type: boolean
+        use_overwrite:
+          type: boolean
+        use_placeholder:
+          type: boolean
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: set_render_region
+    description: "Enable and configure border (region) rendering with normalised 0..1 coordinates."
+    source_file: scripts/set_render_region.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        min_x: {type: number, minimum: 0, maximum: 1, default: 0}
+        min_y: {type: number, minimum: 0, maximum: 1, default: 0}
+        max_x: {type: number, minimum: 0, maximum: 1, default: 1}
+        max_y: {type: number, minimum: 0, maximum: 1, default: 1}
+        enabled:
+          type: boolean
+          default: true
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: clear_render_region
+    description: "Disable border rendering and reset the region to the full frame."
+    source_file: scripts/clear_render_region.py
+    execution: sync
+    affinity: main
+    input_schema: *scene_target
+    output_schema: *render_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: get_render_status
+    description: "Report animation frame range, frame count, and the render state that affects output (format, region, denoise, passes, camera)."
+    source_file: scripts/get_render_status.py
+    execution: sync
+    affinity: main
+    input_schema: *view_layer_target
+    output_schema: *render_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
