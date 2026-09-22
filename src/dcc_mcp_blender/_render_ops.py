@@ -390,7 +390,7 @@ def get_render_output(scene_name: str | None = None) -> dict:
             color_mode=getattr(settings, "color_mode", None),
             color_depth=getattr(settings, "color_depth", None),
             exr_codec=getattr(settings, "exr_codec", None),
-            use_preview=getattr(render, "use_preview", None),
+            use_preview=getattr(settings, "use_preview", None),
             use_single_layer=getattr(render, "use_single_layer", None),
             multilayer=_is_multilayer(render),
             use_file_extension=getattr(render, "use_file_extension", None),
@@ -431,7 +431,8 @@ def set_render_output(
             renders every layer into that single file. ``False`` drops back to
             ``OPEN_EXR`` when the container was multi-layer and renders every
             layer. Applied after ``file_format``, so it wins if both are given.
-        use_preview: Write a preview image next to the output.
+        use_preview: Write a JPG preview image next to the output when
+            rendering animations (``image_settings.use_preview``).
         use_file_extension: Append the format extension to the output path.
         use_overwrite: Overwrite existing files.
         use_placeholder: Create placeholder files while rendering.
@@ -496,6 +497,7 @@ def set_render_output(
                 (color_mode, settings, "color_mode", "scene.render.image_settings.color_mode"),
                 (color_depth, settings, "color_depth", "scene.render.image_settings.color_depth"),
                 (exr_codec, settings, "exr_codec", "scene.render.image_settings.exr_codec"),
+                (use_preview, settings, "use_preview", "scene.render.image_settings.use_preview"),
                 (multilayer, render, "use_single_layer", "scene.render.use_single_layer"),
             )
             if requested is not None and not hasattr(host, attribute)
@@ -535,8 +537,12 @@ def set_render_output(
                 render.use_single_layer = True
             applied["multilayer"] = bool(multilayer)
             applied["file_format"] = settings.file_format
+        # use_preview lives on ImageFormatSettings alongside the other image
+        # options; the remaining flags are RenderSettings options.
+        if use_preview is not None:
+            settings.use_preview = bool(use_preview)
+            applied["use_preview"] = bool(use_preview)
         for flag, attribute in (
-            (use_preview, "use_preview"),
             (use_file_extension, "use_file_extension"),
             (use_overwrite, "use_overwrite"),
             (use_placeholder, "use_placeholder"),

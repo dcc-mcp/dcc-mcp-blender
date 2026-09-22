@@ -62,10 +62,14 @@ class FakeViewLayerCollection:
 
 class FakeImageSettings:
     def __init__(self):
+        # Mirrors Blender: use_preview is an ImageFormatSettings option, not a
+        # RenderSettings one. Keeping the fake faithful is what lets a wrong
+        # host surface as a test failure instead of silently passing.
         self.file_format = "PNG"
         self.color_mode = "RGB"
         self.color_depth = "8"
         self.exr_codec = "ZIP"
+        self.use_preview = False
 
 
 class FakeRender:
@@ -78,7 +82,6 @@ class FakeRender:
         self.fps = 24
         self.image_settings = FakeImageSettings()
         self.use_single_layer = True
-        self.use_preview = False
         self.use_file_extension = True
         self.use_overwrite = True
         self.use_placeholder = False
@@ -603,14 +606,23 @@ def test_set_view_layer_passes_writes_the_active_layer():
 
 def test_named_scene_does_not_use_the_context_view_layer():
     """The context view layer may belong to a different scene."""
-    other_scene = FakeScene("Other")
-    other_scene.view_layers = FakeViewLayerCollection([FakeViewLayer("ViewLayer")])
     active = FakeViewLayer("ShotCam")
-    _scene, bpy = _scene_with_active_layer(active, FakeViewLayer("ViewLayer"))
+    scene, bpy = _scene_with_active_layer(active, FakeViewLayer("ViewLayer"))
 
-    result = _call("set_view_layer_passes", bpy, scene_name="Scene", enable=["mist"])
+    # A second scene whose only view layer shares the default name: the write
+    # must land here and nowhere else.
+    other_scene = FakeScene("Other")
+    other_layer = FakeViewLayer("ViewLayer")
+    other_scene.view_layers = FakeViewLayerCollection([other_layer])
+    bpy.data.scenes = FakeSceneCollection([scene, other_scene])
+
+    result = _call("set_view_layer_passes", bpy, scene_name="Other", enable=["mist"])
     assert result["success"] is True
+    assert result["context"]["scene_name"] == "Other"
     assert result["context"]["view_layer_name"] == "ViewLayer"
+    assert other_layer.use_pass_mist is True, "the named scene must be the one written"
+    assert scene.view_layers.get("ViewLayer").use_pass_mist is False, "the active scene must stay untouched"
+    assert active.use_pass_mist is False
 
 
 def test_unavailable_pass_leaves_the_batch_unapplied():
@@ -704,3 +716,32 @@ def test_preflight_probes_each_property_on_its_own_host():
     result = _call("set_render_output", _bpy_with_scene(scene), color_mode="RGB")
     assert result["success"] is False
     assert "image_settings.color_mode" in result["error"]
+
+
+def test_use_preview_is_written_to_image_settings_not_render_settings():
+    """use_preview lives on ImageFormatSettings in the Blender API."""
+    scene = _default_scene()
+    result = _call("set_render_output", _bpy_with_scene(scene), use_preview=True)
+
+    assert result["success"] is True
+    assert scene.render.image_settings.use_preview is True
+    assert not hasattr(scene.render, "use_preview"), "must not create a stray RenderSettings attribute"
+
+
+def test_use_preview_is_read_back_from_image_settings():
+    scene = _default_scene()
+    scene.render.image_settings.use_preview = True
+
+    result = _call("get_render_output", _bpy_with_scene(scene))
+    assert result["success"] is True
+    assert result["context"]["use_preview"] is True
+
+
+def test_use_preview_is_preflighted_and_names_image_settings():
+    scene = _default_scene()
+    del scene.render.image_settings.use_preview
+
+    result = _call("set_render_output", _bpy_with_scene(scene), filepath="//out/v1", use_preview=True)
+    assert result["success"] is False
+    assert "image_settings.use_preview" in result["error"]
+    assert scene.render.filepath == "//render", "nothing may be written when preflight fails"
