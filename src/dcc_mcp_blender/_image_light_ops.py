@@ -105,17 +105,34 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
             )
 
         # Under blender --background an image loaded from disk has no decoded
-        # pixels until something reads them, and image.save() then fails with
-        # "does not have any image data". Reading the pixels forces the decode.
-        # Packing does not need this because it copies the source file.
-        try:
-            pixels = getattr(image, "pixels", None)
-            if pixels is not None:
-                len(pixels)
-        except Exception as exc:
-            return skill_exception(
-                exc,
-                message=f"Failed to read pixel data for {image_name}",
+        # pixels until one is actually read, and image.save() then fails with
+        # "does not have any image data".
+        #
+        # Indexing a pixel is what forces the decode. len(image.pixels) does
+        # not: a probe on every supported Blender reported len == 16 for a 2x2
+        # image while has_data was still False, so length is a misleading
+        # signal. Generated images already have data and need none of this.
+        # Packing needs neither because it copies the source file.
+        pixels = getattr(image, "pixels", None)
+        if pixels is not None:
+            try:
+                _ = pixels[0]
+            except Exception as exc:
+                return skill_exception(
+                    exc,
+                    message=f"Failed to read pixel data for {image_name}",
+                    filepath=str(destination),
+                )
+
+        # Confirm the decode happened rather than assuming it. If a future
+        # Blender stops materialising on read, this becomes a clear failure
+        # instead of a save that quietly writes nothing.
+        has_data = getattr(image, "has_data", None)
+        if has_data is False:
+            return skill_error(
+                f"Image has no pixel data to save: {image_name}",
+                "The image could not be decoded, so there is nothing to write. "
+                "This is typical under blender --background for images loaded from disk.",
                 filepath=str(destination),
             )
 
