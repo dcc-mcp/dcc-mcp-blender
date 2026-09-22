@@ -149,8 +149,16 @@ class TestActionFcurvesE2E:
     def _skill(self, name):
         return load_skill("blender-animation", name)
 
-    def _is_layered(self) -> bool:
-        return not hasattr(bpy.types.Action, "fcurves")
+    @staticmethod
+    def _has_fcurves(action) -> bool:
+        """Whether this action exposes the legacy fcurve collection.
+
+        Probed on the instance, which is what the tool itself checks. The RNA
+        type is not a usable probe: hasattr(bpy.types.Action, "fcurves") is
+        False on every version, including ones where instances do carry
+        fcurves, so a type-level check claims "layered" everywhere.
+        """
+        return getattr(action, "fcurves", None) is not None
 
     def test_extrapolation_is_written_to_the_curve(self):
         """Set extrapolation and read it back off the fcurve."""
@@ -162,18 +170,19 @@ class TestActionFcurvesE2E:
         assert action is not None
 
         result = self._skill("list_action_fcurves").list_action_fcurves(action_name=action.name)
-        if self._is_layered():
+        if not self._has_fcurves(action):
             # No shared accessor exists; the tool must refuse rather than
-            # report an empty action.
-            assert result["success"] is False
+            # report an action that merely looks empty.
+            assert result["success"] is False, result.get("context")
             assert "layered animation" in result["error"].lower()
+
+            rejected = self._skill("set_action_fcurve_extrapolation").set_action_fcurve_extrapolation(
+                action_name=action.name, extrapolation="CONSTANT", data_path="location"
+            )
+            assert rejected["success"] is False
+            assert "layered animation" in rejected["error"].lower()
             return
 
-        assert result["success"] is True, result.get("error")
-        assert len(action.fcurves) >= 1
-
-        list_curves = self._skill("list_action_fcurves")
-        result = list_curves.list_action_fcurves(action_name=action.name)
         assert result["success"] is True, result.get("error")
         assert result["context"]["count"] >= 1
         curve = result["context"]["fcurves"][0]
@@ -195,18 +204,22 @@ class TestActionFcurvesE2E:
         assert written, "at least one location fcurve must have been updated"
 
     def test_extrapolation_rejects_unknown_values_before_writing(self):
+        """A rejected value must not change any curve, on every version."""
         obj = _cube()
         obj.keyframe_insert(data_path="location", frame=1)
         action = obj.animation_data.action
-        if self._is_layered():
-            pytest.skip("no Action.fcurves on this Blender; covered by the refusal assertions")
-        before = [fcurve.extrapolation for fcurve in action.fcurves]
+        assert action is not None
 
         result = self._skill("set_action_fcurve_extrapolation").set_action_fcurve_extrapolation(
             action_name=action.name, extrapolation="LOOP"
         )
-        assert result["success"] is False
-        assert [fcurve.extrapolation for fcurve in action.fcurves] == before
+        # LOOP is refused by validation on hosts with fcurves, and by the
+        # layered-animation guard on 5.x; it must never succeed.
+        assert result["success"] is False, result.get("context")
+
+        if self._has_fcurves(action):
+            for fcurve in action.fcurves:
+                assert fcurve.extrapolation != "LOOP", "no curve may be written"
 
     def test_list_actions_finds_the_active_action(self):
         obj = _cube()
