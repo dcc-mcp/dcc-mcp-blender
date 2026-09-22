@@ -1341,7 +1341,9 @@ tools:
     source_file: scripts/bake_particle_system.py
     execution: sync
     affinity: main
-    timeout_hint_secs: 0
+    # Matches bake_simulation and bake_rigid_body_simulation: baking a frame
+    # range outlasts the 30s host default, which would time out a valid bake.
+    timeout_hint_secs: 120
     input_schema:
       type: object
       additionalProperties: false

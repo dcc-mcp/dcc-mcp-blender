@@ -71,7 +71,7 @@ but nothing could create or tune them. Use these tools to close that gap:
 
 | Tool | Description |
 |---|---|
-| `add_fluid_modifier` | Add a Mantaflow DOMAIN, FLOW, EFFECTOR, OBSTACLE, INFLOW, or OUTFLOW modifier |
+| `add_fluid_modifier` | Add a Mantaflow DOMAIN, FLOW, or EFFECTOR modifier |
 | `set_fluid_settings` | Tune modifier properties plus `domain_settings` (resolution, viscosity, noise) |
 | `add_dynamic_paint_modifier` | Add a Dynamic Paint CANVAS (receives paint) or BRUSH (emits paint) |
 | `set_dynamic_paint_settings` | Tune the canvas or brush settings block |
@@ -87,10 +87,11 @@ rejects anything else, so it cannot bake a fluid or paint cache. Bake those
 from the Blender UI or through `bpy.ops` via `blender-scripting`.
 
 Mantaflow has no `OBSTACLE`, `INFLOW`, or `OUTFLOW` fluid type. Set
-`fluid_type` to `FLOW` and configure `flow_behavior` (`INFLOW` / `OUTFLOW` /
-`GEOMETRY`) and `flow_type` (`SMOKE` / `FIRE` / `BOTH` / `LIQUID`) on the
-modifier's flow settings; obstacles are `EFFECTOR` with
-`effector_type = 'COLLISION'`.
+`fluid_type` to `FLOW` and configure `modifier.flow_settings.flow_behavior`
+(`INFLOW` / `OUTFLOW` / `GEOMETRY`) and `modifier.flow_settings.flow_type`
+(`SMOKE` / `FIRE` / `BOTH` / `LIQUID`); obstacles are `EFFECTOR` with
+`modifier.effector_settings.effector_type = 'COLLISION'`. Passing one of the
+legacy names returns exactly which property to set instead of failing blind.
 
 `add_dynamic_paint_surface` needs `canvas_surfaces.new()`, which some Blender
 builds do not expose. When it is missing the tool says so explicitly; add the

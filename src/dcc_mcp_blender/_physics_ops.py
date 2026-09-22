@@ -1333,12 +1333,12 @@ def get_simulation_status(object_name: Optional[str] = None) -> dict:
 # the legacy names are rejected with a pointer to the modern equivalent.
 FLUID_TYPES = ("DOMAIN", "FLOW", "EFFECTOR")
 FLUID_TYPE_ALIASES = {
-    "INFLOW": ("FLOW", "flow_behavior = 'INFLOW' on the modifier's flow settings"),
-    "OUTFLOW": ("FLOW", "flow_behavior = 'OUTFLOW' on the modifier's flow settings"),
-    "OBSTACLE": ("EFFECTOR", "effector_type = 'COLLISION' on the modifier's effector settings"),
-    "LIQUID": ("FLOW", "flow_type = 'LIQUID' on the modifier's flow settings"),
-    "SMOKE": ("FLOW", "flow_type = 'SMOKE' on the modifier's flow settings"),
-    "FIRE": ("FLOW", "flow_type = 'FIRE' on the modifier's flow settings"),
+    "INFLOW": ("FLOW", "modifier.flow_settings.flow_behavior = 'INFLOW'"),
+    "OUTFLOW": ("FLOW", "modifier.flow_settings.flow_behavior = 'OUTFLOW'"),
+    "OBSTACLE": ("EFFECTOR", "modifier.effector_settings.effector_type = 'COLLISION'"),
+    "LIQUID": ("FLOW", "modifier.flow_settings.flow_type = 'LIQUID'"),
+    "SMOKE": ("FLOW", "modifier.flow_settings.flow_type = 'SMOKE'"),
+    "FIRE": ("FLOW", "modifier.flow_settings.flow_type = 'FIRE'"),
 }
 DYNAMIC_PAINT_TYPES = ("CANVAS", "BRUSH")
 DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
@@ -1436,8 +1436,10 @@ def add_fluid_modifier(
 
     Args:
         object_name: Mesh object that receives the modifier.
-        fluid_type: One of ``DOMAIN``, ``FLOW``, ``EFFECTOR``, ``OBSTACLE``,
-            ``INFLOW``, ``OUTFLOW``.
+        fluid_type: ``DOMAIN``, ``FLOW``, or ``EFFECTOR``. Mantaflow has no
+            ``OBSTACLE``, ``INFLOW``, or ``OUTFLOW`` fluid type; those are
+            ``FLOW`` or ``EFFECTOR`` modifiers configured through their nested
+            settings, and passing one returns the exact property to set.
         name: Modifier name; defaults to the fluid type.
         settings: Extra modifier-level properties to apply.
     """
@@ -1899,7 +1901,8 @@ def set_particle_children(
     Args:
         object_name: Mesh object owning the particle system.
         system_name: Particle system name; defaults to the first one.
-        child_type: ``NONE``, ``SIMPLE``, ``INTERPOLATED``, or ``FACES``.
+        child_type: ``NONE``, ``SIMPLE``, or ``INTERPOLATED``. ``FACES`` is a
+            child distribution option in the UI, not a ``child_type`` member.
         child_nbr: Children per parent; Blender caps this at 10000.
         rendered_child_count: Children actually rendered.
         settings: Extra child properties such as ``child_length``.
@@ -2071,7 +2074,12 @@ def bake_particle_system(
             with bpy.context.temp_override(**override):
                 result = bpy.ops.ptcache.free_bake() if free else bpy.ops.ptcache.bake(bake=True)
         except Exception as exc:
-            return skill_exception(exc, message=f"Failed to {'free' if free else 'bake'} the particle cache")
+            return skill_exception(
+                exc,
+                message=f"Failed to {'free' if free else 'bake'} the particle cache",
+                cache_changes=cache_changes,
+                cache=_cache_context(cache),
+            )
 
         # Blender operators report cancellation through their return set, not by
         # raising, so a CANCELLED bake has to be surfaced as a failure.
@@ -2081,6 +2089,8 @@ def bake_particle_system(
                 f"Particle cache {'free' if free else 'bake'} did not finish",
                 f"The Blender operator returned {operator_result or 'nothing'}; "
                 f"{'free' if free else 'bake'} was cancelled or unsupported for this cache.",
+                cache_changes=cache_changes,
+                cache=_cache_context(cache),
             )
 
         return skill_success(

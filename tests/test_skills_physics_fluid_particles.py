@@ -653,3 +653,38 @@ def test_fluid_and_child_enums_match_blender():
 
     assert set(FLUID_TYPES) == {"DOMAIN", "FLOW", "EFFECTOR"}
     assert set(CHILD_TYPES) == {"NONE", "SIMPLE", "INTERPOLATED"}
+
+
+def test_fluid_alias_errors_name_the_full_property_path():
+    """The error must name modifier.<block>.<prop>, not just \"the settings\"."""
+    obj = _make_obj()
+    bpy = _bpy_with_objects(obj)
+    cases = {
+        "INFLOW": "modifier.flow_settings.flow_behavior = 'INFLOW'",
+        "OUTFLOW": "modifier.flow_settings.flow_behavior = 'OUTFLOW'",
+        "OBSTACLE": "modifier.effector_settings.effector_type = 'COLLISION'",
+        "SMOKE": "modifier.flow_settings.flow_type = 'SMOKE'",
+    }
+    for legacy, needle in cases.items():
+        result = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type=legacy)
+        assert result["success"] is False, legacy
+        assert needle in result["error"], (legacy, result["error"])
+
+
+def test_particle_bake_errors_report_the_cache_state():
+    """A cancelled operator must still report the frame range it already set."""
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=90)
+    assert result["success"] is False
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 90}
+    assert result["context"]["cache"]["frame_end"] == 90
+
+
+def test_bake_particle_system_requests_a_bake_length_timeout():
+    """Baking a frame range outlasts the 30s host default."""
+    doc = yaml.safe_load(Path(PHYSICS_PATH).read_text(encoding="utf-8"))
+    tools = {tool["name"]: tool for tool in doc["tools"]}
+    assert tools["bake_particle_system"]["timeout_hint_secs"] == 120
+    assert tools["bake_simulation"]["timeout_hint_secs"] == 120
