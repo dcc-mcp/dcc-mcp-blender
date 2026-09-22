@@ -245,7 +245,7 @@ HDRI by Poly Haven (CC0), and
 | **blender-compositor** | `setup_compositor_tree`, `set_compositor_enabled`, `clear_compositor_tree`, `create_compositor_node`, `delete_compositor_node`, `connect_compositor_nodes`, `disconnect_compositor_nodes`, `set_compositor_node_value`, `get_compositor_node_value`, `list_compositor_node_links`, `list_compositor_node_types` |
 | **blender-material-library** | `save_material_preset`, `list_material_presets`, `load_material_preset`, `delete_material_preset`, `get_shader_assignment`, `get_material_connections`, `set_material_attribute`, `assign_texture`, `list_images`, `reload_image`, `list_color_spaces`, `set_color_management` |
 | **blender-texture-bake** | `list_bake_targets`, `bake_textures`, `bake_ambient_occlusion`, `bake_lighting`, `transfer_maps` |
-| **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport` |
+| **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport`, `get_view_layer_passes`, `set_view_layer_passes`, `set_render_denoise`, `get_render_output`, `set_render_output`, `set_render_region`, `clear_render_region`, `get_render_status` |
 | **blender-render-farm** | `validate_scene_for_farm`, `write_render_job`, `submit_render_job`, `get_render_job_status`, `list_render_jobs`, `cancel_render_job`, `cooperative_cancel`, `render_farm_status` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
 | **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `enable_addon`, `disable_addon`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |

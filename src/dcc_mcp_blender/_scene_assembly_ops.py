@@ -8,6 +8,7 @@ from typing import Any
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _VIEW_LAYER_PASSES = {
+    "combined": ("layer", "use_pass_combined"),
     "z": ("layer", "use_pass_z"),
     "mist": ("layer", "use_pass_mist"),
     "normal": ("layer", "use_pass_normal"),
@@ -23,11 +24,17 @@ _VIEW_LAYER_PASSES = {
     "transmission_color": ("layer", "use_pass_transmission_color"),
     "emit": ("layer", "use_pass_emit"),
     "environment": ("layer", "use_pass_environment"),
+    "position": ("layer", "use_pass_position"),
+    "object_index": ("layer", "use_pass_object_index"),
+    "material_index": ("layer", "use_pass_material_index"),
+    "ambient_occlusion": ("layer", "use_pass_ambient_occlusion"),
+    "shadow": ("layer", "use_pass_shadow"),
     "cryptomatte_object": ("layer", "use_pass_cryptomatte_object"),
     "cryptomatte_material": ("layer", "use_pass_cryptomatte_material"),
     "cryptomatte_asset": ("layer", "use_pass_cryptomatte_asset"),
     "volume_direct": ("cycles", "use_pass_volume_direct"),
     "volume_indirect": ("cycles", "use_pass_volume_indirect"),
+    "denoising": ("cycles", "use_pass_denoising"),
 }
 
 
