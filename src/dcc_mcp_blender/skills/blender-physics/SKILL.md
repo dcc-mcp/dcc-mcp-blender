@@ -9,9 +9,9 @@ metadata:
     layer: domain
     stage: simulation
     version: "2.0.0"
-    tags: [blender, physics, rigid-body, soft-body, cloth, collision, force-field, particle, constraint, simulation, cache]
-    search-hint: "rigid body, soft body, physics, cloth modifier, collision modifier, force field, particle system, rigid body constraint, simulation cache, bake, mass, friction, restitution"
-    search-aliases: [physics simulation, rigid body world, soft body, cloth sim, collision setup, point cache, bake physics, dynamics, nCloth, nParticle, force field wind, particle emitter, rigid constraint]
+    tags: [blender, physics, rigid-body, soft-body, cloth, collision, force-field, particle, hair, mantaflow, fluid, dynamic-paint, constraint, simulation, cache]
+    search-hint: "rigid body, soft body, physics, cloth modifier, collision modifier, force field, particle system, rigid body constraint, simulation cache, bake, mass, friction, restitution, Mantaflow, fluid, smoke, fire, dynamic paint, canvas, brush, hair, children, instancing"
+    search-aliases: [physics simulation, rigid body world, soft body, cloth sim, collision setup, point cache, bake physics, dynamics, nCloth, nParticle, force field wind, particle emitter, rigid constraint, mantaflow, liquid domain, smoke simulation, dynamic paint, wetmap, hair strands, child particles, particle instance]
     intent: "Configure and manage all Blender physics simulations — rigid bodies, soft bodies, cloth, collisions, force fields, particle systems, rigid body constraints, and point caches. Provides Maya nCloth/nParticle/dynamics parity."
     recall-context:
       app_type: blender
@@ -57,10 +57,45 @@ cache limitations are explicit; this is not a claim of complete API coverage.
 |---|---|
 | nCloth | `add_cloth_modifier` |
 | nParticle | `add_particle_system` |
-| nHair | `add_particle_system` (hair physics type) |
+| nHair | `set_particle_hair` + `set_particle_children` |
+| nParticle instancing | `set_particle_instance` |
 | nConstraint | `add_rigid_body_constraint` |
-| Bifrost fluid | `add_simulation_modifier` (FLUID) |
+| Bifrost fluid | `add_fluid_modifier` + `set_fluid_settings` |
+| Paint effects / wetmaps | `add_dynamic_paint_modifier` + `add_dynamic_paint_surface` |
 | Fields (gravity, wind, turbulence) | `add_force_field` |
+
+## Mantaflow fluid and Dynamic Paint
+
+`list_simulation_modifiers` already reported FLUID and DYNAMIC_PAINT modifiers,
+but nothing could create or tune them. Use these tools to close that gap:
+
+| Tool | Description |
+|---|---|
+| `add_fluid_modifier` | Add a Mantaflow DOMAIN, FLOW, EFFECTOR, OBSTACLE, INFLOW, or OUTFLOW modifier |
+| `set_fluid_settings` | Tune modifier properties plus `domain_settings` (resolution, viscosity, noise) |
+| `add_dynamic_paint_modifier` | Add a Dynamic Paint CANVAS (receives paint) or BRUSH (emits paint) |
+| `set_dynamic_paint_settings` | Tune the canvas or brush settings block |
+| `add_dynamic_paint_surface` | Add a PAINT, DISPLACE, WEIGHT, or WAVE surface to a canvas |
+| `list_dynamic_paint_surfaces` | Inspect the surfaces configured on canvas modifiers |
+
+Domain options live on `modifier.domain_settings`, so `set_fluid_settings`
+takes a separate `domain_settings` object; only a DOMAIN modifier exposes it.
+Bake fluid and paint caches with the existing `bake_simulation`, which targets
+point caches generically.
+
+## Particle hair, children, and instancing
+
+| Tool | Description |
+|---|---|
+| `set_particle_hair` | Switch a system between EMITTER and HAIR and set hair properties |
+| `set_particle_children` | Set child type, `child_nbr`, and `rendered_child_count` |
+| `set_particle_instance` | Instance a scene object per particle and control emitter visibility |
+| `bake_particle_system` | Bake or free the point cache of one particle system |
+
+`add_particle_system` already accepted `instance_object_name` and
+`show_emitter`; use `set_particle_instance` to change them later or to set
+`render_type` and `particle_size`. `set_particle_children` validates
+`child_nbr` against Blender's 0-10000 range.
 
 Baking and cache-clearing tools mutate scene state; pass `dry_run=true` when
 you only need target discovery and frame-range validation.

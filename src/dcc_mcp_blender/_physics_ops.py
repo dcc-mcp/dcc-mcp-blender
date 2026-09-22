@@ -1321,3 +1321,741 @@ def get_simulation_status(object_name: Optional[str] = None) -> dict:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message="Failed to get simulation status")
+
+
+# ---------------------------------------------------------------------------
+# Mantaflow fluid and Dynamic Paint
+# ---------------------------------------------------------------------------
+
+FLUID_TYPES = ("DOMAIN", "FLOW", "EFFECTOR", "OBSTACLE", "INFLOW", "OUTFLOW")
+DYNAMIC_PAINT_TYPES = ("CANVAS", "BRUSH")
+DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
+
+FLUID_NUMERIC_SETTINGS = {
+    "resolution_divisions",
+    "viscosity_base",
+    "viscosity_exponent",
+    "domain_size",
+    "time_scale",
+    "cfl",
+    "timesteps_max",
+    "timesteps_min",
+    "burning_rate",
+    "flame_smoke",
+    "flame_vorticity",
+    "flame_ignition",
+    "flame_max_temp",
+    "noise_scale",
+    "noise_strength",
+    "noise_pos_scale",
+    "noise_time_anim",
+    "mesh_scale",
+    "mesh_particle_radius",
+    "particle_radius",
+    "particle_max",
+    "particle_number",
+    "particle_min",
+    "gridlevels",
+    "compression_threshold",
+    "surface_tension",
+    "vorticity",
+    "dissolve_speed",
+}
+
+DYNAMIC_PAINT_NUMERIC_SETTINGS = {
+    "paint_wetness",
+    "paint_dry_speed",
+    "paint_depth",
+    "paint_ramp",
+    "disp_scale",
+    "wave_damping",
+    "wave_speed",
+    "wave_timescale",
+    "wave_spring",
+    "wave_smoothness",
+    "brush_absolute_alpha",
+    "brush_alpha",
+    "brush_radius",
+    "brush_smudge_strength",
+    "brush_ramp",
+}
+
+PARTICLE_HAIR_NUMERIC_SETTINGS = {
+    "hair_length",
+    "hair_step",
+    "hair_radius",
+    "hair_tip_length",
+    "hair_bend",
+    "child_nbr",
+    "child_radius",
+    "child_roundness",
+    "child_length",
+    "child_length_threshold",
+    "child_clump_factor",
+    "child_clump_noise",
+    "child_roughness_endpoint",
+    "child_roughness_end_shape",
+    "child_twist",
+    "rendered_child_count",
+    "virtual_parents",
+    "kink_amplitude",
+    "kink_frequency",
+    "kink_shape",
+    "roughness_1",
+    "roughness_2",
+    "roughness_end_shape",
+    "roughness_braid",
+    "roughness_threshold",
+    "braid_roughness",
+    "clump_noise_size",
+    "distribution_jitter",
+    "display_step",
+    "draw_step",
+}
+
+
+def add_fluid_modifier(
+    object_name: str,
+    fluid_type: str = "DOMAIN",
+    name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a Mantaflow fluid modifier to a mesh object.
+
+    Args:
+        object_name: Mesh object that receives the modifier.
+        fluid_type: One of ``DOMAIN``, ``FLOW``, ``EFFECTOR``, ``OBSTACLE``,
+            ``INFLOW``, ``OUTFLOW``.
+        name: Modifier name; defaults to the fluid type.
+        settings: Extra modifier-level properties to apply.
+    """
+    wanted = str(fluid_type or "").upper()
+    if wanted not in FLUID_TYPES:
+        return skill_error(
+            f"Unsupported fluid type: {fluid_type}",
+            f"Supported fluid types: {', '.join(FLUID_TYPES)}.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        if getattr(obj, "type", None) != "MESH":
+            return skill_error(f"{object_name} is not a mesh", "Fluid modifiers require a mesh object.")
+
+        modifier_name = name or f"Fluid {wanted.title()}"
+        _activate_object(bpy, obj)
+        modifier = obj.modifiers.new(modifier_name, "FLUID")
+        modifier.fluid_type = wanted
+
+        applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
+        context = _modifier_context(modifier)
+        context["fluid_type"] = wanted
+        return skill_success(
+            f"Added {wanted} fluid modifier on {object_name}",
+            object_name=object_name,
+            modifier=context,
+            fluid_type=wanted,
+            applied=applied,
+            skipped=skipped,
+            prompt="Use set_fluid_settings to tune domain options, then bake_simulation.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add fluid modifier to {object_name}")
+
+
+def set_fluid_settings(
+    object_name: str,
+    modifier_name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+    domain_settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Update Mantaflow fluid settings.
+
+    Args:
+        object_name: Mesh object owning the fluid modifier.
+        modifier_name: Fluid modifier name; defaults to the first one.
+        settings: Modifier-level properties.
+        domain_settings: Properties applied to ``modifier.domain_settings``,
+            where Mantaflow keeps resolution, viscosity, noise, and mesh options.
+    """
+    if not settings and not domain_settings:
+        return skill_error(
+            "No fluid settings supplied",
+            "Provide settings and/or domain_settings; use list_simulation_modifiers to inspect modifiers.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier = _find_modifier(obj, modifier_name, "FLUID")
+        if modifier is None:
+            label = modifier_name or "FLUID"
+            return skill_error(f"Fluid modifier not found: {label}", f"{object_name} has no matching fluid modifier.")
+
+        applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
+        domain_applied: Dict[str, Any] = {}
+        if domain_settings:
+            domain = getattr(modifier, "domain_settings", None)
+            if domain is None:
+                return skill_error(
+                    "Fluid domain settings unavailable",
+                    "domain_settings are only exposed on a DOMAIN fluid modifier.",
+                )
+            domain_applied, domain_skipped = _apply_settings(domain, domain_settings, FLUID_NUMERIC_SETTINGS)
+            skipped = [*skipped, *domain_skipped]
+
+        context = _modifier_context(modifier)
+        context["fluid_type"] = getattr(modifier, "fluid_type", None)
+        return skill_success(
+            f"Updated fluid settings on {object_name}",
+            object_name=object_name,
+            modifier=context,
+            applied=applied,
+            domain_applied=domain_applied,
+            skipped=skipped,
+            prompt="Use bake_simulation to cache the result.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to update fluid settings on {object_name}")
+
+
+def _dynamic_paint_target(modifier: Any, ui_type: str) -> Any:
+    """Return the canvas or brush settings block for a Dynamic Paint modifier."""
+    if ui_type == "BRUSH":
+        return getattr(modifier, "brush_settings", None)
+    return getattr(modifier, "canvas_settings", None)
+
+
+def _dynamic_paint_canvas(modifier: Any) -> Any:
+    return getattr(modifier, "canvas_settings", None)
+
+
+def _dynamic_paint_surface_context(surface: Any) -> Dict[str, Any]:
+    return {
+        "name": getattr(surface, "name", ""),
+        "surface_type": getattr(surface, "surface_type", None),
+        "is_active": bool(getattr(surface, "is_active", True)),
+        "use_dry_log": bool(getattr(surface, "use_dry_log", False)),
+        "use_wet_log": bool(getattr(surface, "use_wet_log", False)),
+    }
+
+
+def add_dynamic_paint_modifier(
+    object_name: str,
+    paint_type: str = "CANVAS",
+    name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a Dynamic Paint modifier configured as a canvas or a brush.
+
+    Args:
+        object_name: Mesh object that receives the modifier.
+        paint_type: ``CANVAS`` (receives paint) or ``BRUSH`` (emits paint).
+        name: Modifier name; defaults to the paint type.
+        settings: Modifier-level properties.
+    """
+    wanted = str(paint_type or "").upper()
+    if wanted not in DYNAMIC_PAINT_TYPES:
+        return skill_error(
+            f"Unsupported dynamic paint type: {paint_type}",
+            f"Supported types: {', '.join(DYNAMIC_PAINT_TYPES)}.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        if getattr(obj, "type", None) != "MESH":
+            return skill_error(f"{object_name} is not a mesh", "Dynamic Paint modifiers require a mesh object.")
+
+        modifier_name = name or f"Dynamic Paint {wanted.title()}"
+        _activate_object(bpy, obj)
+        modifier = obj.modifiers.new(modifier_name, "DYNAMIC_PAINT")
+        modifier.ui_type = wanted
+
+        applied, skipped = _apply_settings(
+            _dynamic_paint_target(modifier, wanted), settings, DYNAMIC_PAINT_NUMERIC_SETTINGS
+        )
+        context = _modifier_context(modifier)
+        context["ui_type"] = wanted
+        return skill_success(
+            f"Added Dynamic Paint {wanted} modifier on {object_name}",
+            object_name=object_name,
+            modifier=context,
+            paint_type=wanted,
+            applied=applied,
+            skipped=skipped,
+            prompt=(
+                "Use add_dynamic_paint_surface to add a canvas surface."
+                if wanted == "CANVAS"
+                else "Tune the brush alpha and radius, then run bake_simulation on the canvas."
+            ),
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add Dynamic Paint modifier to {object_name}")
+
+
+def set_dynamic_paint_settings(
+    object_name: str,
+    modifier_name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Update canvas or brush settings on a Dynamic Paint modifier.
+
+    Args:
+        object_name: Mesh object owning the modifier.
+        modifier_name: Dynamic Paint modifier name; defaults to the first one.
+        settings: Properties applied to the canvas or brush settings block.
+    """
+    if not settings:
+        return skill_error(
+            "No dynamic paint settings supplied",
+            "Provide settings; use list_simulation_modifiers to inspect modifiers.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier = _find_modifier(obj, modifier_name, "DYNAMIC_PAINT")
+        if modifier is None:
+            label = modifier_name or "DYNAMIC_PAINT"
+            return skill_error(
+                f"Dynamic Paint modifier not found: {label}",
+                f"{object_name} has no matching Dynamic Paint modifier.",
+            )
+
+        ui_type = str(getattr(modifier, "ui_type", "") or "").upper()
+        target = _dynamic_paint_target(modifier, ui_type)
+        if target is None:
+            return skill_error(
+                "Dynamic Paint settings unavailable",
+                f"The modifier exposes no {ui_type or 'canvas/brush'} settings block.",
+            )
+        applied, skipped = _apply_settings(target, settings, DYNAMIC_PAINT_NUMERIC_SETTINGS)
+        context = _modifier_context(modifier)
+        context["ui_type"] = ui_type
+        return skill_success(
+            f"Updated Dynamic Paint settings on {object_name}",
+            object_name=object_name,
+            modifier=context,
+            paint_type=ui_type,
+            applied=applied,
+            skipped=skipped,
+            prompt="Use bake_simulation to cache the result.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to update Dynamic Paint settings on {object_name}")
+
+
+def add_dynamic_paint_surface(
+    object_name: str,
+    surface_type: str = "PAINT",
+    name: Optional[str] = None,
+    modifier_name: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Add a surface to a Dynamic Paint canvas modifier.
+
+    Args:
+        object_name: Mesh object owning the canvas modifier.
+        surface_type: ``PAINT``, ``DISPLACE``, ``WEIGHT``, or ``WAVE``.
+        name: Surface name; defaults to the surface type.
+        modifier_name: Canvas modifier name; defaults to the first one.
+        settings: Surface properties, for example ``use_dry_log``.
+    """
+    wanted = str(surface_type or "").upper()
+    if wanted not in DYNAMIC_PAINT_SURFACE_TYPES:
+        return skill_error(
+            f"Unsupported dynamic paint surface: {surface_type}",
+            f"Supported surfaces: {', '.join(DYNAMIC_PAINT_SURFACE_TYPES)}.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        label = modifier_name or "DYNAMIC_PAINT"
+        modifier = _find_modifier(obj, modifier_name, "DYNAMIC_PAINT")
+        if modifier is None:
+            return skill_error(
+                f"Dynamic Paint modifier not found: {label}",
+                f"{object_name} has no matching Dynamic Paint modifier.",
+            )
+        ui_type = str(getattr(modifier, "ui_type", "") or "").upper()
+        if ui_type and ui_type != "CANVAS":
+            return skill_error(
+                "Modifier is not a Dynamic Paint canvas",
+                f"Modifier {getattr(modifier, 'name', label)} has ui_type {ui_type}; surfaces require a CANVAS.",
+            )
+        canvas = _dynamic_paint_canvas(modifier)
+        surfaces = getattr(canvas, "canvas_surfaces", None)
+        if surfaces is None or not callable(getattr(surfaces, "new", None)):
+            return skill_error(
+                "Dynamic Paint surfaces unavailable",
+                "canvas_settings.canvas_surfaces is not exposed by this Blender build.",
+            )
+
+        surface_name = name or f"{wanted.title()} Surface"
+        getter = getattr(surfaces, "get", None)
+        existing = getter(surface_name) if callable(getter) else None
+        created = False
+        if existing is None:
+            try:
+                existing = surfaces.new()
+            except TypeError:
+                existing = surfaces.new(surface_name)
+            created = True
+        try:
+            existing.name = surface_name
+        except Exception:  # pragma: no cover - read-only name in exotic builds
+            pass
+        try:
+            existing.surface_type = wanted
+        except Exception:  # pragma: no cover - surface_type unsupported in this build
+            pass
+
+        applied, skipped = _apply_settings(existing, settings, DYNAMIC_PAINT_NUMERIC_SETTINGS)
+        return skill_success(
+            f"{'Added' if created else 'Updated'} Dynamic Paint {wanted} surface on {object_name}",
+            object_name=object_name,
+            modifier_name=getattr(modifier, "name", None),
+            surface=_dynamic_paint_surface_context(existing),
+            created=created,
+            applied=applied,
+            skipped=skipped,
+            prompt="Use list_dynamic_paint_surfaces to review the canvas, then bake_simulation.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to add Dynamic Paint surface to {object_name}")
+
+
+def list_dynamic_paint_surfaces(object_name: str, modifier_name: Optional[str] = None) -> dict:
+    """List the surfaces configured on Dynamic Paint canvas modifiers."""
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+
+        entries: List[Dict[str, Any]] = []
+        for modifier in getattr(obj, "modifiers", []) or []:
+            if getattr(modifier, "type", None) != "DYNAMIC_PAINT":
+                continue
+            if modifier_name and getattr(modifier, "name", None) != modifier_name:
+                continue
+            if str(getattr(modifier, "ui_type", "") or "").upper() != "CANVAS":
+                continue
+            canvas = _dynamic_paint_canvas(modifier)
+            for surface in getattr(canvas, "canvas_surfaces", []) or []:
+                item = _dynamic_paint_surface_context(surface)
+                item["modifier_name"] = getattr(modifier, "name", "")
+                entries.append(item)
+        return skill_success(
+            f"Found {len(entries)} Dynamic Paint surface(s) on {object_name}",
+            object_name=object_name,
+            count=len(entries),
+            surfaces=entries,
+            prompt="Use add_dynamic_paint_surface or set_dynamic_paint_settings to adjust the canvas.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to list Dynamic Paint surfaces on {object_name}")
+
+
+# ---------------------------------------------------------------------------
+# Particle hair, children, instancing, and baking
+# ---------------------------------------------------------------------------
+
+PARTICLE_TYPES = ("EMITTER", "HAIR")
+CHILD_TYPES = ("NONE", "SIMPLE", "INTERPOLATED", "FACES")
+
+
+def _find_particle_system(obj: Any, system_name: Optional[str]) -> Tuple[Any, Optional[dict]]:
+    """Resolve the first (or named) particle system modifier on an object."""
+    for modifier in getattr(obj, "modifiers", []) or []:
+        if getattr(modifier, "type", None) != "PARTICLE_SYSTEM":
+            continue
+        system = getattr(modifier, "particle_system", None)
+        names = {getattr(system, "name", None), getattr(modifier, "name", None)}
+        if system_name and system_name not in names:
+            continue
+        return modifier, None
+    label = system_name or "PARTICLE_SYSTEM"
+    return None, skill_error(
+        f"Particle system not found: {label}", f"{getattr(obj, 'name', '')} has no matching particle system."
+    )
+
+
+def set_particle_hair(
+    object_name: str,
+    system_name: Optional[str] = None,
+    enabled: bool = True,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Switch a particle system between emitter and hair mode.
+
+    Args:
+        object_name: Mesh object owning the particle system.
+        system_name: Particle system name; defaults to the first one.
+        enabled: ``True`` selects hair mode, ``False`` restores emitter mode.
+        settings: Hair properties such as ``hair_length`` or ``hair_step``.
+    """
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier, error = _find_particle_system(obj, system_name)
+        if error:
+            return error
+        psettings = getattr(getattr(modifier, "particle_system", None), "settings", None)
+        if psettings is None:
+            return skill_error("Particle settings unavailable", "The modifier exposes no particle settings.")
+        if not hasattr(psettings, "type"):
+            return skill_error(
+                "Particle type unavailable",
+                "particle settings expose no 'type' property in this Blender build.",
+            )
+
+        wanted = "HAIR" if enabled else "EMITTER"
+        psettings.type = wanted
+        applied, skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
+        return skill_success(
+            f"Set particle system to {wanted} on {object_name}",
+            object_name=object_name,
+            system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
+            type=wanted,
+            applied=applied,
+            skipped=skipped,
+            prompt="Use set_particle_children for child strands, then bake_particle_system.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to set particle hair mode on {object_name}")
+
+
+def set_particle_children(
+    object_name: str,
+    system_name: Optional[str] = None,
+    child_type: Optional[str] = None,
+    child_nbr: Optional[int] = None,
+    rendered_child_count: Optional[int] = None,
+    settings: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Configure child particles (interpolated strands) on a particle system.
+
+    Args:
+        object_name: Mesh object owning the particle system.
+        system_name: Particle system name; defaults to the first one.
+        child_type: ``NONE``, ``SIMPLE``, ``INTERPOLATED``, or ``FACES``.
+        child_nbr: Children per parent; Blender caps this at 10000.
+        rendered_child_count: Children actually rendered.
+        settings: Extra child properties such as ``child_length``.
+    """
+    if child_type is not None and str(child_type).upper() not in CHILD_TYPES:
+        return skill_error(
+            f"Unsupported child type: {child_type}",
+            f"Supported child types: {', '.join(CHILD_TYPES)}.",
+        )
+    if child_nbr is not None and not 0 <= int(child_nbr) <= 10000:
+        return skill_error("Invalid child count", "child_nbr must be between 0 and 10000.")
+    if rendered_child_count is not None and int(rendered_child_count) < 0:
+        return skill_error("Invalid rendered child count", "rendered_child_count must not be negative.")
+    if child_type is None and child_nbr is None and rendered_child_count is None and not settings:
+        return skill_error(
+            "No child settings supplied",
+            "Provide child_type, child_nbr, rendered_child_count, and/or settings.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier, error = _find_particle_system(obj, system_name)
+        if error:
+            return error
+        psettings = getattr(getattr(modifier, "particle_system", None), "settings", None)
+        if psettings is None:
+            return skill_error("Particle settings unavailable", "The modifier exposes no particle settings.")
+
+        applied: Dict[str, Any] = {}
+        skipped: List[str] = []
+        for key, value in (
+            ("child_type", str(child_type).upper() if child_type is not None else None),
+            ("child_nbr", int(child_nbr) if child_nbr is not None else None),
+            ("rendered_child_count", int(rendered_child_count) if rendered_child_count is not None else None),
+        ):
+            if value is None:
+                continue
+            if not hasattr(psettings, key):
+                skipped.append(key)
+                continue
+            setattr(psettings, key, value)
+            applied[key] = value
+
+        extra_applied, extra_skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
+        applied.update(extra_applied)
+        skipped.extend(extra_skipped)
+        return skill_success(
+            f"Updated children on {object_name}",
+            object_name=object_name,
+            system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
+            applied=applied,
+            skipped=skipped,
+            prompt="Use bake_particle_system to cache the strands.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to set particle children on {object_name}")
+
+
+def set_particle_instance(
+    object_name: str,
+    system_name: Optional[str] = None,
+    instance_object_name: Optional[str] = None,
+    show_emitter: Optional[bool] = None,
+    render_type: Optional[str] = None,
+    particle_size: Optional[float] = None,
+) -> dict:
+    """Render an object for every particle.
+
+    Args:
+        object_name: Mesh object owning the particle system.
+        system_name: Particle system name; defaults to the first one.
+        instance_object_name: Object to instance; omit to keep the current one.
+        show_emitter: Whether the source mesh renders alongside the instances.
+        render_type: Blender render type, for example ``OBJECT`` or ``HALO``.
+        particle_size: Size of each rendered particle.
+    """
+    if instance_object_name is None and show_emitter is None and render_type is None and particle_size is None:
+        return skill_error(
+            "No instance settings supplied",
+            "Provide at least one of instance_object_name, show_emitter, render_type, particle_size.",
+        )
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        instance_object, error = _resolve_particle_instance_object(bpy, instance_object_name)
+        if error:
+            return error
+        modifier, error = _find_particle_system(obj, system_name)
+        if error:
+            return error
+        psettings = getattr(getattr(modifier, "particle_system", None), "settings", None)
+        if psettings is None:
+            return skill_error("Particle settings unavailable", "The modifier exposes no particle settings.")
+
+        applied, skipped = _apply_particle_render_options(
+            obj, psettings, instance_object_name, instance_object, show_emitter
+        )
+        if render_type is not None:
+            if hasattr(psettings, "render_type"):
+                psettings.render_type = str(render_type).upper()
+                applied["render_type"] = psettings.render_type
+            else:
+                skipped.append("render_type")
+        if particle_size is not None:
+            if hasattr(psettings, "particle_size"):
+                psettings.particle_size = float(particle_size)
+                applied["particle_size"] = psettings.particle_size
+            else:
+                skipped.append("particle_size")
+
+        return skill_success(
+            f"Updated instance rendering on {object_name}",
+            object_name=object_name,
+            system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
+            applied=applied,
+            skipped=skipped,
+            prompt="Use set_particle_children to add more instances, then bake_particle_system.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to set particle instancing on {object_name}")
+
+
+def bake_particle_system(
+    object_name: str,
+    system_name: Optional[str] = None,
+    frame_start: Optional[int] = None,
+    frame_end: Optional[int] = None,
+    free: bool = False,
+) -> dict:
+    """Bake or free the point cache of one particle system.
+
+    Args:
+        object_name: Mesh object owning the particle system.
+        system_name: Particle system name; defaults to the first one.
+        frame_start: First cached frame; defaults to the current cache start.
+        frame_end: Last cached frame; defaults to the current cache end.
+        free: ``True`` frees the cache instead of baking.
+    """
+    try:
+        import bpy
+
+        obj = _object_named(bpy, object_name)
+        if obj is None:
+            return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
+        modifier, error = _find_particle_system(obj, system_name)
+        if error:
+            return error
+        cache = _modifier_point_cache(modifier)
+        if cache is None:
+            return skill_error(
+                "Particle cache unavailable",
+                "The particle system exposes no point cache in this Blender build.",
+            )
+
+        cache_changes = _set_cache_frames(cache, frame_start, frame_end)
+        _activate_object(bpy, obj)
+        try:
+            override = {"scene": bpy.context.scene, "active_object": obj, "object": obj, "point_cache": cache}
+            with bpy.context.temp_override(**override):
+                if free:
+                    bpy.ops.ptcache.free_bake()
+                else:
+                    bpy.ops.ptcache.bake(bake=True)
+        except Exception as exc:
+            return skill_exception(exc, message=f"Failed to {'free' if free else 'bake'} the particle cache")
+
+        return skill_success(
+            f"{'Freed' if free else 'Baked'} particle cache on {object_name}",
+            object_name=object_name,
+            system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
+            freed=bool(free),
+            cache=_cache_context(cache),
+            cache_changes=cache_changes,
+            prompt="Use get_simulation_status to confirm cache state.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to bake the particle cache on {object_name}")

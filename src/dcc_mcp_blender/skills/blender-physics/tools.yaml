@@ -1033,3 +1033,335 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: add_fluid_modifier
+    description: "Add a Mantaflow fluid modifier (domain, flow, effector, obstacle, inflow, outflow) to a mesh object."
+    source_file: scripts/add_fluid_modifier.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        fluid_type:
+          type: string
+          enum: [DOMAIN, FLOW, EFFECTOR, OBSTACLE, INFLOW, OUTFLOW]
+          default: DOMAIN
+        name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema: &physics_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: &mutating_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: set_fluid_settings
+    description: "Update Mantaflow fluid settings, including domain_settings such as resolution, viscosity, and noise."
+    source_file: scripts/set_fluid_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+          description: Modifier-level fluid properties.
+        domain_settings:
+          type: object
+          additionalProperties: true
+          description: Properties applied to modifier.domain_settings (DOMAIN only).
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: add_dynamic_paint_modifier
+    description: "Add a Dynamic Paint modifier configured as a canvas (receives paint) or a brush (emits paint)."
+    source_file: scripts/add_dynamic_paint_modifier.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        paint_type:
+          type: string
+          enum: [CANVAS, BRUSH]
+          default: CANVAS
+        name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+          description: Canvas or brush properties.
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: set_dynamic_paint_settings
+    description: "Update canvas or brush settings on an existing Dynamic Paint modifier."
+    source_file: scripts/set_dynamic_paint_settings.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, settings]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: add_dynamic_paint_surface
+    description: "Add a paint, displace, weight, or wave surface to a Dynamic Paint canvas modifier."
+    source_file: scripts/add_dynamic_paint_surface.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        surface_type:
+          type: string
+          enum: [PAINT, DISPLACE, WEIGHT, WAVE]
+          default: PAINT
+        name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+          description: Canvas modifier name; defaults to the first canvas modifier.
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: list_dynamic_paint_surfaces
+    description: "List the surfaces configured on Dynamic Paint canvas modifiers."
+    source_file: scripts/list_dynamic_paint_surfaces.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        modifier_name:
+          type: string
+          minLength: 1
+    output_schema: *physics_result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: set_particle_hair
+    description: "Switch a particle system between emitter and hair mode and set hair properties."
+    source_file: scripts/set_particle_hair.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        system_name:
+          type: string
+          minLength: 1
+          description: Particle system name; defaults to the first system.
+        enabled:
+          type: boolean
+          default: true
+          description: True selects hair mode; False restores emitter mode.
+        settings:
+          type: object
+          additionalProperties: true
+          description: Hair properties such as hair_length or hair_step.
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: set_particle_children
+    description: "Configure child particles on a particle system (child type, counts, clump and roughness settings)."
+    source_file: scripts/set_particle_children.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        system_name:
+          type: string
+          minLength: 1
+        child_type:
+          type: string
+          enum: [NONE, SIMPLE, INTERPOLATED, FACES]
+        child_nbr:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: Children per parent.
+        rendered_child_count:
+          type: integer
+          minimum: 0
+        settings:
+          type: object
+          additionalProperties: true
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: set_particle_instance
+    description: "Render a scene object for every particle and control emitter visibility."
+    source_file: scripts/set_particle_instance.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        system_name:
+          type: string
+          minLength: 1
+        instance_object_name:
+          type: string
+          minLength: 1
+        show_emitter:
+          type: boolean
+          description: Whether the source mesh renders alongside the instances.
+        render_type:
+          type: string
+          enum: [OBJECT, COLLECTION, HALO, LINE, PATH, NONE]
+        particle_size:
+          type: number
+          exclusiveMinimum: 0
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
+
+  - name: bake_particle_system
+    description: "Bake or free the point cache of one particle system."
+    source_file: scripts/bake_particle_system.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        system_name:
+          type: string
+          minLength: 1
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        free:
+          type: boolean
+          default: false
+          description: Free the cache instead of baking it.
+    output_schema: *physics_result_schema
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
