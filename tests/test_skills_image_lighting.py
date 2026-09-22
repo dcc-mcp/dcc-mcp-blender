@@ -78,8 +78,12 @@ class _Image:
         # has_data. Without this the fake would happily "save" an undecodeable
         # image and the ordering bug would go unnoticed.
         self.save = MagicMock(side_effect=self._save)
+        self.save_render = MagicMock(side_effect=self._save_render)
         self.pack = MagicMock(side_effect=lambda: setattr(self, "packed_file", SimpleNamespace()))
         self.unpack = MagicMock(side_effect=lambda method="USE_ORIGINAL": setattr(self, "packed_file", None))
+        # Log which method wrote, so a test can assert the explicit-path route
+        # uses save_render and the in-place route uses save.
+        self.writes = []
 
     def _save(self):
         """Mirror Blender: refuse without decoded data, otherwise write.
@@ -90,9 +94,18 @@ class _Image:
         """
         if not self.has_data:
             raise RuntimeError(f"Image {self.name!r} does not have any image data")
-        target = Path(self._filepath)
+        self._write(Path(self._filepath), "save")
+
+    def _save_render(self, filepath):
+        """Like save(), but writes to an explicit path without re-associating."""
+        if not self.has_data:
+            raise RuntimeError(f"Image {self.name!r} does not have any image data")
+        self._write(Path(filepath), "save_render")
+
+    def _write(self, target, method):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"SAVED")
+        self.writes.append(method)
 
     @property
     def filepath(self):
@@ -179,15 +192,110 @@ def test_load_image_reports_an_unknown_color_space(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_save_image_uses_the_current_path(tmp_path):
-    path = tmp_path / "tex.png"
-    path.write_text("x", encoding="utf-8")
-    image = _make_image(filepath=str(path))
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex")
+def test_save_image_writes_in_place_without_a_destination(tmp_path):
+    """No file_path means write back over the image's own file, using save()."""
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+    _ = image.pixels[0]  # decode first, as Blender would after a read
 
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex")
     assert result["success"] is True, result.get("error")
-    image.save.assert_called_once()
-    assert result["context"]["filepath"] == str(path)
+    assert result["context"]["method"] == "save"
+    assert image.writes == ["save"]
+    assert source.read_bytes() == b"SAVED"
+
+    # The image must still point at its own file. Assigning filepath is what
+    # invalidated the pixel buffer, so it must not happen on either path.
+    assert Path(image.filepath) == source
+
+
+def test_save_image_writes_a_copy_through_save_render(tmp_path):
+    """An explicit file_path goes through save_render, which does not re-point."""
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+    _ = image.pixels[0]
+
+    target = tmp_path / "out.png"
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["method"] == "save_render"
+    assert image.writes == ["save_render"]
+    assert target.is_file(), "the copy must exist at the requested path"
+    assert Path(image.filepath) == source, "the datablock must not be re-pointed"
+    assert result["context"]["has_data"] is True
+
+
+def test_save_image_reports_the_written_size(tmp_path):
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+    _ = image.pixels[0]
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["size_bytes"] == len(b"SAVED")
+
+
+def test_save_image_fails_when_blender_writes_nothing(tmp_path):
+    """A save that leaves no file is a failure, never a success."""
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+    image.save_render = MagicMock()  # no-op: nothing is written
+    _ = image.pixels[0]
+
+    result = _call(
+        LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "out.png")
+    )
+    assert result["success"] is False
+    assert "not saved" in result["message"].lower()
+    assert str(tmp_path / "out.png") in result["error"]
+
+
+def test_save_image_reports_an_empty_pixel_collection(tmp_path):
+    """An image whose pixels vanish is a failure with the state included.
+
+    Assigning filepath empties the collection in Blender, so reading one pixel
+    can raise IndexError. Swallowing it and reporting has_data is what lets the
+    next run diagnose rather than guess.
+    """
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+
+    class _EmptyPixels(list):
+        def __getitem__(self, index):
+            raise IndexError("index out of range")
+
+    image.pixels = _EmptyPixels()
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
+    assert result["success"] is False
+    assert "no pixel data" in result["message"].lower()
+    assert "has_data" in result["context"], "the failure must report the state it measured"
+    image.save_render.assert_not_called()
+
+
+def test_save_image_reports_pixels_that_never_materialise(tmp_path):
+    """A read that succeeds but leaves has_data False is also a failure."""
+    source = tmp_path / "source.png"
+    source.write_bytes(b"ORIGINAL")
+    image = _make_image(filepath=str(source))
+
+    class _Unmaterialising(list):
+        def __init__(self):
+            super().__init__([0.0] * 16)
+
+        def __getitem__(self, index):
+            return super().__getitem__(index)  # never sets has_data
+
+    image.pixels = _Unmaterialising()
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
+    assert result["success"] is False
+    assert "no pixel data" in result["message"].lower()
+    image.save_render.assert_not_called()
 
 
 def test_save_image_reports_a_missing_image():
@@ -531,98 +639,3 @@ def test_new_tools_are_not_flagged_destructive():
     for name in ("load_image", "save_image", "pack_image", "unpack_image", "image_file_status", "list_image_tiles"):
         assert library[name]["destructive"] is False, name
         assert library[name]["annotations"]["destructive_hint"] is False, name
-
-
-def test_save_image_confirms_the_file_was_written(tmp_path):
-    """A save that leaves no file behind must fail, not report success."""
-    source = tmp_path / "source.png"
-    source.write_text("x", encoding="utf-8")
-    image = _make_image(filepath=str(source))
-    image.save = MagicMock()  # no-op: nothing is written
-
-    target = tmp_path / "out.png"
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
-
-    assert result["success"] is False
-    assert "not saved" in result["message"].lower()
-    assert str(target) in result["error"]
-
-
-def test_save_image_reports_pixel_data_it_cannot_read(tmp_path):
-    """If the pixels cannot be materialized the call fails with that reason."""
-    source = tmp_path / "source.png"
-    source.write_text("x", encoding="utf-8")
-
-    class _BadPixels:
-        def __getitem__(self, index):
-            raise RuntimeError("Image does not have any image data")
-
-    image = _make_image(filepath=str(source))
-    image.pixels = _BadPixels()
-
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
-    assert result["success"] is False
-    assert "pixel data" in result["message"].lower()
-    image.save.assert_not_called()
-
-
-def test_save_image_fails_when_pixels_stay_undecoded(tmp_path):
-    """Indexing that does not flip has_data is a failure, not a silent save."""
-    source = tmp_path / "source.png"
-    source.write_text("x", encoding="utf-8")
-
-    class _Unmaterialising(list):
-        def __init__(self):
-            super().__init__([0.0] * 16)
-
-        def __getitem__(self, index):
-            return super().__getitem__(index)  # never sets has_data
-
-    image = _make_image(filepath=str(source))
-    image.pixels = _Unmaterialising()
-
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
-    assert result["success"] is False
-    assert "no pixel data" in result["message"].lower()
-    image.save.assert_not_called()
-
-
-def test_save_image_materialises_pixels_before_saving(tmp_path):
-    """The decode must actually happen: has_data ends up True."""
-    source = tmp_path / "source.png"
-    source.write_text("x", encoding="utf-8")
-    image = _make_image(filepath=str(source))
-    assert image.has_data is False
-
-    target = tmp_path / "out.png"
-
-    def _write():
-        target.write_bytes(b"PNGDATA")
-
-    image.save = MagicMock(side_effect=_write)
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
-
-    assert result["success"] is True, result.get("error")
-    # The tool reports the state it measured at save time. Asserting on the
-    # datablock afterwards would be ambiguous: save_image restores the original
-    # filepath once it is done, and re-association drops the decoded buffer in
-    # this model, so post-restore has_data says nothing about the save itself.
-    assert result["context"]["has_data"] is True, result["context"]
-
-
-def test_save_image_reports_the_written_size(tmp_path):
-    """A real save reports the file it produced."""
-    source = tmp_path / "source.png"
-    source.write_text("x", encoding="utf-8")
-    image = _make_image(filepath=str(source))
-
-    target = tmp_path / "out.png"
-
-    def _write():
-        target.write_bytes(b"PNGDATA")
-
-    image.save = MagicMock(side_effect=_write)
-
-    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
-    assert result["success"] is True, result.get("error")
-    assert result["context"]["size_bytes"] == len(b"PNGDATA")
