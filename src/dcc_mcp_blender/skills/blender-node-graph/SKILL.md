@@ -53,3 +53,4 @@ node tree specifically. For detailed shader or geometry node editing, use
 - **Scene node graph audit**: `list_all_node_graphs` -> drill into specific graphs
 - **Compositor inspection**: `get_compositor_node_tree` for full graph overview
 - **Cross-graph discovery**: understand all active node trees before targeted editing
+- **Compositor editing**: hand off to `blender-compositor` to enable the compositor, create nodes, link sockets, and set values
