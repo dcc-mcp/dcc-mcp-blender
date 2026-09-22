@@ -1464,9 +1464,27 @@ def add_fluid_modifier(
         if getattr(obj, "type", None) != "MESH":
             return skill_error(f"{object_name} is not a mesh", "Fluid modifiers require a mesh object.")
 
+        # Blender allows exactly one FLUID modifier per object and returns None
+        # from modifiers.new() when the type is already present, so the existing
+        # one has to be reported instead of dereferencing None.
+        existing = _find_modifier(obj, None, "FLUID")
+        if existing is not None:
+            return skill_error(
+                "Object already has a fluid modifier",
+                f"{object_name} already has fluid modifier '{getattr(existing, 'name', '?')}' "
+                f"(fluid_type={getattr(existing, 'fluid_type', '?')}). Blender allows one per object; "
+                "use set_fluid_settings to change it, or remove it first.",
+            )
+
         modifier_name = name or f"Fluid {wanted.title()}"
         _activate_object(bpy, obj)
         modifier = obj.modifiers.new(modifier_name, "FLUID")
+        if modifier is None:
+            return skill_error(
+                "Fluid modifier could not be created",
+                f"Blender refused a FLUID modifier on {object_name}; the object may already "
+                "have one or lack mesh data. No modifier was added.",
+            )
         modifier.fluid_type = wanted
 
         applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
@@ -2067,7 +2085,11 @@ def bake_particle_system(
                 "The particle system exposes no point cache in this Blender build.",
             )
 
+        # The ptcache operator bakes the scene range, not the cache range, so
+        # both have to move; setting only the cache silently bakes the whole
+        # scene. Mirrors bake_simulation and bake_rigid_body_simulation.
         cache_changes = _set_cache_frames(cache, frame_start, frame_end)
+        scene_changes = _set_scene_frames(bpy.context.scene, frame_start, frame_end)
         _activate_object(bpy, obj)
         try:
             override = {"scene": bpy.context.scene, "active_object": obj, "object": obj, "point_cache": cache}
@@ -2078,6 +2100,7 @@ def bake_particle_system(
                 exc,
                 message=f"Failed to {'free' if free else 'bake'} the particle cache",
                 cache_changes=cache_changes,
+                scene_changes=scene_changes,
                 cache=_cache_context(cache),
             )
 
@@ -2090,6 +2113,7 @@ def bake_particle_system(
                 f"The Blender operator returned {operator_result or 'nothing'}; "
                 f"{'free' if free else 'bake'} was cancelled or unsupported for this cache.",
                 cache_changes=cache_changes,
+                scene_changes=scene_changes,
                 cache=_cache_context(cache),
             )
 
@@ -2101,6 +2125,7 @@ def bake_particle_system(
             operator_result=operator_result,
             cache=_cache_context(cache),
             cache_changes=cache_changes,
+            scene_changes=scene_changes,
             prompt="Use get_simulation_status to confirm cache state.",
         )
     except ImportError:
