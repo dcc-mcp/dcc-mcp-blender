@@ -274,18 +274,27 @@ def add_nla_strip(
         if action is None:
             return skill_error(f"Action not found: {action_name}", f"No action named '{action_name}'.")
 
-        data = _animation_data(obj, create=True)
-        if data is None:
-            return skill_error(
-                "Animation data unavailable", f"Blender would not create animation_data on {object_name}."
-            )
-
-        tracks = data.nla_tracks
+        # Resolve the target track before creating animation_data, so a bad
+        # track name or missing action leaves the object untouched instead of
+        # creating an animation_data slot and then failing.
+        existing_data = getattr(obj, "animation_data", None)
         if track_name:
-            track, error = _find_named(tracks, track_name, "Track")
+            if existing_data is None:
+                return skill_error(
+                    f"Track not found: {track_name}",
+                    f"{object_name} has no animation data, so it has no NLA tracks. "
+                    "Add a track first with add_nla_track.",
+                )
+            track, error = _find_named(existing_data.nla_tracks, track_name, "Track")
             if error:
                 return error
         else:
+            data = _animation_data(obj, create=True)
+            if data is None:
+                return skill_error(
+                    "Animation data unavailable", f"Blender would not create animation_data on {object_name}."
+                )
+            tracks = data.nla_tracks
             if not _iter_items(tracks):
                 track = tracks.new()
             else:
@@ -348,12 +357,16 @@ def set_nla_strip(
             f"Unsupported extrapolation: {extrapolation}",
             f"Supported values: {', '.join(EXTRAPOLATION_TYPES)}.",
         )
+    # These ranges mirror Blender's RNA limits. They are rejected rather than
+    # clamped on purpose: silently clamping reports success while giving the
+    # caller a different value than the one it asked for. The error says so.
+    clamp_note = " Blender would silently clamp this, so it is rejected instead."
     if influence is not None and not 0.0 <= float(influence) <= 1.0:
-        return skill_error("Invalid influence", "influence must be between 0.0 and 1.0.")
+        return skill_error("Invalid influence", "influence must be between 0.0 and 1.0." + clamp_note)
     if scale is not None and not 0.0001 <= float(scale) <= 1000.0:
-        return skill_error("Invalid scale", "scale must be between 0.0001 and 1000.")
+        return skill_error("Invalid scale", "scale must be between 0.0001 and 1000." + clamp_note)
     if repeat is not None and not 0.01 <= float(repeat) <= 1000.0:
-        return skill_error("Invalid repeat", "repeat must be between 0.01 and 1000.")
+        return skill_error("Invalid repeat", "repeat must be between 0.01 and 1000." + clamp_note)
 
     updates = {
         "frame_start": frame_start,

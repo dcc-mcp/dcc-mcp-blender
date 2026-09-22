@@ -479,6 +479,7 @@ tools:
         overwrite:
           type: boolean
           default: false
+          description: Replace an already installed copy of the same add-on.
         enable:
           type: boolean
           default: true
