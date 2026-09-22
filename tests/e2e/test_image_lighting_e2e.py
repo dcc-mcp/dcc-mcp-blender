@@ -75,12 +75,27 @@ class TestImageLifecycleE2E:
         # it, and a save that quietly writes nothing must fail instead.
         assert target.is_file(), "the image must actually be written to disk"
         assert target.stat().st_size > 0, "the saved file must not be empty"
+        # The mechanism, not just the outcome: saving has to leave the image
+        # decoded. A save that worked by accident would leave has_data False.
+        assert bpy.data.images[name].has_data is True, "saving must materialise the pixel data"
 
         # Saving is repeatable, not a one-shot.
         second = tmp_path / "saved_again.png"
         again = _library("save_image").save_image(image_name=name, file_path=str(second))
         assert again["success"] is True, again.get("error")
         assert second.is_file()
+        assert second.stat().st_size > 0
+
+    def test_generated_images_save_without_decoding(self, tmp_path):
+        """Generated images already carry data; only loaded ones need decoding."""
+        image = bpy.data.images.new("GeneratedProbe", width=4, height=4)
+        assert image.has_data is True, "a generated image starts with pixel data"
+
+        target = tmp_path / "generated.png"
+        result = _library("save_image").save_image(image_name="GeneratedProbe", file_path=str(target))
+        assert result["success"] is True, result.get("error")
+        assert target.is_file()
+        assert target.stat().st_size > 0
 
     def test_load_rejects_a_missing_file(self, tmp_path):
         result = _library("load_image").load_image(file_path=str(tmp_path / "nope.png"))

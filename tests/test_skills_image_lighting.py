@@ -32,6 +32,23 @@ class _ObjectCollection(list):
         return None
 
 
+class _Pixels(list):
+    """Stands in for Blender's lazily loaded pixel collection.
+
+    Indexing materialises the data; len() does not. A probe on every supported
+    Blender confirmed len() already reports the full size while has_data is
+    still False, so length is not a usable signal.
+    """
+
+    def __init__(self, owner, count=16):
+        super().__init__([0.0] * count)
+        self._owner = owner
+
+    def __getitem__(self, index):
+        self._owner.has_data = True
+        return super().__getitem__(index)
+
+
 def _make_image(name="Tex", filepath="/tmp/tex.png", size=(64, 32), packed=False, source="FILE", tiles=()):
     image = SimpleNamespace(
         name=name,
@@ -40,10 +57,12 @@ def _make_image(name="Tex", filepath="/tmp/tex.png", size=(64, 32), packed=False
         size=list(size),
         source=source,
         is_dirty=False,
+        has_data=False,
         colorspace_settings=SimpleNamespace(name="sRGB"),
         packed_file=SimpleNamespace() if packed else None,
         tiles=list(tiles),
     )
+    image.pixels = _Pixels(image)
     image.reload = MagicMock()
     image.save = MagicMock()
     image.pack = MagicMock(side_effect=lambda: setattr(image, "packed_file", SimpleNamespace()))
@@ -496,7 +515,7 @@ def test_save_image_reports_pixel_data_it_cannot_read(tmp_path):
     source.write_text("x", encoding="utf-8")
 
     class _BadPixels:
-        def __len__(self):
+        def __getitem__(self, index):
             raise RuntimeError("Image does not have any image data")
 
     image = _make_image(filepath=str(source))
@@ -506,6 +525,46 @@ def test_save_image_reports_pixel_data_it_cannot_read(tmp_path):
     assert result["success"] is False
     assert "pixel data" in result["message"].lower()
     image.save.assert_not_called()
+
+
+def test_save_image_fails_when_pixels_stay_undecoded(tmp_path):
+    """Indexing that does not flip has_data is a failure, not a silent save."""
+    source = tmp_path / "source.png"
+    source.write_text("x", encoding="utf-8")
+
+    class _Unmaterialising(list):
+        def __init__(self):
+            super().__init__([0.0] * 16)
+
+        def __getitem__(self, index):
+            return super().__getitem__(index)  # never sets has_data
+
+    image = _make_image(filepath=str(source))
+    image.pixels = _Unmaterialising()
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
+    assert result["success"] is False
+    assert "no pixel data" in result["message"].lower()
+    image.save.assert_not_called()
+
+
+def test_save_image_materialises_pixels_before_saving(tmp_path):
+    """The decode must actually happen: has_data ends up True."""
+    source = tmp_path / "source.png"
+    source.write_text("x", encoding="utf-8")
+    image = _make_image(filepath=str(source))
+    assert image.has_data is False
+
+    target = tmp_path / "out.png"
+
+    def _write():
+        target.write_bytes(b"PNGDATA")
+
+    image.save = MagicMock(side_effect=_write)
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
+
+    assert result["success"] is True, result.get("error")
+    assert image.has_data is True, "saving must leave the image decoded"
 
 
 def test_save_image_reports_the_written_size(tmp_path):
