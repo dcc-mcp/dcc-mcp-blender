@@ -1288,7 +1288,7 @@ tools:
           type: integer
           minimum: 0
           maximum: 10000
-          description: Children per parent.
+          description: Display amount of children per parent. Blender 3.x only; 4.x removed it, and the call then fails rather than substituting another property.
         rendered_child_count:
           type: integer
           minimum: 0
@@ -1341,7 +1341,9 @@ tools:
     source_file: scripts/bake_particle_system.py
     execution: sync
     affinity: main
-    timeout_hint_secs: 0
+    # Matches bake_simulation and bake_rigid_body_simulation: baking a frame
+    # range outlasts the 30s host default, which would time out a valid bake.
+    timeout_hint_secs: 120
     input_schema:
       type: object
       additionalProperties: false

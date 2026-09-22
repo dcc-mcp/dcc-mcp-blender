@@ -71,7 +71,7 @@ but nothing could create or tune them. Use these tools to close that gap:
 
 | Tool | Description |
 |---|---|
-| `add_fluid_modifier` | Add a Mantaflow DOMAIN, FLOW, EFFECTOR, OBSTACLE, INFLOW, or OUTFLOW modifier |
+| `add_fluid_modifier` | Add a Mantaflow DOMAIN, FLOW, or EFFECTOR modifier |
 | `set_fluid_settings` | Tune modifier properties plus `domain_settings` (resolution, viscosity, noise) |
 | `add_dynamic_paint_modifier` | Add a Dynamic Paint CANVAS (receives paint) or BRUSH (emits paint) |
 | `set_dynamic_paint_settings` | Tune the canvas or brush settings block |
@@ -80,6 +80,19 @@ but nothing could create or tune them. Use these tools to close that gap:
 
 Domain options live on `modifier.domain_settings`, so `set_fluid_settings`
 takes a separate `domain_settings` object; only a DOMAIN modifier exposes it.
+Use `resolution_max` for domain resolution — `resolution_divisions` was removed
+in Blender 2.82 and exists on no supported version. The domain, flow, and
+effector settings blocks are all `None` while `fluid_type` is `NONE`; they
+appear once the matching type is set.
+
+**Settings that do not take effect are named in `message`, not just in the
+response context.** A wrong or version-specific property name is skipped rather
+than rejected, so a response can be a success without having done everything
+asked. Those names go into the message (for example "Not applied (unsupported
+by Blender 4.5.13): resolution_divisions") and into the `not_applied` field; `skipped`
+is kept as an alias. Check `not_applied` after any call that passes a settings
+dict. The property lists stay a pass-through deliberately: a hard-coded
+allowlist would break the moment Blender renames or adds a property.
 
 **Fluid and Dynamic Paint baking is not exposed by these tools.**
 `bake_simulation` only targets cloth, soft-body, and particle point caches and
@@ -87,10 +100,11 @@ rejects anything else, so it cannot bake a fluid or paint cache. Bake those
 from the Blender UI or through `bpy.ops` via `blender-scripting`.
 
 Mantaflow has no `OBSTACLE`, `INFLOW`, or `OUTFLOW` fluid type. Set
-`fluid_type` to `FLOW` and configure `flow_behavior` (`INFLOW` / `OUTFLOW` /
-`GEOMETRY`) and `flow_type` (`SMOKE` / `FIRE` / `BOTH` / `LIQUID`) on the
-modifier's flow settings; obstacles are `EFFECTOR` with
-`effector_type = 'COLLISION'`.
+`fluid_type` to `FLOW` and configure `modifier.flow_settings.flow_behavior`
+(`INFLOW` / `OUTFLOW` / `GEOMETRY`) and `modifier.flow_settings.flow_type`
+(`SMOKE` / `FIRE` / `BOTH` / `LIQUID`); obstacles are `EFFECTOR` with
+`modifier.effector_settings.effector_type = 'COLLISION'`. Passing one of the
+legacy names returns exactly which property to set instead of failing blind.
 
 `add_dynamic_paint_surface` needs `canvas_surfaces.new()`, which some Blender
 builds do not expose. When it is missing the tool says so explicitly; add the
@@ -101,14 +115,19 @@ surface with `bpy.ops.dpaint.surface_slot_add()` instead.
 | Tool | Description |
 |---|---|
 | `set_particle_hair` | Switch a system between EMITTER and HAIR and set hair properties |
-| `set_particle_children` | Set child type, `child_nbr`, and `rendered_child_count` |
+| `set_particle_children` | Set child type and the rendered child count |
 | `set_particle_instance` | Instance a scene object per particle and control emitter visibility |
 | `bake_particle_system` | Bake or free the point cache of one particle system |
 
 `add_particle_system` already accepted `instance_object_name` and
 `show_emitter`; use `set_particle_instance` to change them later or to set
-`render_type` and `particle_size`. `set_particle_children` validates
-`child_nbr` against Blender's 0-10000 range.
+`render_type` and `particle_size`.
+
+Use `rendered_child_count` for the number of children to render: live RNA
+confirms it on every version from 3.6.5 to 5.2.1. `child_nbr` is the **display**
+amount, a different knob, and Blender 4.x removed it — passing it there fails
+with a message naming the replacement rather than writing to a different
+property. Point caches live on `particle_system`, not on the modifier.
 
 Baking and cache-clearing tools mutate scene state; pass `dry_run=true` when
 you only need target discovery and frame-range validation.

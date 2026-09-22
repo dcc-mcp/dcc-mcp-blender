@@ -112,13 +112,16 @@ def test_add_fluid_modifier_creates_a_domain():
 
 
 def test_add_fluid_modifier_accepts_flow_and_effector():
-    obj = _make_obj()
-    bpy = _bpy_with_objects(obj)
-    _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="flow", name="Inflow")
-    _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="effector", name="Stir")
+    """Each fluid type needs its own object: FLUID is a singleton per object."""
+    flow_obj = _make_obj("FlowCube")
+    effector_obj = _make_obj("EffectorCube")
+    bpy = _bpy_with_objects(flow_obj, effector_obj)
 
-    assert obj.modifiers.get("Inflow").fluid_type == "FLOW"
-    assert obj.modifiers.get("Stir").fluid_type == "EFFECTOR"
+    _call("add_fluid_modifier", bpy, object_name="FlowCube", fluid_type="flow", name="Inflow")
+    _call("add_fluid_modifier", bpy, object_name="EffectorCube", fluid_type="effector", name="Stir")
+
+    assert flow_obj.modifiers.get("Inflow").fluid_type == "FLOW"
+    assert effector_obj.modifiers.get("Stir").fluid_type == "EFFECTOR"
 
 
 def test_add_fluid_modifier_rejects_unknown_type():
@@ -366,22 +369,71 @@ def test_set_particle_hair_reports_a_missing_system():
     assert "particle system not found" in result["message"].lower()
 
 
-def test_set_particle_children_sets_type_and_counts():
+def test_set_particle_children_sets_type_and_rendered_count():
+    """rendered_child_count is the primary knob and works on every version."""
     obj = _obj_with_particle_system()
     result = _call(
         "set_particle_children",
         _bpy_with_objects(obj),
         object_name="Cube",
         child_type="interpolated",
-        child_nbr=20,
         rendered_child_count=80,
     )
 
     assert result["success"] is True
     settings = obj.modifiers[0].particle_system.settings
     assert settings.child_type == "INTERPOLATED"
-    assert settings.child_nbr == 20
     assert settings.rendered_child_count == 80
+    assert result["context"]["skipped"] == []
+
+
+def test_set_particle_children_uses_child_nbr_only_where_it_exists():
+    """The fixture models Blender 3.x, which still has the display amount."""
+    obj = _obj_with_particle_system()
+    result = _call("set_particle_children", _bpy_with_objects(obj), object_name="Cube", child_nbr=20)
+
+    assert result["success"] is True
+    settings = obj.modifiers[0].particle_system.settings
+    assert settings.child_nbr == 20
+    # It must not be written to the rendered amount as a substitute.
+    assert settings.rendered_child_count == 0
+
+
+def test_set_particle_children_rejects_child_nbr_when_absent():
+    """Blender 4.x removed child_nbr; the call must fail, not substitute."""
+    obj = _obj_with_particle_system()
+    del obj.modifiers[0].particle_system.settings.child_nbr
+
+    result = _call("set_particle_children", _bpy_with_objects(obj), object_name="Cube", child_nbr=20)
+    assert result["success"] is False
+    assert "child_nbr is not available" in result["message"].lower()
+    assert "rendered_child_count" in result["error"]
+    assert obj.modifiers[0].particle_system.settings.rendered_child_count == 0
+
+
+def test_child_nbr_rejection_writes_nothing_alongside_siblings():
+    """A rejected child_nbr must not leave child_type already written.
+
+    child_nbr is checked before anything is written, so a caller that sends it
+    together with child_type on Blender 4.x gets a clean rejection instead of a
+    half-applied system.
+    """
+    obj = _obj_with_particle_system()
+    psettings = obj.modifiers[0].particle_system.settings
+    psettings.child_type = "NONE"
+    del psettings.child_nbr
+
+    result = _call(
+        "set_particle_children",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        child_type="SIMPLE",
+        child_nbr=10,
+    )
+    assert result["success"] is False
+    assert "nothing was changed" in result["error"].lower()
+    assert psettings.child_type == "NONE", "the rejected call must not write child_type"
+    assert psettings.rendered_child_count == 0
 
 
 def test_set_particle_children_rejects_unknown_type_and_range():
@@ -621,7 +673,7 @@ def test_particle_tools_report_no_skipped_properties():
     bpy = _bpy_with_objects(obj)
 
     hair = _call("set_particle_hair", bpy, object_name="Cube", settings={"hair_length": 3.0, "hair_step": 4})
-    children = _call("set_particle_children", bpy, object_name="Cube", child_type="simple", child_nbr=10)
+    children = _call("set_particle_children", bpy, object_name="Cube", child_type="simple", rendered_child_count=10)
     instance = _call(
         "set_particle_instance",
         _bpy_with_objects(obj, _make_obj("Leaf")),
@@ -653,3 +705,185 @@ def test_fluid_and_child_enums_match_blender():
 
     assert set(FLUID_TYPES) == {"DOMAIN", "FLOW", "EFFECTOR"}
     assert set(CHILD_TYPES) == {"NONE", "SIMPLE", "INTERPOLATED"}
+
+
+def test_fluid_alias_errors_name_the_full_property_path():
+    """The error must name modifier.<block>.<prop>, not just \"the settings\"."""
+    obj = _make_obj()
+    bpy = _bpy_with_objects(obj)
+    cases = {
+        "INFLOW": "modifier.flow_settings.flow_behavior = 'INFLOW'",
+        "OUTFLOW": "modifier.flow_settings.flow_behavior = 'OUTFLOW'",
+        "OBSTACLE": "modifier.effector_settings.effector_type = 'COLLISION'",
+        "SMOKE": "modifier.flow_settings.flow_type = 'SMOKE'",
+    }
+    for legacy, needle in cases.items():
+        result = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type=legacy)
+        assert result["success"] is False, legacy
+        assert needle in result["error"], (legacy, result["error"])
+
+
+def test_particle_bake_errors_report_the_cache_state():
+    """A cancelled operator must still report the frame range it already set."""
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=90)
+    assert result["success"] is False
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 90}
+    assert result["context"]["cache"]["frame_end"] == 90
+
+
+def test_bake_particle_system_requests_a_bake_length_timeout():
+    """Baking a frame range outlasts the 30s host default."""
+    doc = yaml.safe_load(Path(PHYSICS_PATH).read_text(encoding="utf-8"))
+    tools = {tool["name"]: tool for tool in doc["tools"]}
+    assert tools["bake_particle_system"]["timeout_hint_secs"] == 120
+    assert tools["bake_simulation"]["timeout_hint_secs"] == 120
+
+
+def test_second_fluid_modifier_reports_the_existing_one():
+    """Blender allows one FLUID modifier per object and returns None after."""
+    obj = _make_obj()
+    bpy = _bpy_with_objects(obj)
+
+    first = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="FLOW", name="Inflow")
+    assert first["success"] is True
+
+    second = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="DOMAIN", name="Second")
+    assert second["success"] is False
+    assert "already has a fluid modifier" in second["message"].lower()
+    assert "Inflow" in second["error"], "the error must name the existing modifier"
+    assert len(obj.modifiers) == 1, "the rejected call must not add a modifier"
+
+
+def test_particle_bake_narrows_the_scene_range():
+    """The ptcache operator bakes the scene range, not the cache range."""
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj)
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=60)
+    assert result["success"] is True
+    assert result["context"]["scene_changes"] == {"frame_start": 1, "frame_end": 60}
+    assert bpy.context.scene.frame_end == 60
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 60}
+
+
+def test_particle_bake_failure_reports_both_range_changes():
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=30)
+    assert result["success"] is False
+    assert result["context"]["scene_changes"] == {"frame_start": 1, "frame_end": 30}
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 30}
+
+
+def test_unapplied_settings_are_reported_in_the_message():
+    """A key that did not take effect must not hide behind success: True."""
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"resolution_divisions": 48, "time_scale": 0.5},
+    )
+    assert result["success"] is True, result.get("error")
+    # time_scale took effect; the removed name did not, and must be spelled out.
+    assert result["context"]["domain_applied"] == {"time_scale": 0.5}
+    assert "not applied" in result["message"].lower()
+    assert "resolution_divisions" in result["message"]
+
+
+def test_not_applied_mirrors_skipped_for_callers():
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"nonsense": 1},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["nonsense"]
+    # `skipped` stays as an alias so existing callers keep working.
+    assert result["context"]["skipped"] == ["nonsense"]
+
+
+def test_particle_children_reports_unapplied_settings_in_the_message():
+    obj = _obj_with_particle_system()
+    result = _call(
+        "set_particle_children",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"hair_length": 1.5, "not_a_real_property": 3},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["not_a_real_property"]
+    assert "not_a_real_property" in result["message"]
+
+
+def test_domain_only_settings_via_settings_are_rejected():
+    """A domain knob sent to settings must fail, not silently skip.
+
+    A FluidModifier only exposes fluid_type and the settings blocks, so the
+    Mantaflow knobs sent through `settings` can never take effect. Reporting
+    that as a success is the same silent no-op this batch removes.
+    """
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"time_scale": 2.0},
+    )
+    assert result["success"] is False
+    assert "domain block" in result["message"].lower()
+    assert "time_scale" in result["error"]
+    assert modifier.domain_settings.time_scale == 1.0, "a rejected call must not write"
+
+
+def test_domain_settings_route_still_works():
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"time_scale": 2.0},
+    )
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["domain_applied"] == {"time_scale": 2.0}
+    assert modifier.domain_settings.time_scale == 2.0
+
+
+def test_unknown_settings_are_still_skipped_not_rejected():
+    """The misroute hint is not an allowlist; unknown keys still skip."""
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"totally_made_up": 1},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["totally_made_up"]
+    assert "totally_made_up" in result["message"]

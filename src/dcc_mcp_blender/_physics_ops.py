@@ -109,6 +109,20 @@ def _apply_settings(
     return applied, skipped
 
 
+def _unapplied_note(not_applied: Iterable[str], version: Any = None) -> str:
+    """Describe settings that were requested but did not take effect.
+
+    Reporting these only in the context would keep the response looking like a
+    clean success while nothing happened, which is how a wrong property name
+    went unnoticed for a whole release. The caller sees them in the message.
+    """
+    names = sorted(set(not_applied))
+    if not names:
+        return ""
+    host = f" by Blender {version}" if version else " by this Blender build"
+    return f". Not applied (unsupported{host}): {', '.join(names)}"
+
+
 def _modifier_settings(modifier: Any) -> Any:
     return getattr(modifier, "settings", modifier)
 
@@ -1333,23 +1347,27 @@ def get_simulation_status(object_name: Optional[str] = None) -> dict:
 # the legacy names are rejected with a pointer to the modern equivalent.
 FLUID_TYPES = ("DOMAIN", "FLOW", "EFFECTOR")
 FLUID_TYPE_ALIASES = {
-    "INFLOW": ("FLOW", "flow_behavior = 'INFLOW' on the modifier's flow settings"),
-    "OUTFLOW": ("FLOW", "flow_behavior = 'OUTFLOW' on the modifier's flow settings"),
-    "OBSTACLE": ("EFFECTOR", "effector_type = 'COLLISION' on the modifier's effector settings"),
-    "LIQUID": ("FLOW", "flow_type = 'LIQUID' on the modifier's flow settings"),
-    "SMOKE": ("FLOW", "flow_type = 'SMOKE' on the modifier's flow settings"),
-    "FIRE": ("FLOW", "flow_type = 'FIRE' on the modifier's flow settings"),
+    "INFLOW": ("FLOW", "modifier.flow_settings.flow_behavior = 'INFLOW'"),
+    "OUTFLOW": ("FLOW", "modifier.flow_settings.flow_behavior = 'OUTFLOW'"),
+    "OBSTACLE": ("EFFECTOR", "modifier.effector_settings.effector_type = 'COLLISION'"),
+    "LIQUID": ("FLOW", "modifier.flow_settings.flow_type = 'LIQUID'"),
+    "SMOKE": ("FLOW", "modifier.flow_settings.flow_type = 'SMOKE'"),
+    "FIRE": ("FLOW", "modifier.flow_settings.flow_type = 'FIRE'"),
 }
 DYNAMIC_PAINT_TYPES = ("CANVAS", "BRUSH")
 DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
 
 FLUID_NUMERIC_SETTINGS = {
-    "resolution_divisions",
+    # Verified against live RNA on Blender 3.6.5, 4.5.13 and 5.2.1. The domain
+    # resolution is `resolution_max`; `resolution_divisions` was removed in
+    # 2.82 and the CFL property is not exposed as `cfl` on any of them. This is
+    # only a numeric coercion hint, not an allowlist: _apply_settings still
+    # decides by hasattr, so an unrecognised name skips rather than failing.
+    "resolution_max",
     "viscosity_base",
     "viscosity_exponent",
     "domain_size",
     "time_scale",
-    "cfl",
     "timesteps_max",
     "timesteps_min",
     "burning_rate",
@@ -1436,8 +1454,10 @@ def add_fluid_modifier(
 
     Args:
         object_name: Mesh object that receives the modifier.
-        fluid_type: One of ``DOMAIN``, ``FLOW``, ``EFFECTOR``, ``OBSTACLE``,
-            ``INFLOW``, ``OUTFLOW``.
+        fluid_type: ``DOMAIN``, ``FLOW``, or ``EFFECTOR``. Mantaflow has no
+            ``OBSTACLE``, ``INFLOW``, or ``OUTFLOW`` fluid type; those are
+            ``FLOW`` or ``EFFECTOR`` modifiers configured through their nested
+            settings, and passing one returns the exact property to set.
         name: Modifier name; defaults to the fluid type.
         settings: Extra modifier-level properties to apply.
     """
@@ -1462,21 +1482,41 @@ def add_fluid_modifier(
         if getattr(obj, "type", None) != "MESH":
             return skill_error(f"{object_name} is not a mesh", "Fluid modifiers require a mesh object.")
 
+        # Blender allows exactly one FLUID modifier per object and returns None
+        # from modifiers.new() when the type is already present, so the existing
+        # one has to be reported instead of dereferencing None.
+        existing = _find_modifier(obj, None, "FLUID")
+        if existing is not None:
+            return skill_error(
+                "Object already has a fluid modifier",
+                f"{object_name} already has fluid modifier '{getattr(existing, 'name', '?')}' "
+                f"(fluid_type={getattr(existing, 'fluid_type', '?')}). Blender allows one per object; "
+                "use set_fluid_settings to change it, or remove it first.",
+            )
+
         modifier_name = name or f"Fluid {wanted.title()}"
         _activate_object(bpy, obj)
         modifier = obj.modifiers.new(modifier_name, "FLUID")
+        if modifier is None:
+            return skill_error(
+                "Fluid modifier could not be created",
+                f"Blender refused a FLUID modifier on {object_name}; the object may already "
+                "have one or lack mesh data. No modifier was added.",
+            )
         modifier.fluid_type = wanted
 
         applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
         context = _modifier_context(modifier)
         context["fluid_type"] = wanted
         return skill_success(
-            f"Added {wanted} fluid modifier on {object_name}",
+            f"Added {wanted} fluid modifier on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             fluid_type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use set_fluid_settings to tune domain options, then bake_simulation.",
         )
     except ImportError:
@@ -1496,7 +1536,11 @@ def set_fluid_settings(
     Args:
         object_name: Mesh object owning the fluid modifier.
         modifier_name: Fluid modifier name; defaults to the first one.
-        settings: Modifier-level properties.
+        settings: Properties on the FLUID modifier itself. A FluidModifier only
+            exposes ``fluid_type`` and the three settings blocks, so the usual
+            Mantaflow knobs (resolution, viscosity, noise, time scale) are not
+            valid here; pass them in ``domain_settings``. Asking for one here
+            fails with that hint instead of being skipped.
         domain_settings: Properties applied to ``modifier.domain_settings``,
             where Mantaflow keeps resolution, viscosity, noise, and mesh options.
     """
@@ -1526,6 +1570,20 @@ def set_fluid_settings(
             )
 
         applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
+        # Domain-only names sent to `settings` would be skipped and still
+        # reported as a success, which is how a wrong route went unnoticed.
+        # Point the caller at the argument that can serve them. This is a hint,
+        # not an allowlist: anything else unknown still skips.
+        misrouted = [
+            key for key in skipped if domain is not None and hasattr(domain, key) and not hasattr(modifier, key)
+        ]
+        if misrouted:
+            return skill_error(
+                "Fluid settings belong on the domain block",
+                f"{', '.join(sorted(misrouted))} not found on the FLUID modifier but present on "
+                "modifier.domain_settings; pass them in domain_settings instead. Nothing was changed.",
+            )
+
         domain_applied: Dict[str, Any] = {}
         if domain_settings:
             domain_applied, domain_skipped = _apply_settings(domain, domain_settings, FLUID_NUMERIC_SETTINGS)
@@ -1534,12 +1592,14 @@ def set_fluid_settings(
         context = _modifier_context(modifier)
         context["fluid_type"] = getattr(modifier, "fluid_type", None)
         return skill_success(
-            f"Updated fluid settings on {object_name}",
+            f"Updated fluid settings on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             applied=applied,
             domain_applied=domain_applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_simulation to cache the result.",
         )
     except ImportError:
@@ -1609,12 +1669,14 @@ def add_dynamic_paint_modifier(
         context = _modifier_context(modifier)
         context["ui_type"] = wanted
         return skill_success(
-            f"Added Dynamic Paint {wanted} modifier on {object_name}",
+            f"Added Dynamic Paint {wanted} modifier on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             paint_type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt=(
                 "Use add_dynamic_paint_surface to add a canvas surface."
                 if wanted == "CANVAS"
@@ -1669,12 +1731,14 @@ def set_dynamic_paint_settings(
         context = _modifier_context(modifier)
         context["ui_type"] = ui_type
         return skill_success(
-            f"Updated Dynamic Paint settings on {object_name}",
+            f"Updated Dynamic Paint settings on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             paint_type=ui_type,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_simulation to cache the result.",
         )
     except ImportError:
@@ -1760,13 +1824,15 @@ def add_dynamic_paint_surface(
 
         applied, skipped = _apply_settings(existing, settings, DYNAMIC_PAINT_NUMERIC_SETTINGS)
         return skill_success(
-            f"{'Added' if created else 'Updated'} Dynamic Paint {wanted} surface on {object_name}",
+            f"{'Added' if created else 'Updated'} Dynamic Paint {wanted} surface on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier_name=getattr(modifier, "name", None),
             surface=_dynamic_paint_surface_context(existing),
             created=created,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use list_dynamic_paint_surfaces to review the canvas, then bake_simulation.",
         )
     except ImportError:
@@ -1872,12 +1938,14 @@ def set_particle_hair(
         psettings.type = wanted
         applied, skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
         return skill_success(
-            f"Set particle system to {wanted} on {object_name}",
+            f"Set particle system to {wanted} on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
             type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use set_particle_children for child strands, then bake_particle_system.",
         )
     except ImportError:
@@ -1899,9 +1967,14 @@ def set_particle_children(
     Args:
         object_name: Mesh object owning the particle system.
         system_name: Particle system name; defaults to the first one.
-        child_type: ``NONE``, ``SIMPLE``, ``INTERPOLATED``, or ``FACES``.
-        child_nbr: Children per parent; Blender caps this at 10000.
-        rendered_child_count: Children actually rendered.
+        child_type: ``NONE``, ``SIMPLE``, or ``INTERPOLATED``. ``FACES`` is a
+            child distribution option in the UI, not a ``child_type`` member.
+        child_nbr: Display amount of children per parent. Only present on
+            Blender 3.x; 4.x removed it. Caps at 10000 where available.
+        rendered_child_count: Amount of children actually rendered. This is the
+            property to use: live RNA confirms it on every version from 3.6.5
+            to 5.2.1. It is not the same knob as ``child_nbr`` (display vs
+            render), so the two are never substituted for one another.
         settings: Extra child properties such as ``child_length``.
     """
     if child_type is not None and str(child_type).upper() not in CHILD_TYPES:
@@ -1931,11 +2004,25 @@ def set_particle_children(
         if psettings is None:
             return skill_error("Particle settings unavailable", "The modifier exposes no particle settings.")
 
+        # Preflight child_nbr before writing anything: it is the display amount
+        # and only exists on Blender 3.x, so on 4.x and later the call has to
+        # fail with nothing written rather than failing after the other values
+        # have already landed. It is deliberately not mapped onto
+        # rendered_child_count: they are different knobs, and silently writing
+        # one for the other is how this batch got here.
+        child_nbr_available = hasattr(psettings, "child_nbr")
+        if child_nbr is not None and not child_nbr_available:
+            return skill_error(
+                "child_nbr is not available in this Blender version",
+                "Blender 4.x removed ParticleSettings.child_nbr (display amount). "
+                "Use rendered_child_count, which controls the rendered amount and "
+                "exists on every supported version. Nothing was changed.",
+            )
+
         applied: Dict[str, Any] = {}
         skipped: List[str] = []
         for key, value in (
             ("child_type", str(child_type).upper() if child_type is not None else None),
-            ("child_nbr", int(child_nbr) if child_nbr is not None else None),
             ("rendered_child_count", int(rendered_child_count) if rendered_child_count is not None else None),
         ):
             if value is None:
@@ -1946,15 +2033,20 @@ def set_particle_children(
             setattr(psettings, key, value)
             applied[key] = value
 
+        if child_nbr is not None:
+            psettings.child_nbr = int(child_nbr)
+            applied["child_nbr"] = int(child_nbr)
+
         extra_applied, extra_skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
         applied.update(extra_applied)
         skipped.extend(extra_skipped)
         return skill_success(
-            f"Updated children on {object_name}",
+            f"Updated children on {object_name}" + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_particle_system to cache the strands.",
         )
     except ImportError:
@@ -2064,14 +2156,29 @@ def bake_particle_system(
                 "The particle system exposes no point cache in this Blender build.",
             )
 
-        cache_changes = _set_cache_frames(cache, frame_start, frame_end)
-        _activate_object(bpy, obj)
+        # Everything from the frame range changes onward shares one handler so
+        # any failure reports the state it already changed, including a failure
+        # while setting that range.
+        cache_changes: Dict[str, Any] = {}
+        scene_changes: Dict[str, Any] = {}
         try:
+            # The ptcache operator bakes the scene range, not the cache range,
+            # so both have to move; setting only the cache silently bakes the
+            # whole scene. Mirrors bake_simulation and bake_rigid_body_simulation.
+            cache_changes = _set_cache_frames(cache, frame_start, frame_end)
+            scene_changes = _set_scene_frames(bpy.context.scene, frame_start, frame_end)
+            _activate_object(bpy, obj)
             override = {"scene": bpy.context.scene, "active_object": obj, "object": obj, "point_cache": cache}
             with bpy.context.temp_override(**override):
                 result = bpy.ops.ptcache.free_bake() if free else bpy.ops.ptcache.bake(bake=True)
         except Exception as exc:
-            return skill_exception(exc, message=f"Failed to {'free' if free else 'bake'} the particle cache")
+            return skill_exception(
+                exc,
+                message=f"Failed to {'free' if free else 'bake'} the particle cache",
+                cache_changes=cache_changes,
+                scene_changes=scene_changes,
+                cache=_cache_context(cache),
+            )
 
         # Blender operators report cancellation through their return set, not by
         # raising, so a CANCELLED bake has to be surfaced as a failure.
@@ -2081,6 +2188,9 @@ def bake_particle_system(
                 f"Particle cache {'free' if free else 'bake'} did not finish",
                 f"The Blender operator returned {operator_result or 'nothing'}; "
                 f"{'free' if free else 'bake'} was cancelled or unsupported for this cache.",
+                cache_changes=cache_changes,
+                scene_changes=scene_changes,
+                cache=_cache_context(cache),
             )
 
         return skill_success(
@@ -2091,6 +2201,7 @@ def bake_particle_system(
             operator_result=operator_result,
             cache=_cache_context(cache),
             cache_changes=cache_changes,
+            scene_changes=scene_changes,
             prompt="Use get_simulation_status to confirm cache state.",
         )
     except ImportError:
