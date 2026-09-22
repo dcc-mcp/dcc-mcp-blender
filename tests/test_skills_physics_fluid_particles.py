@@ -20,7 +20,7 @@ def _call(script, bpy, **kwargs):
 
 def _domain_settings():
     return SimpleNamespace(
-        resolution_divisions=32,
+        resolution_max=64,
         viscosity_base=0.0,
         domain_size=1.0,
         time_scale=1.0,
@@ -149,12 +149,12 @@ def test_set_fluid_settings_writes_domain_settings():
         "set_fluid_settings",
         _bpy_with_objects(obj),
         object_name="Cube",
-        domain_settings={"resolution_divisions": 96, "viscosity_base": 0.5},
+        domain_settings={"resolution_max": 96, "viscosity_base": 0.5},
     )
     assert result["success"] is True
-    assert modifier.domain_settings.resolution_divisions == 96
+    assert modifier.domain_settings.resolution_max == 96
     assert modifier.domain_settings.viscosity_base == 0.5
-    assert result["context"]["domain_applied"]["resolution_divisions"] == 96
+    assert result["context"]["domain_applied"]["resolution_max"] == 96
 
 
 def test_set_fluid_settings_without_a_domain_reports_missing_block():
@@ -167,7 +167,7 @@ def test_set_fluid_settings_without_a_domain_reports_missing_block():
         "set_fluid_settings",
         _bpy_with_objects(obj),
         object_name="Cube",
-        domain_settings={"resolution_divisions": 64},
+        domain_settings={"resolution_max": 64},
     )
     assert result["success"] is False
     assert "domain settings unavailable" in result["message"].lower()
@@ -650,7 +650,7 @@ def test_set_fluid_settings_does_not_half_apply_when_domain_is_missing():
         _bpy_with_objects(obj),
         object_name="Cube",
         settings={"viscosity_base": 9.0},
-        domain_settings={"resolution_divisions": 64},
+        domain_settings={"resolution_max": 64},
     )
     assert result["success"] is False
     assert modifier.viscosity_base == 0.0, "nothing may be written when domain_settings are rejected"
@@ -790,13 +790,13 @@ def test_unapplied_settings_are_reported_in_the_message():
         "set_fluid_settings",
         _bpy_with_objects(obj),
         object_name="Cube",
-        domain_settings={"resolution_divisions": 48, "time_scale": 0.5},
+        domain_settings={"resolution_max": 48, "time_scale": 0.5},
     )
     assert result["success"] is True, result.get("error")
     # time_scale took effect; the removed name did not, and must be spelled out.
     assert result["context"]["domain_applied"] == {"time_scale": 0.5}
     assert "not applied" in result["message"].lower()
-    assert "resolution_divisions" in result["message"]
+    assert "resolution_max" in result["message"]
 
 
 def test_not_applied_mirrors_skipped_for_callers():
