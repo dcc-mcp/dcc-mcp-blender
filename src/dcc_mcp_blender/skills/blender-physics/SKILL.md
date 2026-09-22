@@ -85,6 +85,15 @@ in Blender 2.82 and exists on no supported version. The domain, flow, and
 effector settings blocks are all `None` while `fluid_type` is `NONE`; they
 appear once the matching type is set.
 
+**Settings that do not take effect are named in `message`, not just in the
+response context.** A wrong or version-specific property name is skipped rather
+than rejected, so a response can be a success without having done everything
+asked. Those names go into the message (for example "Not applied (unsupported
+by Blender 4.5.13): resolution_divisions") and into the `not_applied` field; `skipped`
+is kept as an alias. Check `not_applied` after any call that passes a settings
+dict. The property lists stay a pass-through deliberately: a hard-coded
+allowlist would break the moment Blender renames or adds a property.
+
 **Fluid and Dynamic Paint baking is not exposed by these tools.**
 `bake_simulation` only targets cloth, soft-body, and particle point caches and
 rejects anything else, so it cannot bake a fluid or paint cache. Bake those

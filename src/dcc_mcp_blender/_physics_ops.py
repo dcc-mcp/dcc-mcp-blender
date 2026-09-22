@@ -109,6 +109,20 @@ def _apply_settings(
     return applied, skipped
 
 
+def _unapplied_note(not_applied: Iterable[str], version: Any = None) -> str:
+    """Describe settings that were requested but did not take effect.
+
+    Reporting these only in the context would keep the response looking like a
+    clean success while nothing happened, which is how a wrong property name
+    went unnoticed for a whole release. The caller sees them in the message.
+    """
+    names = sorted(set(not_applied))
+    if not names:
+        return ""
+    host = f" by Blender {version}" if version else " by this Blender build"
+    return f". Not applied (unsupported{host}): {', '.join(names)}"
+
+
 def _modifier_settings(modifier: Any) -> Any:
     return getattr(modifier, "settings", modifier)
 
@@ -1494,12 +1508,14 @@ def add_fluid_modifier(
         context = _modifier_context(modifier)
         context["fluid_type"] = wanted
         return skill_success(
-            f"Added {wanted} fluid modifier on {object_name}",
+            f"Added {wanted} fluid modifier on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             fluid_type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use set_fluid_settings to tune domain options, then bake_simulation.",
         )
     except ImportError:
@@ -1557,12 +1573,14 @@ def set_fluid_settings(
         context = _modifier_context(modifier)
         context["fluid_type"] = getattr(modifier, "fluid_type", None)
         return skill_success(
-            f"Updated fluid settings on {object_name}",
+            f"Updated fluid settings on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             applied=applied,
             domain_applied=domain_applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_simulation to cache the result.",
         )
     except ImportError:
@@ -1632,12 +1650,14 @@ def add_dynamic_paint_modifier(
         context = _modifier_context(modifier)
         context["ui_type"] = wanted
         return skill_success(
-            f"Added Dynamic Paint {wanted} modifier on {object_name}",
+            f"Added Dynamic Paint {wanted} modifier on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             paint_type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt=(
                 "Use add_dynamic_paint_surface to add a canvas surface."
                 if wanted == "CANVAS"
@@ -1692,12 +1712,14 @@ def set_dynamic_paint_settings(
         context = _modifier_context(modifier)
         context["ui_type"] = ui_type
         return skill_success(
-            f"Updated Dynamic Paint settings on {object_name}",
+            f"Updated Dynamic Paint settings on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier=context,
             paint_type=ui_type,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_simulation to cache the result.",
         )
     except ImportError:
@@ -1783,13 +1805,15 @@ def add_dynamic_paint_surface(
 
         applied, skipped = _apply_settings(existing, settings, DYNAMIC_PAINT_NUMERIC_SETTINGS)
         return skill_success(
-            f"{'Added' if created else 'Updated'} Dynamic Paint {wanted} surface on {object_name}",
+            f"{'Added' if created else 'Updated'} Dynamic Paint {wanted} surface on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             modifier_name=getattr(modifier, "name", None),
             surface=_dynamic_paint_surface_context(existing),
             created=created,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use list_dynamic_paint_surfaces to review the canvas, then bake_simulation.",
         )
     except ImportError:
@@ -1895,12 +1919,14 @@ def set_particle_hair(
         psettings.type = wanted
         applied, skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
         return skill_success(
-            f"Set particle system to {wanted} on {object_name}",
+            f"Set particle system to {wanted} on {object_name}"
+            + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
             type=wanted,
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use set_particle_children for child strands, then bake_particle_system.",
         )
     except ImportError:
@@ -1993,11 +2019,12 @@ def set_particle_children(
         applied.update(extra_applied)
         skipped.extend(extra_skipped)
         return skill_success(
-            f"Updated children on {object_name}",
+            f"Updated children on {object_name}" + _unapplied_note(skipped, getattr(bpy.app, "version_string", None)),
             object_name=object_name,
             system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
             applied=applied,
-            skipped=skipped,
+            not_applied=list(skipped),
+            skipped=list(skipped),
             prompt="Use bake_particle_system to cache the strands.",
         )
     except ImportError:
