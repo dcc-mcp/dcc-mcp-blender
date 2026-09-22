@@ -369,22 +369,46 @@ def test_set_particle_hair_reports_a_missing_system():
     assert "particle system not found" in result["message"].lower()
 
 
-def test_set_particle_children_sets_type_and_counts():
+def test_set_particle_children_sets_type_and_rendered_count():
+    """rendered_child_count is the primary knob and works on every version."""
     obj = _obj_with_particle_system()
     result = _call(
         "set_particle_children",
         _bpy_with_objects(obj),
         object_name="Cube",
         child_type="interpolated",
-        child_nbr=20,
         rendered_child_count=80,
     )
 
     assert result["success"] is True
     settings = obj.modifiers[0].particle_system.settings
     assert settings.child_type == "INTERPOLATED"
-    assert settings.child_nbr == 20
     assert settings.rendered_child_count == 80
+    assert result["context"]["skipped"] == []
+
+
+def test_set_particle_children_uses_child_nbr_only_where_it_exists():
+    """The fixture models Blender 3.x, which still has the display amount."""
+    obj = _obj_with_particle_system()
+    result = _call("set_particle_children", _bpy_with_objects(obj), object_name="Cube", child_nbr=20)
+
+    assert result["success"] is True
+    settings = obj.modifiers[0].particle_system.settings
+    assert settings.child_nbr == 20
+    # It must not be written to the rendered amount as a substitute.
+    assert settings.rendered_child_count == 0
+
+
+def test_set_particle_children_rejects_child_nbr_when_absent():
+    """Blender 4.x removed child_nbr; the call must fail, not substitute."""
+    obj = _obj_with_particle_system()
+    del obj.modifiers[0].particle_system.settings.child_nbr
+
+    result = _call("set_particle_children", _bpy_with_objects(obj), object_name="Cube", child_nbr=20)
+    assert result["success"] is False
+    assert "child_nbr is not available" in result["message"].lower()
+    assert "rendered_child_count" in result["error"]
+    assert obj.modifiers[0].particle_system.settings.rendered_child_count == 0
 
 
 def test_set_particle_children_rejects_unknown_type_and_range():
@@ -624,7 +648,7 @@ def test_particle_tools_report_no_skipped_properties():
     bpy = _bpy_with_objects(obj)
 
     hair = _call("set_particle_hair", bpy, object_name="Cube", settings={"hair_length": 3.0, "hair_step": 4})
-    children = _call("set_particle_children", bpy, object_name="Cube", child_type="simple", child_nbr=10)
+    children = _call("set_particle_children", bpy, object_name="Cube", child_type="simple", rendered_child_count=10)
     instance = _call(
         "set_particle_instance",
         _bpy_with_objects(obj, _make_obj("Leaf")),

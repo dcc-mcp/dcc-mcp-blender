@@ -202,7 +202,13 @@ class TestFluidE2E:
         obj.name = name
         return obj
 
-    def test_add_domain_and_read_domain_settings(self):
+    def test_add_domain_and_set_domain_settings(self):
+        """Set a domain option and read it back.
+
+        Existence is not the assertion: resolution_divisions passed every
+        has-property check run against a mock and did nothing on real Blender.
+        Only a round trip catches that.
+        """
         obj = self._cube()
 
         add_mod = load_skill("blender-physics", "add_fluid_modifier")
@@ -213,11 +219,35 @@ class TestFluidE2E:
         assert modifier.type == "FLUID"
         assert modifier.fluid_type == "DOMAIN"
         # Domain options live on a nested block, not on the modifier itself.
-        assert modifier.domain_settings is not None
+        domain = modifier.domain_settings
+        assert domain is not None
 
-        # Only assert that a real domain property round-trips. The exact set of
-        # numeric domain options is version dependent and pinned by the probe.
-        assert modifier.domain_settings.bl_rna is not None
+        set_mod = load_skill("blender-physics", "set_fluid_settings")
+        result = set_mod.set_fluid_settings(
+            object_name=obj.name,
+            modifier_name="E2E Domain",
+            domain_settings={"resolution_max": 48},
+        )
+        assert result["success"] is True, result.get("error")
+        assert result["context"]["domain_applied"] == {"resolution_max": 48}, result["context"]
+        assert result["context"]["skipped"] == []
+        assert domain.resolution_max == 48
+
+    def test_solid_fluid_settings_reject_half_applied_batches(self):
+        """A rejected domain_settings must leave modifier settings untouched."""
+        obj = self._cube()
+        add_mod = load_skill("blender-physics", "add_fluid_modifier")
+        add_mod.add_fluid_modifier(object_name=obj.name, fluid_type="FLOW", name="E2E Flow")
+
+        set_mod = load_skill("blender-physics", "set_fluid_settings")
+        result = set_mod.set_fluid_settings(
+            object_name=obj.name,
+            modifier_name="E2E Flow",
+            settings={"time_scale": 0.5},
+            domain_settings={"resolution_max": 64},
+        )
+        assert result["success"] is False
+        assert obj.modifiers["E2E Flow"].time_scale != 0.5, "nothing may be written when domain_settings are rejected"
 
     def test_fluid_type_enum_matches_the_documented_values(self):
         """Every value the tool offers must be assignable to fluid_type.
@@ -351,13 +381,34 @@ class TestParticleAuthoringE2E:
             object_name=obj.name,
             system_name="E2E System",
             child_type="INTERPOLATED",
+            rendered_child_count=40,
         )
         assert children_result["success"] is True, children_result.get("error")
+        # rendered_child_count is the rendered amount and exists on every
+        # supported version; child_nbr is the display amount and 4.x removed it.
         assert psettings.child_type == "INTERPOLATED"
-        # The numeric child knobs are pinned by the RNA probe; asserting a
-        # specific property name here would repeat the mistake this batch is
-        # fixing. Just prove the accepted value was not silently skipped.
-        assert "child_type" in children_result["context"]["applied"]
+        assert psettings.rendered_child_count == 40
+        assert children_result["context"]["applied"]["rendered_child_count"] == 40
+        assert children_result["context"]["skipped"] == []
+
+    def test_child_nbr_is_rejected_rather_than_substituted(self):
+        """child_nbr must never be silently written to another property."""
+        obj = self._cube_with_particles()
+        psettings = obj.modifiers["E2E System"].particle_system.settings
+
+        children_mod = load_skill("blender-physics", "set_particle_children")
+        result = children_mod.set_particle_children(object_name=obj.name, child_nbr=12)
+
+        if hasattr(psettings, "child_nbr"):
+            # Blender 3.x still has the display amount.
+            assert result["success"] is True, result.get("error")
+            assert psettings.child_nbr == 12
+        else:
+            assert result["success"] is False
+            assert "child_nbr is not available" in result["message"].lower()
+            assert "rendered_child_count" in result["error"]
+            # Critically: nothing was written to the render amount instead.
+            assert psettings.rendered_child_count == 0
 
         bpy.ops.mesh.primitive_plane_add(size=0.2)
         instance = bpy.context.active_object
