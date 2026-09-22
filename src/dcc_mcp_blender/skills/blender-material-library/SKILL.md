@@ -59,26 +59,31 @@ Notes that matter in practice:
 - Packing is confirmed, not assumed: if the pack call leaves nothing packed the
   tool fails rather than reporting success for an embed that did not happen.
   Packing an already packed image is a no-op that says so.
-- `save_image` works under `blender --background`. There, an image loaded from
-  disk has no decoded pixels until one is actually read, and saving it without
-  forcing that decode fails with "does not have any image data".
+- `save_image` works under `blender --background`, where an image loaded from
+  disk has no decoded pixels until one is actually read.
 
-  The tool sets `image.filepath` to the destination **first**, then indexes
-  `image.pixels[0]`, which is what triggers the decode, then checks `has_data`
-  before saving and confirms the file exists afterwards, so a save that writes
-  nothing is a failure rather than a success.
+  Two things make it work, and both are deliberate:
 
-  The order matters. Assigning `filepath` makes Blender re-associate the
-  datablock with that file and discards any pixel buffer decoded beforehand, so
-  decoding before the assignment produces a check that passes and a save that
-  then fails with "does not have any image data".
+  1. **It never assigns `image.filepath`.** Under background mode that re-associates
+     the datablock with the file and invalidates the decoded pixel buffer. Assigning
+     before the decode leaves `pixels` empty (IndexError on read); assigning after it
+     makes `save()` fail with "does not have any image data". No ordering works, so
+     the assignment is simply not done.
 
-  Note that `len(image.pixels)` is not a usable probe: on every supported
-  version it already reports the full pixel count while `has_data` is still
-  False, so it looks decoded when it is not.
+  2. **It decodes by indexing `image.pixels[0]`,** then checks `has_data`.
+
+  With a `file_path` it writes via `save_render(path)`, which writes to an explicit
+  path without re-pointing the datablock. Without one it writes in place via
+  `image.save()`. Either way it confirms the file exists afterwards, so a save that
+  writes nothing is a failure rather than a success.
+
+  Two notes: `len(image.pixels)` is not a usable probe, because on every supported
+  version it already reports the full pixel count while `has_data` is still False.
+  And `save_render` applies scene color management, so it is not byte-identical to
+  `image.save()`; it is the only viable route for "save a copy at this path".
 
   Only images loaded from disk need the decode. Generated images already carry
-  pixel data and save directly. Packing needs neither step because it copies the
+  pixel data and save directly. Packing needs none of this because it copies the
   source file.
 - `save_image` needs a path for generated images, which have none, and reports
   that instead of guessing a location.

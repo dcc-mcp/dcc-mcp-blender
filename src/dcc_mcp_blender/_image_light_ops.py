@@ -83,8 +83,36 @@ def load_image(
         return skill_exception(exc, message=f"Failed to load image {path}")
 
 
+def _decode_pixels(image: Any) -> Tuple[bool, Optional[str]]:
+    """Materialise an image's pixel data.
+
+    Under blender --background an image loaded from disk has no decoded pixels
+    until one is actually read. Indexing is what forces the decode; len() does
+    not, because a lazily loaded collection already reports the full count while
+    has_data is still False.
+
+    Returns (ok, reason). reason is None on success and explains the failure
+    otherwise, so a caller can surface it rather than guessing.
+    """
+    pixels = getattr(image, "pixels", None)
+    if pixels is None:
+        return True, None
+    try:
+        _ = pixels[0]
+    except Exception as exc:
+        # An empty collection raises IndexError rather than returning short, so
+        # treat that the same as a decode that produced nothing.
+        return False, f"could not read pixel data ({type(exc).__name__}: {exc})"
+    if getattr(image, "has_data", None) is False:
+        return False, "the image still reports no pixel data after decoding"
+    return True, None
+
+
 def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
-    """Save an image datablock back to disk.
+    """Save an image datablock to disk.
+
+    With ``file_path`` this is "save a copy at that path"; without it, the
+    image is written back over its own file.
 
     Args:
         image_name: Loaded image to save.
@@ -97,92 +125,67 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
         if error:
             return error
 
-        destination = Path(file_path).expanduser() if file_path else Path(image.filepath).expanduser()
-        if not file_path and not image.filepath:
-            return skill_error(
-                f"{image_name} has no file path",
-                "The image was generated or packed; pass file_path explicitly.",
-            )
-
-        # Point the image at the destination first. Assigning filepath makes
-        # Blender re-associate the datablock with that file, which discards any
-        # pixel buffer decoded beforehand. Decoding must therefore happen after
-        # this assignment, otherwise the check measures a state that no longer
-        # holds by the time save() runs and the save fails anyway.
-        original = image.filepath
         if file_path:
-            image.filepath = str(destination)
-
-        # Under blender --background an image loaded from disk has no decoded
-        # pixels until one is actually read, and image.save() then fails with
-        # "does not have any image data".
-        #
-        # Indexing a pixel is what forces the decode. len(image.pixels) does
-        # not: a probe on every supported Blender reported len == 16 for a 2x2
-        # image while has_data was still False, so length is a misleading
-        # signal. Generated images already have data and need none of this.
-        # Packing needs neither because it copies the source file.
-        pixels = getattr(image, "pixels", None)
-        if pixels is not None:
-            try:
-                _ = pixels[0]
-            except Exception as exc:
-                return skill_exception(
-                    exc,
-                    message=f"Failed to read pixel data for {image_name}",
-                    filepath=str(destination),
+            destination = Path(file_path).expanduser()
+        else:
+            if not image.filepath:
+                return skill_error(
+                    f"{image_name} has no file path",
+                    "The image was generated or packed; pass file_path explicitly.",
                 )
+            destination = Path(image.filepath).expanduser()
 
-        # Confirm the decode held after the reassignment. If a future Blender
-        # stops materialising on read, this is a clear failure rather than a
-        # save that quietly writes nothing.
-        # Captured at the moment of saving. It is read again after the path is
-        # restored below, but that later value is not the one that decided
-        # whether the save could work.
-        saved_has_data = getattr(image, "has_data", None)
-        if saved_has_data is False:
-            if file_path:
-                image.filepath = original
+        # Assigning image.filepath is deliberately avoided. Under background
+        # mode it re-associates the datablock with that file and invalidates the
+        # decoded pixel buffer: assigning before the decode leaves pixels empty
+        # (IndexError on read), assigning after it makes save() fail with
+        # "does not have any image data". No ordering of the assignment works,
+        # so save_render is used to write to an explicit path instead, which
+        # writes without re-pointing the datablock.
+
+        decoded, reason = _decode_pixels(image)
+        has_data = getattr(image, "has_data", None)
+        if not decoded:
             return skill_error(
                 f"Image has no pixel data to save: {image_name}",
-                "The image could not be decoded, so there is nothing to write. "
+                f"The image could not be decoded, so there is nothing to write: {reason}. "
                 "This is typical under blender --background for images loaded from disk.",
                 filepath=str(destination),
+                has_data=has_data,
             )
 
         try:
-            image.save()
+            if file_path:
+                image.save_render(str(destination))
+            else:
+                image.save()
         except Exception as exc:
-            # Report the state we measured so the failure is diagnosable
-            # instead of a bare operator error.
+            # Report the measured state so the failure is diagnosable instead of
+            # a bare operator error.
             return skill_exception(
                 exc,
                 message=f"Failed to save image {image_name}",
                 filepath=str(destination),
-                has_data=saved_has_data,
+                has_data=getattr(image, "has_data", None),
             )
 
         # Confirm the file exists rather than trusting the call: a save that
         # silently wrote nothing must be reported as a failure.
         if not destination.is_file():
-            if file_path:
-                image.filepath = original
             return skill_error(
                 f"Image was not saved: {image_name}",
                 f"Blender completed the save call but no file exists at '{destination}'.",
                 filepath=str(destination),
-                has_data=saved_has_data,
+                has_data=getattr(image, "has_data", None),
             )
-
-        if file_path:
-            image.filepath = original
 
         return skill_success(
             f"Saved image {image.name}",
             image=_image_info(image),
             filepath=str(destination),
             size_bytes=destination.stat().st_size,
-            has_data=saved_has_data,
+            has_data=getattr(image, "has_data", None),
+            method="save_render" if file_path else "save",
             prompt="Use pack_image or unpack_image to control how the file is stored.",
         )
     except ImportError:
