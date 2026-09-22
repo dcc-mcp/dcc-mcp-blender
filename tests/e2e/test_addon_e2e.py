@@ -89,12 +89,30 @@ class TestAddonLifecycleE2E:
         enabled = dict((module.__name__, _check(module.__name__)[1]) for module in _modules())
         assert enabled.get(_ADDON_MODULE) is True
 
-        # Removing disables first, then uninstalls and refreshes.
+        # Blender's own addon_remove calls context.area.tag_redraw(), which is
+        # None under --background, so removal must not depend on that operator.
+        installed_file = getattr(_module_by_name(_ADDON_MODULE), "__file__", None)
+
         result = _skill("remove_addon").remove_addon(addon_module=_ADDON_MODULE)
         assert result["success"] is True, result.get("error")
         assert result["context"]["after"]["installed"] is False, result["context"]["after"]
+        assert result["context"]["removed_paths"], "removal must report what it deleted"
 
+        # The file itself has to be gone, not just unregistered from the cache.
+        if installed_file:
+            assert not Path(installed_file).exists(), "the add-on file must be deleted"
         assert _ADDON_MODULE not in [module.__name__ for module in _modules()]
+
+    def test_disable_keeps_the_addon_installed(self):
+        """Disabling clears the enabled flag but leaves the add-on installed."""
+        result = _skill("install_addon").install_addon(file_path=str(self.addon_path), addon_module=_ADDON_MODULE)
+        assert result["success"] is True, result.get("error")
+
+        result = _skill("disable_addon").disable_addon(addon_module=_ADDON_MODULE)
+        assert result["success"] is True, result.get("error")
+        assert result["context"]["after"]["enabled"] is False
+        assert result["context"]["after"]["installed"] is True
+        assert _ADDON_MODULE in [module.__name__ for module in _modules()]
 
     def test_install_rejects_a_missing_file(self):
         result = _skill("install_addon").install_addon(
@@ -134,6 +152,14 @@ class TestAddonLifecycleE2E:
         refreshed = _skill("refresh_addons").refresh_addons()
         assert refreshed["success"] is True, refreshed.get("error")
         assert refreshed["context"]["after_count"] > before
+
+
+def _module_by_name(name):
+    """Return the cached module object for an add-on, or None."""
+    for module in _modules():
+        if getattr(module, "__name__", None) == name:
+            return module
+    return None
 
 
 def _modules():

@@ -539,3 +539,53 @@ def test_set_nla_strip_mentions_that_blender_would_clamp():
     # The caller asked for 5.0; saying it is rejected rather than clamped
     # explains why nothing was written.
     assert "clamp" in result["error"].lower()
+
+
+def test_fcurve_tools_fail_loudly_on_layered_animation():
+    """Blender 5.x dropped Action.fcurves; the tools must not look empty.
+
+    Returning no curves would read as an action with nothing in it, which is
+    the silent-wrong-answer shape this batch keeps removing.
+    """
+
+    class _LayeredAction:
+        name = "Layered"
+
+        def __init__(self):
+            self.layers = [object()]
+            self.channelbags = [object()]
+
+    action = _LayeredAction()
+    bpy = _bpy_with_objects(actions=[action])
+
+    result = _call("list_action_fcurves", bpy, action_name="Layered")
+    assert result["success"] is False
+    assert "unavailable" in result["message"].lower()
+    assert "layered animation" in result["error"].lower()
+
+    result = _call(
+        "set_action_fcurve_extrapolation",
+        bpy,
+        action_name="Layered",
+        extrapolation="CONSTANT",
+    )
+    assert result["success"] is False
+    assert "layered animation" in result["error"].lower()
+
+
+def test_fcurve_tools_work_when_the_action_has_fcurves():
+    action = _Action("Walk", [_Fcurve("location", 0, frames=[1, 7])])
+    bpy = _bpy_with_objects(actions=[action])
+
+    result = _call("list_action_fcurves", bpy, action_name="Walk")
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["count"] == 1
+
+    result = _call(
+        "set_action_fcurve_extrapolation",
+        bpy,
+        action_name="Walk",
+        extrapolation="CONSTANT",
+    )
+    assert result["success"] is True, result.get("error")
+    assert action.fcurves[0].extrapolation == "CONSTANT"

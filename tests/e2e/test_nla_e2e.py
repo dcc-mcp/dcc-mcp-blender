@@ -136,11 +136,21 @@ class TestNlaE2E:
 
 
 class TestActionFcurvesE2E:
+    """Blender 5.x replaced Action.fcurves with layered animation.
+
+    These tools therefore cannot work there. The tests assert the tools say so
+    explicitly on 5.x, and behave correctly everywhere else, so a host without
+    the API is never reported as an action with no curves.
+    """
+
     def setup_method(self):
         _new_scene()
 
     def _skill(self, name):
         return load_skill("blender-animation", name)
+
+    def _is_layered(self) -> bool:
+        return not hasattr(bpy.types.Action, "fcurves")
 
     def test_extrapolation_is_written_to_the_curve(self):
         """Set extrapolation and read it back off the fcurve."""
@@ -150,6 +160,16 @@ class TestActionFcurvesE2E:
         obj.keyframe_insert(data_path="location", frame=10)
         action = obj.animation_data.action
         assert action is not None
+
+        result = self._skill("list_action_fcurves").list_action_fcurves(action_name=action.name)
+        if self._is_layered():
+            # No shared accessor exists; the tool must refuse rather than
+            # report an empty action.
+            assert result["success"] is False
+            assert "layered animation" in result["error"].lower()
+            return
+
+        assert result["success"] is True, result.get("error")
         assert len(action.fcurves) >= 1
 
         list_curves = self._skill("list_action_fcurves")
@@ -167,14 +187,19 @@ class TestActionFcurvesE2E:
         )
         assert result["success"] is True, result.get("error")
         # Read it back off the object: the response alone would not prove it.
+        written = False
         for fcurve in action.fcurves:
             if fcurve.data_path == "location":
                 assert fcurve.extrapolation == "CONSTANT"
+                written = True
+        assert written, "at least one location fcurve must have been updated"
 
     def test_extrapolation_rejects_unknown_values_before_writing(self):
         obj = _cube()
         obj.keyframe_insert(data_path="location", frame=1)
         action = obj.animation_data.action
+        if self._is_layered():
+            pytest.skip("no Action.fcurves on this Blender; covered by the refusal assertions")
         before = [fcurve.extrapolation for fcurve in action.fcurves]
 
         result = self._skill("set_action_fcurve_extrapolation").set_action_fcurve_extrapolation(
@@ -187,6 +212,7 @@ class TestActionFcurvesE2E:
         obj = _cube()
         obj.keyframe_insert(data_path="location", frame=1)
         action = obj.animation_data.action
+        assert action is not None
 
         result = self._skill("list_animation_actions").list_animation_actions(object_name=obj.name)
         assert result["success"] is True

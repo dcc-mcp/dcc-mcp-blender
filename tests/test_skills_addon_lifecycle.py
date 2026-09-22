@@ -70,8 +70,20 @@ def _bpy_with_addons(modules, ops=None):
 
     def _modules(refresh=False):
         if refresh:
-            # addon_remove only takes effect in the cached list after a refresh.
-            state["modules"] = [m for m in state["modules"] if m.__name__ not in ops_ref.removed]
+            # addon_utils drops a module once it is gone from disk or was passed
+            # to addon_remove, and only on a refresh.
+
+            def _present(module):
+                if module.__name__ in ops_ref.removed:
+                    return False
+                file_path = getattr(module, "__file__", None)
+                if not file_path:
+                    return True
+                target = Path(file_path)
+                target = target.parent if target.name == "__init__.py" else target
+                return target.exists()
+
+            state["modules"] = [m for m in state["modules"] if _present(m)]
         return list(state["modules"])
 
     def _check(name: str):
@@ -233,35 +245,65 @@ def test_install_addon_without_a_module_still_installs(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_remove_addon_disables_then_removes():
+def test_remove_addon_disables_then_removes(tmp_path):
+    """Removal disables first, then deletes the files and refreshes."""
+    package = tmp_path / "my_addon"
+    package.mkdir()
+    init = package / "__init__.py"
+    init.write_text("bl_info = {}\n", encoding="utf-8")
+    module = SimpleNamespace(__name__="my_addon", __file__=str(init))
+
     # _FakeOps clears the enabled map on construction, so enable it afterwards.
     ops = _FakeOps(installed=["my_addon"])
     _ENABLED["my_addon"] = True
-    bpy = _bpy_with_addons([_module("my_addon")], ops)
+    bpy = _bpy_with_addons([module], ops)
     result = _call("remove_addon", bpy, addon_module="my_addon")
 
-    assert result["success"] is True
+    assert result["success"] is True, result.get("error")
+    # Blender's addon_remove needs a UI context, so the operator is not used and
+    # the disable plus refresh are what remain.
     names = [name for name, _ in ops.calls]
-    assert names == ["addon_disable", "addon_remove", "addon_refresh"]
+    assert names == ["addon_disable", "addon_refresh"]
+    assert not package.exists(), "the add-on package must be deleted"
     # The cached module list would otherwise still report it as installed.
     assert result["context"]["after"]["installed"] is False
 
 
-def test_remove_addon_skips_disable_when_already_disabled():
+def test_remove_addon_skips_disable_when_already_disabled(tmp_path):
+    path = tmp_path / "my_addon.py"
+    path.write_text("bl_info = {}\n", encoding="utf-8")
+    module = SimpleNamespace(__name__="my_addon", __file__=str(path))
+
     ops = _FakeOps()
-    result = _call("remove_addon", _bpy_with_addons([_module("my_addon")], ops), addon_module="my_addon")
+    result = _call("remove_addon", _bpy_with_addons([module], ops), addon_module="my_addon")
 
-    assert result["success"] is True
+    assert result["success"] is True, result.get("error")
     names = [name for name, _ in ops.calls]
-    assert names == ["addon_remove", "addon_refresh"]
+    assert names == ["addon_refresh"]
+    assert not path.exists()
 
 
-def test_remove_addon_reports_operator_failure():
-    ops = _FakeOps(fail=["addon_remove"])
-    result = _call("remove_addon", _bpy_with_addons([_module("my_addon")], ops), addon_module="my_addon")
+def test_remove_addon_reports_an_unremovable_addon():
+    """An add-on still registered after file deletion must be reported.
+
+    addon_disable works headless, so a failure past that point means the files
+    could not be removed, not that Blender refused the operation.
+    """
+    ops = _FakeOps(installed=["my_addon"])
+    _ENABLED["my_addon"] = True
+    bpy = _bpy_with_addons([_module("my_addon")], ops)
+
+    import dcc_mcp_blender._dev_ops as dev_ops
+
+    original = dev_ops.shutil.rmtree
+    dev_ops.shutil.rmtree = lambda *args, **kwargs: None
+    try:
+        result = _call("remove_addon", bpy, addon_module="my_addon")
+    finally:
+        dev_ops.shutil.rmtree = original
 
     assert result["success"] is False
-    assert "failed to remove" in result["message"].lower()
+    assert "not removed" in result["message"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -332,3 +374,67 @@ def test_remove_addon_is_flagged_destructive():
     assert tools["remove_addon"]["annotations"]["destructive_hint"] is True
     assert tools["refresh_addons"]["destructive"] is False
     assert tools["install_addon"]["destructive"] is False
+
+
+def test_remove_addon_deletes_the_module_file(tmp_path):
+    """Background mode cannot run Blender's addon_remove, so files go directly."""
+    package = tmp_path / "my_addon"
+    package.mkdir()
+    init = package / "__init__.py"
+    init.write_text("bl_info = {'name': 'My Addon'}\n", encoding="utf-8")
+
+    module = SimpleNamespace(__name__="my_addon", __file__=str(init))
+    ops = _FakeOps(installed=["my_addon"])
+    bpy = _bpy_with_addons([module], ops)
+    # The cached list must drop it on refresh, as Blender's would.
+    ops_ref = bpy.ops.preferences
+
+    result = _call("remove_addon", bpy, addon_module="my_addon")
+
+    assert result["success"] is True, result.get("error")
+    assert not init.exists(), "the add-on package must be deleted from disk"
+    assert not package.exists()
+    assert result["context"]["removed_paths"] == [str(package)]
+    assert result["context"]["after"]["installed"] is False
+    # Blender's operator is not used: it needs a UI context that background
+    # mode does not have.
+    assert "addon_remove" not in [name for name, _ in ops_ref.calls]
+
+
+def test_remove_addon_handles_a_single_file_module(tmp_path):
+    path = tmp_path / "solo_addon.py"
+    path.write_text("bl_info = {'name': 'Solo'}\n", encoding="utf-8")
+    module = SimpleNamespace(__name__="solo_addon", __file__=str(path))
+
+    ops = _FakeOps(installed=["solo_addon"])
+    bpy = _bpy_with_addons([module], ops)
+
+    result = _call("remove_addon", bpy, addon_module="solo_addon")
+    assert result["success"] is True, result.get("error")
+    assert not path.exists()
+    assert result["context"]["removed_paths"] == [str(path)]
+
+
+def test_remove_addon_reports_when_files_cannot_be_deleted(tmp_path):
+    """If the add-on survives file deletion the call must fail, not succeed."""
+    directory = tmp_path / "stubborn_addon"
+    directory.mkdir()
+    init = directory / "__init__.py"
+    init.write_text("bl_info = {}\n", encoding="utf-8")
+    module = SimpleNamespace(__name__="stubborn_addon", __file__=str(init))
+
+    ops = _FakeOps(installed=["stubborn_addon"])
+    bpy = _bpy_with_addons([module], ops)
+
+    # Simulate a read-only add-on directory: deletion silently does nothing.
+    import dcc_mcp_blender._dev_ops as dev_ops
+
+    original = dev_ops.shutil.rmtree
+    dev_ops.shutil.rmtree = lambda *args, **kwargs: None
+    try:
+        result = _call("remove_addon", bpy, addon_module="stubborn_addon")
+    finally:
+        dev_ops.shutil.rmtree = original
+
+    assert result["success"] is False
+    assert "not removed" in result["message"].lower()
