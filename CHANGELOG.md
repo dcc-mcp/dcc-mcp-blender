@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.7](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.6...v0.2.7) (2026-09-22)
+
+
+### Features
+
+* add Mantaflow fluid, Dynamic Paint, and particle authoring tools ([#223](https://github.com/dcc-mcp/dcc-mcp-blender/issues/223)) ([768faa2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/768faa2945285c3edc5e89491a90505ff91d0177))
+
+
+### Bug Fixes
+
+* correct fluid and particle settings that never applied ([#225](https://github.com/dcc-mcp/dcc-mcp-blender/issues/225)) ([a50cc4f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a50cc4f569ca75d6a2dcb9e1d14451e86ac6922c))
+
 ## [0.2.6](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.5...v0.2.6) (2026-09-22)
 
 
