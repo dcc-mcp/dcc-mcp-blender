@@ -104,6 +104,21 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                 "The image was generated or packed; pass file_path explicitly.",
             )
 
+        # Under blender --background an image loaded from disk has no decoded
+        # pixels until something reads them, and image.save() then fails with
+        # "does not have any image data". Reading the pixels forces the decode.
+        # Packing does not need this because it copies the source file.
+        try:
+            pixels = getattr(image, "pixels", None)
+            if pixels is not None:
+                len(pixels)
+        except Exception as exc:
+            return skill_exception(
+                exc,
+                message=f"Failed to read pixel data for {image_name}",
+                filepath=str(destination),
+            )
+
         original = image.filepath
         try:
             if file_path:
@@ -115,10 +130,20 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
             if file_path:
                 image.filepath = original
 
+        # Confirm the file exists rather than trusting the call: a save that
+        # silently wrote nothing must be reported as a failure.
+        if not destination.is_file():
+            return skill_error(
+                f"Image was not saved: {image_name}",
+                f"Blender completed the save call but no file exists at '{destination}'.",
+                filepath=str(destination),
+            )
+
         return skill_success(
             f"Saved image {image.name}",
             image=_image_info(image),
             filepath=str(destination),
+            size_bytes=destination.stat().st_size,
             prompt="Use pack_image or unpack_image to control how the file is stored.",
         )
     except ImportError:

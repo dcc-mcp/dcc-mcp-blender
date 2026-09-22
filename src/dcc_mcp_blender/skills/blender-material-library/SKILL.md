@@ -59,6 +59,12 @@ Notes that matter in practice:
 - Packing is confirmed, not assumed: if the pack call leaves nothing packed the
   tool fails rather than reporting success for an embed that did not happen.
   Packing an already packed image is a no-op that says so.
+- `save_image` works under `blender --background`. There, an image loaded from
+  disk has no decoded pixels until something reads them, and saving one without
+  forcing that decode fails with "does not have any image data". The tool reads
+  the pixels first, then confirms the file exists afterwards, so a save that
+  writes nothing is reported as a failure. Packing does not need the decode
+  because it copies the source file.
 - `save_image` needs a path for generated images, which have none, and reports
   that instead of guessing a location.
 - A colour space the running Blender refuses is returned in `not_applied`
