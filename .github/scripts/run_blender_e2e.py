@@ -89,6 +89,7 @@ def main() -> int:
             [
                 os.path.join(workspace, "tests", "e2e"),
                 "-v",
+                "-s",
                 "--tb=short",
                 "-m",
                 "e2e",
