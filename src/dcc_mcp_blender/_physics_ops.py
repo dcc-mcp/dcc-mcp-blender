@@ -1360,9 +1360,10 @@ DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
 FLUID_NUMERIC_SETTINGS = {
     # Verified against live RNA on Blender 3.6.5, 4.5.13 and 5.2.1. The domain
     # resolution is `resolution_max`; `resolution_divisions` was removed in
-    # 2.82 and the CFL property is not exposed as `cfl` on any of them.
+    # 2.82 and the CFL property is not exposed as `cfl` on any of them. This is
+    # only a numeric coercion hint, not an allowlist: _apply_settings still
+    # decides by hasattr, so an unrecognised name skips rather than failing.
     "resolution_max",
-    "domain_resolution",
     "viscosity_base",
     "viscosity_exponent",
     "domain_size",
@@ -2003,6 +2004,21 @@ def set_particle_children(
         if psettings is None:
             return skill_error("Particle settings unavailable", "The modifier exposes no particle settings.")
 
+        # Preflight child_nbr before writing anything: it is the display amount
+        # and only exists on Blender 3.x, so on 4.x and later the call has to
+        # fail with nothing written rather than failing after the other values
+        # have already landed. It is deliberately not mapped onto
+        # rendered_child_count: they are different knobs, and silently writing
+        # one for the other is how this batch got here.
+        child_nbr_available = hasattr(psettings, "child_nbr")
+        if child_nbr is not None and not child_nbr_available:
+            return skill_error(
+                "child_nbr is not available in this Blender version",
+                "Blender 4.x removed ParticleSettings.child_nbr (display amount). "
+                "Use rendered_child_count, which controls the rendered amount and "
+                "exists on every supported version. Nothing was changed.",
+            )
+
         applied: Dict[str, Any] = {}
         skipped: List[str] = []
         for key, value in (
@@ -2017,21 +2033,9 @@ def set_particle_children(
             setattr(psettings, key, value)
             applied[key] = value
 
-        # child_nbr is the display amount and only exists on Blender 3.x. It is
-        # deliberately not mapped onto rendered_child_count: they are different
-        # knobs, and silently writing one for the other is how this batch got
-        # here. Say so instead.
         if child_nbr is not None:
-            if hasattr(psettings, "child_nbr"):
-                psettings.child_nbr = int(child_nbr)
-                applied["child_nbr"] = int(child_nbr)
-            else:
-                return skill_error(
-                    "child_nbr is not available in this Blender version",
-                    "Blender 4.x removed ParticleSettings.child_nbr (display amount). "
-                    "Use rendered_child_count, which controls the rendered amount and "
-                    "exists on every supported version. Nothing was changed.",
-                )
+            psettings.child_nbr = int(child_nbr)
+            applied["child_nbr"] = int(child_nbr)
 
         extra_applied, extra_skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
         applied.update(extra_applied)
@@ -2152,13 +2156,18 @@ def bake_particle_system(
                 "The particle system exposes no point cache in this Blender build.",
             )
 
-        # The ptcache operator bakes the scene range, not the cache range, so
-        # both have to move; setting only the cache silently bakes the whole
-        # scene. Mirrors bake_simulation and bake_rigid_body_simulation.
-        cache_changes = _set_cache_frames(cache, frame_start, frame_end)
-        scene_changes = _set_scene_frames(bpy.context.scene, frame_start, frame_end)
-        _activate_object(bpy, obj)
+        # Everything from the frame range changes onward shares one handler so
+        # any failure reports the state it already changed, including a failure
+        # while setting that range.
+        cache_changes: Dict[str, Any] = {}
+        scene_changes: Dict[str, Any] = {}
         try:
+            # The ptcache operator bakes the scene range, not the cache range,
+            # so both have to move; setting only the cache silently bakes the
+            # whole scene. Mirrors bake_simulation and bake_rigid_body_simulation.
+            cache_changes = _set_cache_frames(cache, frame_start, frame_end)
+            scene_changes = _set_scene_frames(bpy.context.scene, frame_start, frame_end)
+            _activate_object(bpy, obj)
             override = {"scene": bpy.context.scene, "active_object": obj, "object": obj, "point_cache": cache}
             with bpy.context.temp_override(**override):
                 result = bpy.ops.ptcache.free_bake() if free else bpy.ops.ptcache.bake(bake=True)
