@@ -150,6 +150,7 @@ _NODE_TYPE_ALIASES = _build_alias_index()
 
 
 def _node_catalog_categories() -> list:
+    """Return the catalogue categories in declaration order."""
     categories: list = []
     for _node_id, _label, category, _aliases in _COMPOSITOR_NODE_CATALOG:
         if category not in categories:
@@ -182,7 +183,11 @@ def resolve_compositor_node_type(node_type: str) -> str | None:
 
 
 def list_compositor_node_types(category: str | None = None, search: str | None = None) -> dict:
-    """List compositor node types supported by ``create_compositor_node``.
+    """List the compositor node type catalogue used by ``create_compositor_node``.
+
+    The catalogue is static and not filtered by Blender version, so an entry may
+    still fail to instantiate on an older Blender; ``create_compositor_node``
+    surfaces that as a version-aware error.
 
     Args:
         category: Optional category filter, for example ``filter`` or ``matte``.
@@ -235,6 +240,7 @@ def _resolve_scene(bpy: Any, scene_name: str | None) -> tuple:
 
 
 def _scene_ref(scene: Any) -> dict:
+    """Build the ``node_tree_ref`` payload reported for compositor operations."""
     return {"kind": "compositor", "scene_name": getattr(scene, "name", None)}
 
 
@@ -268,23 +274,31 @@ def _resolve_compositor_tree(bpy: Any, scene_name: str | None, *, ensure: bool =
 
 
 def _ensure_compositor_node(node_tree: Any, node_type: str, preferred_name: str) -> tuple:
-    """Return an existing node of *node_type* or create one named *preferred_name*."""
+    """Return an existing node of *node_type* or create one named *preferred_name*.
+
+    A node that merely carries *preferred_name* does not qualify: an unrelated
+    node renamed to "Composite" must not be mistaken for the composite output
+    node. The preferred name is only applied when it is still free, so Blender's
+    own de-duplication ("Composite.001") survives.
+    """
     existing = _collection_get(node_tree.nodes, preferred_name)
-    if existing is not None:
+    if existing is not None and _node_type(existing) == node_type:
         return existing, False
     for candidate in _iter_collection(node_tree.nodes):
         if _node_type(candidate) == node_type:
             return candidate, False
     node = _create_node_in_tree(node_tree, node_type)
-    try:
-        node.name = preferred_name
-        node.label = preferred_name
-    except Exception:  # pragma: no cover - read-only node name in exotic trees
-        pass
+    if _collection_get(node_tree.nodes, preferred_name) is None:
+        try:
+            node.name = preferred_name
+            node.label = preferred_name
+        except Exception:  # pragma: no cover - read-only node name in exotic trees
+            pass
     return node, True
 
 
 def _existing_link(node_tree: Any, from_node: str, from_socket: str, to_node: str, to_socket: str) -> bool:
+    """Return True when the tree already links the given endpoints."""
     for link in _iter_collection(node_tree.links):
         info = _link_info(link)
         if (
@@ -432,6 +446,13 @@ def create_compositor_node(
             f"Unsupported compositor node type: {node_type}",
             "Use list_compositor_node_types to discover valid ids, labels, and aliases.",
         )
+    # Validate before touching Blender so a rejected payload cannot leave an
+    # orphan node behind or flip scene.use_nodes for an operation that failed.
+    node_location = None
+    if location is not None:
+        if isinstance(location, (str, bytes)) or len(location) != 2:
+            return skill_error("Invalid location", "location must be [x, y].")
+        node_location = (float(location[0]), float(location[1]))
     try:
         import bpy
 
@@ -444,10 +465,8 @@ def create_compositor_node(
         if name:
             node.name = str(name)
             node.label = str(name)
-        if location is not None:
-            if isinstance(location, (str, bytes)) or len(location) != 2:
-                return skill_error("Invalid location", "location must be [x, y].")
-            node.location = (float(location[0]), float(location[1]))
+        if node_location is not None:
+            node.location = node_location
         return skill_success(
             f"Created compositor node {getattr(node, 'name', resolved_type)}",
             node_tree_ref=resolved,
@@ -458,7 +477,14 @@ def create_compositor_node(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        return skill_exception(exc, message=f"Failed to create compositor node {node_type}")
+        return skill_exception(
+            exc,
+            message=f"Failed to create compositor node {node_type}",
+            prompt=(
+                f"Blender rejected {resolved_type}; this node type may not exist in the running "
+                "Blender version. Use list_compositor_node_types to pick an alternative."
+            ),
+        )
 
 
 def delete_compositor_node(node_name: str, scene_name: str | None = None) -> dict:

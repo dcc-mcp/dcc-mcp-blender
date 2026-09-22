@@ -33,12 +33,15 @@ tools:
           type: string
         context:
           type: object
+    # clear=true drops every existing node, so this is destructive even though
+    # the non-clearing path only adds nodes. Keep a dedicated annotations block:
+    # the shared anchor below is reused by non-destructive tools.
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: true
-    annotations: &mutating_idempotent_annotations
+    annotations:
       read_only_hint: false
-      destructive_hint: false
+      destructive_hint: true
       idempotent_hint: true
       open_world_hint: false
 
@@ -62,7 +65,11 @@ tools:
     read_only: false
     destructive: false
     idempotent: true
-    annotations: *mutating_idempotent_annotations
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
 
   - name: clear_compositor_tree
     description: "Remove every node and link from the scene compositor tree."

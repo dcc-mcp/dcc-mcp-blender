@@ -94,8 +94,9 @@ class FakeNode:
 
 
 class FakeNodeCollection:
-    def __init__(self):
+    def __init__(self, tree=None):
         self._nodes = []
+        self._tree = tree
 
     def get(self, name):
         for node in self._nodes:
@@ -109,6 +110,11 @@ class FakeNodeCollection:
         return node
 
     def remove(self, node):
+        # Blender cascades: dropping a node also drops every link touching it.
+        if self._tree is not None:
+            for link in list(self._tree.links):
+                if link.from_node is node or link.to_node is node:
+                    self._tree.links.remove(link)
         self._nodes.remove(node)
 
     def __iter__(self):
@@ -162,6 +168,7 @@ class FakeNodeTree:
     def __init__(self):
         self.nodes = FakeNodeCollection()
         self.links = FakeLinkCollection()
+        self.nodes._tree = self  # noqa: SLF001 - lets node removal cascade to links
 
 
 class FakeScene:
@@ -313,6 +320,41 @@ def test_setup_compositor_tree_clear_removes_existing_nodes():
     assert len(list(scene.node_tree.nodes)) == 2
 
 
+def test_setup_compositor_tree_clear_reconnects_the_rebuilt_nodes():
+    """Clearing must drop stale links, otherwise reconnecting silently no-ops."""
+    scene = FakeScene()
+    bpy = _bpy_with_scene(scene)
+    _call("setup_compositor_tree", bpy)
+    result = _call("setup_compositor_tree", bpy, clear=True)
+
+    link = result["context"]["link"]
+    assert link is not None, "rebuilt tree must be wired back together"
+    live = {node.name for node in scene.node_tree.nodes}
+    assert link["from_node"] in live
+    assert link["to_node"] in live
+    assert len(list(scene.node_tree.links)) == 1
+
+
+def test_setup_compositor_tree_ignores_an_unrelated_node_named_composite():
+    """A renamed node must not be mistaken for the composite output node."""
+    scene = FakeScene()
+    bpy = _bpy_with_scene(scene)
+    _call("create_compositor_node", bpy, node_type="blur", name="Composite")
+
+    result = _call("setup_compositor_tree", bpy)
+    assert result["success"] is True
+
+    nodes = {node.name: node for node in scene.node_tree.nodes}
+    composite = next(node for node in nodes.values() if node.bl_idname == "CompositorNodeComposite")
+    assert composite.name != "Composite", "Blender de-duplicates the preferred name"
+
+    links = list(scene.node_tree.links)
+    assert len(links) == 1
+    assert links[0].to_node is composite
+    assert links[0].to_node.bl_idname == "CompositorNodeComposite"
+    assert result["context"]["link"]["to_node"] == composite.name
+
+
 def test_setup_compositor_tree_rejects_unknown_template():
     result = _call("setup_compositor_tree", _bpy_with_scene(FakeScene()), template="fancy")
     assert result["success"] is False
@@ -420,11 +462,23 @@ def test_create_compositor_node_rejects_duplicate_name():
     assert "already exists" in result["message"].lower()
 
 
-def test_create_compositor_node_rejects_bad_location():
-    _scene, bpy = _ready_scene()
+def test_create_compositor_node_rejects_bad_location_without_orphans():
+    scene, bpy = _ready_scene()
+    before = len(list(scene.node_tree.nodes))
     result = _call("create_compositor_node", bpy, node_type="blur", location=[1, 2, 3])
+
     assert result["success"] is False
     assert "location" in result["message"].lower()
+    assert len(list(scene.node_tree.nodes)) == before, "rejected payload must not create a node"
+
+
+def test_create_compositor_node_rejects_bad_location_even_when_disabled():
+    scene = FakeScene()
+    bpy = _bpy_with_scene(scene)
+    result = _call("create_compositor_node", bpy, node_type="blur", location=[1, 2, 3])
+
+    assert result["success"] is False
+    assert scene.use_nodes is False, "validation happens before the scene is touched"
 
 
 def test_delete_compositor_node_removes_node():
@@ -665,3 +719,24 @@ def test_read_only_tools_are_flagged_read_only():
     for name in ("get_compositor_node_value", "list_compositor_node_links", "list_compositor_node_types"):
         assert tools[name]["read_only"] is True
         assert tools[name]["annotations"]["read_only_hint"] is True
+
+
+def test_destructive_flags_match_actual_side_effects():
+    """setup_compositor_tree(clear=true) wipes the graph, so it is destructive.
+
+    Guards the shared YAML anchor: setup_compositor_tree must own its
+    annotations block so the non-destructive tools that reuse
+    ``*mutating_idempotent_annotations`` keep ``destructive_hint: false``.
+    """
+    doc = yaml.safe_load(Path(COMPOSITOR_PATH).read_text(encoding="utf-8"))
+    tools = {tool["name"]: tool for tool in doc["tools"]}
+
+    destructive = {
+        "setup_compositor_tree",
+        "clear_compositor_tree",
+        "delete_compositor_node",
+        "disconnect_compositor_nodes",
+    }
+    for name, tool in tools.items():
+        assert tool["destructive"] is (name in destructive), name
+        assert tool["annotations"]["destructive_hint"] is (name in destructive), name
