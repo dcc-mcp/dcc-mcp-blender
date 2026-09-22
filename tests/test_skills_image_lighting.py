@@ -473,3 +473,54 @@ def test_new_tools_are_not_flagged_destructive():
     for name in ("load_image", "save_image", "pack_image", "unpack_image", "image_file_status", "list_image_tiles"):
         assert library[name]["destructive"] is False, name
         assert library[name]["annotations"]["destructive_hint"] is False, name
+
+
+def test_save_image_confirms_the_file_was_written(tmp_path):
+    """A save that leaves no file behind must fail, not report success."""
+    source = tmp_path / "source.png"
+    source.write_text("x", encoding="utf-8")
+    image = _make_image(filepath=str(source))
+    image.save = MagicMock()  # no-op: nothing is written
+
+    target = tmp_path / "out.png"
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
+
+    assert result["success"] is False
+    assert "not saved" in result["message"].lower()
+    assert str(target) in result["error"]
+
+
+def test_save_image_reports_pixel_data_it_cannot_read(tmp_path):
+    """If the pixels cannot be materialized the call fails with that reason."""
+    source = tmp_path / "source.png"
+    source.write_text("x", encoding="utf-8")
+
+    class _BadPixels:
+        def __len__(self):
+            raise RuntimeError("Image does not have any image data")
+
+    image = _make_image(filepath=str(source))
+    image.pixels = _BadPixels()
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(tmp_path / "o.png"))
+    assert result["success"] is False
+    assert "pixel data" in result["message"].lower()
+    image.save.assert_not_called()
+
+
+def test_save_image_reports_the_written_size(tmp_path):
+    """A real save reports the file it produced."""
+    source = tmp_path / "source.png"
+    source.write_text("x", encoding="utf-8")
+    image = _make_image(filepath=str(source))
+
+    target = tmp_path / "out.png"
+
+    def _write():
+        target.write_bytes(b"PNGDATA")
+
+    image.save = MagicMock(side_effect=_write)
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex", file_path=str(target))
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["size_bytes"] == len(b"PNGDATA")

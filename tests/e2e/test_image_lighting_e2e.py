@@ -70,7 +70,17 @@ class TestImageLifecycleE2E:
         target = tmp_path / "saved.png"
         result = _library("save_image").save_image(image_name=name, file_path=str(target))
         assert result["success"] is True, result.get("error")
+        # The real round trip: the bytes have to be on disk. Under
+        # --background pixel data is not materialised until something reads
+        # it, and a save that quietly writes nothing must fail instead.
         assert target.is_file(), "the image must actually be written to disk"
+        assert target.stat().st_size > 0, "the saved file must not be empty"
+
+        # Saving is repeatable, not a one-shot.
+        second = tmp_path / "saved_again.png"
+        again = _library("save_image").save_image(image_name=name, file_path=str(second))
+        assert again["success"] is True, again.get("error")
+        assert second.is_file()
 
     def test_load_rejects_a_missing_file(self, tmp_path):
         result = _library("load_image").load_image(file_path=str(tmp_path / "nope.png"))
