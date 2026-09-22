@@ -24,6 +24,7 @@ class _FakeOps:
 
     def __init__(self, fail=(), installed=()):
         self.calls: list = []
+        self.removed: list = []
         self._fail = set(fail)
         _ENABLED.clear()
         for name in installed:
@@ -38,6 +39,9 @@ class _FakeOps:
             _ENABLED[module] = True
         if name == "addon_disable" and module is not None:
             _ENABLED[module] = False
+        if name == "addon_remove" and module is not None:
+            self.removed.append(module)
+            _ENABLED.pop(module, None)
         return {"FINISHED"}
 
     def __getattr__(self, name):
@@ -48,14 +52,37 @@ class _FakeOps:
 
 
 def _bpy_with_addons(modules, ops=None):
+    """Build a bpy mock whose add-on list behaves like Blender's cache.
+
+    `_addon_modules()` calls addon_utils.modules(refresh=False), so the list
+    keeps returning stale entries until a refresh runs. The mock drops removed
+    modules only on refresh, which is what makes the post-condition checks in
+    install_addon and remove_addon meaningful.
+    """
     bpy = make_mock_bpy()
-    bpy.ops.preferences = ops if ops is not None else _FakeOps()
+    # Always own the ops object so the cached module list can consult it; the
+    # caller may pass one in to inspect the recorded calls.
+    ops_ref = ops if ops is not None else _FakeOps()
+    bpy.ops.preferences = ops_ref
     bpy.data.objects = []
 
-    known = {getattr(module, "__name__", "") for module in modules}
+    state = {"modules": list(modules)}
+
+    def _modules(refresh=False):
+        if refresh:
+            # addon_remove only takes effect in the cached list after a refresh.
+            state["modules"] = [m for m in state["modules"] if m.__name__ not in ops_ref.removed]
+        return list(state["modules"])
+
+    def _check(name: str):
+        current = {getattr(m, "__name__", "") for m in state["modules"]}
+        if name not in current:
+            return (False, False)
+        return (True, _ENABLED.get(name, False))
+
     addon_utils = SimpleNamespace(
-        modules=lambda refresh=False: list(modules),
-        check=_make_check(known),
+        modules=_modules,
+        check=_check,
         module_bl_info=lambda module: {"name": getattr(module, "__name__", "").upper()},
     )
     _patch_addon_utils(bpy, addon_utils)
@@ -178,10 +205,27 @@ def test_install_addon_can_skip_enabling(tmp_path):
     assert "addon_enable" not in [name for name, _ in ops.calls]
 
 
-def test_install_addon_requires_a_source():
-    result = _call("install_addon", _bpy_with_addons([]))
+def test_install_addon_requires_a_file():
+    """There is nothing to install from without a source, and addon_install("")
+    would just fail inside Blender."""
+    result = _call("install_addon", _bpy_with_addons([]), addon_module="my_addon")
     assert result["success"] is False
-    assert "no add-on source" in result["message"].lower()
+    assert "no add-on file" in result["message"].lower()
+    assert "refresh_addons" in result["error"]
+
+
+def test_install_addon_without_a_module_still_installs(tmp_path):
+    """Installing without addon_module installs but cannot confirm the module."""
+    path = _make_addon_file(tmp_path)
+    ops = _FakeOps()
+    bpy = _bpy_with_addons([_module("my_addon")], ops)
+
+    result = _call("install_addon", bpy, file_path=str(path))
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["module"] is None
+    assert result["context"]["enabled"] is False
+    assert "addon_enable" not in [name for name, _ in ops.calls], "nothing to enable without a module"
+    assert "addon_refresh" in [name for name, _ in ops.calls]
 
 
 # ---------------------------------------------------------------------------
@@ -193,11 +237,14 @@ def test_remove_addon_disables_then_removes():
     # _FakeOps clears the enabled map on construction, so enable it afterwards.
     ops = _FakeOps(installed=["my_addon"])
     _ENABLED["my_addon"] = True
-    result = _call("remove_addon", _bpy_with_addons([_module("my_addon")], ops), addon_module="my_addon")
+    bpy = _bpy_with_addons([_module("my_addon")], ops)
+    result = _call("remove_addon", bpy, addon_module="my_addon")
 
     assert result["success"] is True
     names = [name for name, _ in ops.calls]
-    assert names == ["addon_disable", "addon_remove"]
+    assert names == ["addon_disable", "addon_remove", "addon_refresh"]
+    # The cached module list would otherwise still report it as installed.
+    assert result["context"]["after"]["installed"] is False
 
 
 def test_remove_addon_skips_disable_when_already_disabled():
@@ -206,7 +253,7 @@ def test_remove_addon_skips_disable_when_already_disabled():
 
     assert result["success"] is True
     names = [name for name, _ in ops.calls]
-    assert names == ["addon_remove"]
+    assert names == ["addon_remove", "addon_refresh"]
 
 
 def test_remove_addon_reports_operator_failure():

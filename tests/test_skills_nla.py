@@ -479,3 +479,63 @@ def test_destructive_flags_match_actual_side_effects():
         assert tools[name]["destructive"] is (name in destructive), name
         assert tools[name]["annotations"]["destructive_hint"] is (name in destructive), name
         assert tools[name]["read_only"] is tools[name]["annotations"]["read_only_hint"], name
+
+
+def test_add_nla_strip_rejects_a_missing_track_without_animation_data():
+    """A bad track name must not leave an animation_data slot behind.
+
+    Track resolution happens before animation_data is created, so a rejected
+    call leaves the object exactly as it was.
+    """
+    obj = _make_object("Cube", None)
+    created = []
+
+    def _create():
+        created.append(1)
+        data = SimpleNamespace(action=None, nla_tracks=_TrackCollection())
+        obj.animation_data = data
+        return data
+
+    obj.animation_data_create = _create
+    action = _Action("Walk")
+
+    result = _call(
+        "add_nla_strip",
+        _bpy_with_objects(obj, actions=[action]),
+        object_name="Cube",
+        action_name="Walk",
+        track_name="Ghost",
+    )
+    assert result["success"] is False
+    assert "track not found" in result["message"].lower()
+    assert not created, "no animation_data may be created for a missing track"
+
+
+def test_add_nla_strip_rejects_a_missing_action_without_animation_data():
+    obj = _make_object("Cube", None)
+    created = []
+    obj.animation_data_create = lambda: (created.append(1), None)[1]
+
+    result = _call(
+        "add_nla_strip",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        action_name="Ghost",
+    )
+    assert result["success"] is False
+    assert "action not found" in result["message"].lower()
+    assert not created, "no animation_data may be created for a missing action"
+
+
+def test_set_nla_strip_mentions_that_blender_would_clamp():
+    obj = _object_with_tracks()
+    action = _Action("Walk")
+    bpy = _bpy_with_objects(obj, actions=[action])
+    _call("add_nla_track", bpy, object_name="Cube", track_name="Base")
+    _call("add_nla_strip", bpy, object_name="Cube", action_name="Walk", track_name="Base", frame_start=1)
+
+    result = _call("set_nla_strip", bpy, object_name="Cube", strip_name="Walk", influence=5.0)
+    assert result["success"] is False
+    # The caller asked for 5.0; saying it is rejected rather than clamped
+    # explains why nothing was written.
+    assert "clamp" in result["error"].lower()
