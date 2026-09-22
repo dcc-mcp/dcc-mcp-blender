@@ -673,3 +673,34 @@ def test_enable_and_disable_intersection_is_rejected():
     assert result["success"] is False
     assert "both enable and disable" in result["error"].lower()
     assert scene.view_layers.get("ViewLayer").use_pass_z is False
+
+
+def test_preflight_probes_each_property_on_its_own_host():
+    """The host object must be explicit, not derived from the path string.
+
+    ``use_single_layer`` lives on ``render`` while the others live on
+    ``render.image_settings``. Deriving the host from the path gives two sources
+    of truth that can drift, and a drifted host rejects a usable property while
+    blaming the Blender build.
+    """
+    scene = _default_scene()
+
+    # use_single_layer is present on render and must not be reported missing.
+    result = _call("set_render_output", _bpy_with_scene(scene), multilayer=True)
+    assert result["success"] is True
+    assert scene.render.use_single_layer is False
+
+    # A property missing from render is still rejected without touching anything.
+    scene = _default_scene()
+    del scene.render.use_single_layer
+    result = _call("set_render_output", _bpy_with_scene(scene), multilayer=True)
+    assert result["success"] is False
+    assert scene.render.image_settings.file_format == "PNG"
+    assert "use_single_layer" in result["error"]
+
+    # A property missing from image_settings is rejected by name.
+    scene = _default_scene()
+    del scene.render.image_settings.color_mode
+    result = _call("set_render_output", _bpy_with_scene(scene), color_mode="RGB")
+    assert result["success"] is False
+    assert "image_settings.color_mode" in result["error"]

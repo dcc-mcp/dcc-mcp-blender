@@ -486,16 +486,19 @@ def set_render_output(
         settings = render.image_settings
 
         # Preflight every property before writing, so an unavailable one cannot
-        # leave the rest half-applied.
+        # leave the rest half-applied. The host object is named explicitly
+        # alongside the reported path: deriving it from the path string would
+        # give two sources of truth that can drift, and a drifted host makes a
+        # usable property look unsupported.
         unsupported = [
             path
-            for requested, attribute, path in (
-                (color_mode, "color_mode", "scene.render.image_settings.color_mode"),
-                (color_depth, "color_depth", "scene.render.image_settings.color_depth"),
-                (exr_codec, "exr_codec", "scene.render.image_settings.exr_codec"),
-                (multilayer, "use_single_layer", "scene.render.use_single_layer"),
+            for requested, host, attribute, path in (
+                (color_mode, settings, "color_mode", "scene.render.image_settings.color_mode"),
+                (color_depth, settings, "color_depth", "scene.render.image_settings.color_depth"),
+                (exr_codec, settings, "exr_codec", "scene.render.image_settings.exr_codec"),
+                (multilayer, render, "use_single_layer", "scene.render.use_single_layer"),
             )
-            if requested is not None and not hasattr(settings if attribute != "use_single_layer" else render, attribute)
+            if requested is not None and not hasattr(host, attribute)
         ]
         if unsupported:
             return skill_error(
