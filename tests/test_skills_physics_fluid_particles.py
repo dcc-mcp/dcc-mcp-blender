@@ -752,3 +752,54 @@ def test_particle_bake_failure_reports_both_range_changes():
     assert result["success"] is False
     assert result["context"]["scene_changes"] == {"frame_start": 1, "frame_end": 30}
     assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 30}
+
+
+def test_unapplied_settings_are_reported_in_the_message():
+    """A key that did not take effect must not hide behind success: True."""
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"resolution_divisions": 48, "time_scale": 0.5},
+    )
+    assert result["success"] is True, result.get("error")
+    # time_scale took effect; the removed name did not, and must be spelled out.
+    assert result["context"]["domain_applied"] == {"time_scale": 0.5}
+    assert "not applied" in result["message"].lower()
+    assert "resolution_divisions" in result["message"]
+
+
+def test_not_applied_mirrors_skipped_for_callers():
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"nonsense": 1},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["nonsense"]
+    # `skipped` stays as an alias so existing callers keep working.
+    assert result["context"]["skipped"] == ["nonsense"]
+
+
+def test_particle_children_reports_unapplied_settings_in_the_message():
+    obj = _obj_with_particle_system()
+    result = _call(
+        "set_particle_children",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"hair_length": 1.5, "not_a_real_property": 3},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["not_a_real_property"]
+    assert "not_a_real_property" in result["message"]
