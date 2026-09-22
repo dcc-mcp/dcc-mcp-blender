@@ -1050,8 +1050,9 @@ tools:
           minLength: 1
         fluid_type:
           type: string
-          enum: [DOMAIN, FLOW, EFFECTOR, OBSTACLE, INFLOW, OUTFLOW]
+          enum: [DOMAIN, FLOW, EFFECTOR]
           default: DOMAIN
+          description: Mantaflow fluid_type. Inlets, outlets, and obstacles are FLOW or EFFECTOR modifiers configured through their nested settings.
         name:
           type: string
           minLength: 1
@@ -1282,7 +1283,7 @@ tools:
           minLength: 1
         child_type:
           type: string
-          enum: [NONE, SIMPLE, INTERPOLATED, FACES]
+          enum: [NONE, SIMPLE, INTERPOLATED]
         child_nbr:
           type: integer
           minimum: 0
@@ -1361,7 +1362,14 @@ tools:
           default: false
           description: Free the cache instead of baking it.
     output_schema: *physics_result_schema
+    # free=true deletes baked cache from disk, so this tool is destructive.
+    # Keep a dedicated annotations block: the shared anchor below is reused by
+    # non-destructive tools.
     read_only: false
-    destructive: false
+    destructive: true
     idempotent: false
-    annotations: *mutating_annotations
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false

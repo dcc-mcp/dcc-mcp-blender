@@ -69,8 +69,12 @@ def _obj_with_particle_system(name="Cube", system_name="ParticleSystem"):
     return obj
 
 
-def _bpy_with_temp_override(*objects):
-    """Return (bpy, calls) where the ptcache operator calls are recorded."""
+def _bpy_with_temp_override(*objects, result=("FINISHED",)):
+    """Return (bpy, calls) where the ptcache operator calls are recorded.
+
+    The operators return a Blender result set rather than raising, so the mock
+    has to do the same; returning None would hide a missed operator check.
+    """
     bpy = _bpy_with_objects(*objects)
     calls: list = []
 
@@ -85,8 +89,8 @@ def _bpy_with_temp_override(*objects):
             return False
 
     bpy.context.temp_override = lambda **override: _TempOverride(**override)
-    bpy.ops.ptcache.bake = lambda **kwargs: calls.append(("bake", kwargs))
-    bpy.ops.ptcache.free_bake = lambda: calls.append(("free_bake", {}))
+    bpy.ops.ptcache.bake = lambda **kwargs: calls.append(("bake", kwargs)) or set(result)
+    bpy.ops.ptcache.free_bake = lambda: calls.append(("free_bake", {})) or set(result)
     return bpy, calls
 
 
@@ -526,3 +530,126 @@ def test_only_read_only_tools_are_flagged_read_only():
     for name in ("add_fluid_modifier", "set_particle_hair", "bake_particle_system"):
         assert tools[name]["read_only"] is False
         assert tools[name]["annotations"]["read_only_hint"] is False
+
+
+# ---------------------------------------------------------------------------
+# Review regressions (PR #223)
+# ---------------------------------------------------------------------------
+
+
+def test_fluid_type_rejects_legacy_mantaflow_names_with_guidance():
+    """Blender's fluid_type enum has no OBSTACLE, INFLOW, or OUTFLOW."""
+    obj = _make_obj()
+    bpy = _bpy_with_objects(obj)
+
+    result = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="OBSTACLE")
+    assert result["success"] is False
+    assert "effector_type = 'COLLISION'" in result["error"]
+    assert len(obj.modifiers) == 0, "no orphan modifier may be created"
+
+    for legacy, expected in (("INFLOW", "flow_behavior = 'INFLOW'"), ("OUTFLOW", "flow_behavior = 'OUTFLOW'")):
+        result = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type=legacy)
+        assert result["success"] is False
+        assert expected in result["error"]
+
+    assert len(obj.modifiers) == 0
+
+
+def test_particle_bake_reports_a_cancelled_operator():
+    """Blender reports CANCELLED through the return set, not an exception."""
+    obj = _obj_with_particle_system()
+    bpy, calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube")
+    assert result["success"] is False
+    assert "did not finish" in result["message"].lower()
+    assert "CANCELLED" in result["error"]
+    assert calls, "the operator must still have been attempted"
+
+
+def test_particle_free_reports_a_cancelled_operator():
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", free=True)
+    assert result["success"] is False
+    assert "free" in result["message"].lower()
+
+
+def test_particle_bake_reports_the_operator_result_on_success():
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj)
+
+    result = _call("bake_particle_system", bpy, object_name="Cube")
+    assert result["success"] is True
+    assert result["context"]["operator_result"] == ["FINISHED"]
+
+
+def test_set_fluid_settings_does_not_half_apply_when_domain_is_missing():
+    """Rejecting domain_settings must not leave `settings` applied."""
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Flow", "FLUID")
+    modifier.fluid_type = "FLOW"
+    modifier.domain_settings = None
+    modifier.viscosity_base = 0.0
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"viscosity_base": 9.0},
+        domain_settings={"resolution_divisions": 64},
+    )
+    assert result["success"] is False
+    assert modifier.viscosity_base == 0.0, "nothing may be written when domain_settings are rejected"
+    assert "nothing was changed" in result["error"].lower()
+
+
+def test_child_type_rejects_faces():
+    """ParticleSettings.child_type has no FACES member."""
+    obj = _obj_with_particle_system()
+    result = _call("set_particle_children", _bpy_with_objects(obj), object_name="Cube", child_type="FACES")
+
+    assert result["success"] is False
+    assert "unsupported child type" in result["message"].lower()
+    assert "FACES" not in result["error"].split(":")[-1]
+
+
+def test_particle_tools_report_no_skipped_properties():
+    """The opt-in hair fixture must model every property the tools touch."""
+    obj = _obj_with_particle_system()
+    bpy = _bpy_with_objects(obj)
+
+    hair = _call("set_particle_hair", bpy, object_name="Cube", settings={"hair_length": 3.0, "hair_step": 4})
+    children = _call("set_particle_children", bpy, object_name="Cube", child_type="simple", child_nbr=10)
+    instance = _call(
+        "set_particle_instance",
+        _bpy_with_objects(obj, _make_obj("Leaf")),
+        object_name="Cube",
+        instance_object_name="Leaf",
+        show_emitter=False,
+        particle_size=0.2,
+    )
+    assert hair["context"]["skipped"] == []
+    assert children["context"]["skipped"] == []
+    assert instance["context"]["skipped"] == []
+
+
+def test_bake_particle_system_is_flagged_destructive():
+    """free=true deletes baked cache from disk."""
+    doc = yaml.safe_load(Path(PHYSICS_PATH).read_text(encoding="utf-8"))
+    tools = {tool["name"]: tool for tool in doc["tools"]}
+    tool = tools["bake_particle_system"]
+    assert tool["destructive"] is True
+    assert tool["annotations"]["destructive_hint"] is True
+    # The shared anchor must stay non-destructive for the other tools.
+    for name in ("add_fluid_modifier", "add_dynamic_paint_modifier", "add_dynamic_paint_surface"):
+        assert tools[name]["destructive"] is False, name
+        assert tools[name]["annotations"]["destructive_hint"] is False, name
+
+
+def test_fluid_and_child_enums_match_blender():
+    from dcc_mcp_blender._physics_ops import CHILD_TYPES, FLUID_TYPES
+
+    assert set(FLUID_TYPES) == {"DOMAIN", "FLOW", "EFFECTOR"}
+    assert set(CHILD_TYPES) == {"NONE", "SIMPLE", "INTERPOLATED"}

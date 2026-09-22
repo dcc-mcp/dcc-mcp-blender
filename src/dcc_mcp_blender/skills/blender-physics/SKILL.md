@@ -80,8 +80,21 @@ but nothing could create or tune them. Use these tools to close that gap:
 
 Domain options live on `modifier.domain_settings`, so `set_fluid_settings`
 takes a separate `domain_settings` object; only a DOMAIN modifier exposes it.
-Bake fluid and paint caches with the existing `bake_simulation`, which targets
-point caches generically.
+
+**Fluid and Dynamic Paint baking is not exposed by these tools.**
+`bake_simulation` only targets cloth, soft-body, and particle point caches and
+rejects anything else, so it cannot bake a fluid or paint cache. Bake those
+from the Blender UI or through `bpy.ops` via `blender-scripting`.
+
+Mantaflow has no `OBSTACLE`, `INFLOW`, or `OUTFLOW` fluid type. Set
+`fluid_type` to `FLOW` and configure `flow_behavior` (`INFLOW` / `OUTFLOW` /
+`GEOMETRY`) and `flow_type` (`SMOKE` / `FIRE` / `BOTH` / `LIQUID`) on the
+modifier's flow settings; obstacles are `EFFECTOR` with
+`effector_type = 'COLLISION'`.
+
+`add_dynamic_paint_surface` needs `canvas_surfaces.new()`, which some Blender
+builds do not expose. When it is missing the tool says so explicitly; add the
+surface with `bpy.ops.dpaint.surface_slot_add()` instead.
 
 ## Particle hair, children, and instancing
 

@@ -1327,7 +1327,19 @@ def get_simulation_status(object_name: Optional[str] = None) -> dict:
 # Mantaflow fluid and Dynamic Paint
 # ---------------------------------------------------------------------------
 
-FLUID_TYPES = ("DOMAIN", "FLOW", "EFFECTOR", "OBSTACLE", "INFLOW", "OUTFLOW")
+# Blender's FluidModifier.fluid_type enum: NONE is omitted because it selects
+# no simulation at all. Mantaflow models inlets, outlets, and obstacles through
+# nested settings on FLOW and EFFECTOR modifiers, not through fluid_type, so
+# the legacy names are rejected with a pointer to the modern equivalent.
+FLUID_TYPES = ("DOMAIN", "FLOW", "EFFECTOR")
+FLUID_TYPE_ALIASES = {
+    "INFLOW": ("FLOW", "flow_behavior = 'INFLOW' on the modifier's flow settings"),
+    "OUTFLOW": ("FLOW", "flow_behavior = 'OUTFLOW' on the modifier's flow settings"),
+    "OBSTACLE": ("EFFECTOR", "effector_type = 'COLLISION' on the modifier's effector settings"),
+    "LIQUID": ("FLOW", "flow_type = 'LIQUID' on the modifier's flow settings"),
+    "SMOKE": ("FLOW", "flow_type = 'SMOKE' on the modifier's flow settings"),
+    "FIRE": ("FLOW", "flow_type = 'FIRE' on the modifier's flow settings"),
+}
 DYNAMIC_PAINT_TYPES = ("CANVAS", "BRUSH")
 DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
 
@@ -1430,6 +1442,12 @@ def add_fluid_modifier(
         settings: Extra modifier-level properties to apply.
     """
     wanted = str(fluid_type or "").upper()
+    if wanted in FLUID_TYPE_ALIASES:
+        modern, detail = FLUID_TYPE_ALIASES[wanted]
+        return skill_error(
+            f"Unsupported fluid type: {fluid_type}",
+            f"{wanted} is not a Mantaflow fluid_type. Use {modern} and set {detail}.",
+        )
     if wanted not in FLUID_TYPES:
         return skill_error(
             f"Unsupported fluid type: {fluid_type}",
@@ -1498,15 +1516,18 @@ def set_fluid_settings(
             label = modifier_name or "FLUID"
             return skill_error(f"Fluid modifier not found: {label}", f"{object_name} has no matching fluid modifier.")
 
+        # Preflight both targets before writing: applying `settings` first and
+        # then rejecting `domain_settings` would leave a half-applied modifier.
+        domain = getattr(modifier, "domain_settings", None)
+        if domain_settings and domain is None:
+            return skill_error(
+                "Fluid domain settings unavailable",
+                "domain_settings are only exposed on a DOMAIN fluid modifier. Nothing was changed.",
+            )
+
         applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
         domain_applied: Dict[str, Any] = {}
         if domain_settings:
-            domain = getattr(modifier, "domain_settings", None)
-            if domain is None:
-                return skill_error(
-                    "Fluid domain settings unavailable",
-                    "domain_settings are only exposed on a DOMAIN fluid modifier.",
-                )
             domain_applied, domain_skipped = _apply_settings(domain, domain_settings, FLUID_NUMERIC_SETTINGS)
             skipped = [*skipped, *domain_skipped]
 
@@ -1706,9 +1727,16 @@ def add_dynamic_paint_surface(
         canvas = _dynamic_paint_canvas(modifier)
         surfaces = getattr(canvas, "canvas_surfaces", None)
         if surfaces is None or not callable(getattr(surfaces, "new", None)):
+            # Blender documents bpy.ops.dpaint.surface_slot_add() for adding a
+            # surface; the RNA collection may or may not expose .new() depending
+            # on the build. Say which path failed so the caller can report it
+            # accurately instead of guessing.
             return skill_error(
                 "Dynamic Paint surfaces unavailable",
-                "canvas_settings.canvas_surfaces is not exposed by this Blender build.",
+                "canvas_settings.canvas_surfaces.new() is not exposed by this Blender build, "
+                "so surfaces cannot be added from Python here. Add the surface in the UI or "
+                "through bpy.ops.dpaint.surface_slot_add(), then use set_dynamic_paint_settings "
+                "and list_dynamic_paint_surfaces.",
             )
 
         surface_name = name or f"{wanted.title()} Surface"
@@ -1787,7 +1815,9 @@ def list_dynamic_paint_surfaces(object_name: str, modifier_name: Optional[str] =
 # ---------------------------------------------------------------------------
 
 PARTICLE_TYPES = ("EMITTER", "HAIR")
-CHILD_TYPES = ("NONE", "SIMPLE", "INTERPOLATED", "FACES")
+# ParticleSettings.child_type enum; FACES is a render/child distribution option
+# in the UI, not a child_type value.
+CHILD_TYPES = ("NONE", "SIMPLE", "INTERPOLATED")
 
 
 def _find_particle_system(obj: Any, system_name: Optional[str]) -> Tuple[Any, Optional[dict]]:
@@ -2039,18 +2069,26 @@ def bake_particle_system(
         try:
             override = {"scene": bpy.context.scene, "active_object": obj, "object": obj, "point_cache": cache}
             with bpy.context.temp_override(**override):
-                if free:
-                    bpy.ops.ptcache.free_bake()
-                else:
-                    bpy.ops.ptcache.bake(bake=True)
+                result = bpy.ops.ptcache.free_bake() if free else bpy.ops.ptcache.bake(bake=True)
         except Exception as exc:
             return skill_exception(exc, message=f"Failed to {'free' if free else 'bake'} the particle cache")
+
+        # Blender operators report cancellation through their return set, not by
+        # raising, so a CANCELLED bake has to be surfaced as a failure.
+        operator_result = sorted(result) if result else []
+        if set(result or ()) != {"FINISHED"}:
+            return skill_error(
+                f"Particle cache {'free' if free else 'bake'} did not finish",
+                f"The Blender operator returned {operator_result or 'nothing'}; "
+                f"{'free' if free else 'bake'} was cancelled or unsupported for this cache.",
+            )
 
         return skill_success(
             f"{'Freed' if free else 'Baked'} particle cache on {object_name}",
             object_name=object_name,
             system_name=getattr(getattr(modifier, "particle_system", None), "name", None),
             freed=bool(free),
+            operator_result=operator_result,
             cache=_cache_context(cache),
             cache_changes=cache_changes,
             prompt="Use get_simulation_status to confirm cache state.",
