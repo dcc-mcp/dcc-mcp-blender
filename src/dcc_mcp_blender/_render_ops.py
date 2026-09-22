@@ -34,6 +34,9 @@ _IMAGE_FORMATS = (
     "WEBP",
 )
 
+_MULTILAYER_FORMAT = "OPEN_EXR_MULTILAYER"
+_SINGLE_LAYER_EXR_FORMAT = "OPEN_EXR"
+
 _COLOR_MODES = ("RGB", "RGBA", "BW", "RGBA_PREMUL")
 _COLOR_DEPTHS = ("8", "10", "12", "16", "16F", "32F")
 _EXR_CODECS = ("NONE", "PXR24", "ZIP", "PIZ", "RLE", "ZIPS", "B44", "B44A", "DWAA", "DWAB")
@@ -61,8 +64,23 @@ def _resolve_scene(bpy: Any, scene_name: str | None) -> tuple:
     return scene, None
 
 
-def _resolve_view_layer(scene: Any, view_layer_name: str | None) -> tuple:
-    """Resolve a view layer by name, falling back to the active one."""
+def _resolve_view_layer(
+    bpy: Any,
+    scene: Any,
+    view_layer_name: str | None,
+    *,
+    use_active: bool = True,
+) -> tuple:
+    """Resolve a view layer for *scene*.
+
+    Args:
+        bpy: The Blender module, used to read ``bpy.context.view_layer``.
+        scene: Scene owning the view layers.
+        view_layer_name: Explicit name; when omitted the active view layer wins.
+        use_active: Honour ``bpy.context.view_layer`` when no name is given.
+            Set to ``False`` for scenes other than the active one, where the
+            context view layer may belong to a different scene.
+    """
     layers = getattr(scene, "view_layers", None)
     if layers is None:
         return None, skill_error("No view layers", "The scene exposes no view layers.")
@@ -77,6 +95,13 @@ def _resolve_view_layer(scene: Any, view_layer_name: str | None) -> tuple:
                 ),
             )
         return layer, None
+    if use_active:
+        active = getattr(getattr(bpy, "context", None), "view_layer", None)
+        active_name = getattr(active, "name", None)
+        if isinstance(active_name, str):
+            active_layer = layers.get(active_name)
+            if active_layer is not None:
+                return active_layer, None
     layer = layers.get("ViewLayer") or next(iter(_iter_items(layers)), None)
     if layer is None:
         return None, skill_error("No view layer", "The scene has no view layer to configure.")
@@ -90,6 +115,34 @@ def _pass_owner(layer: Any, pass_name: str) -> tuple:
     if owner is None or not hasattr(owner, attribute):
         return None, attribute
     return owner, attribute
+
+
+def _pass_unavailable_reason(layer: Any, pass_name: str) -> str:
+    """Explain why a pass cannot be set, naming the owning object.
+
+    A missing Cycles add-on and an older Blender build look identical from the
+    outside but need different handling, so the message separates them.
+    """
+    target_kind, attribute = _VIEW_LAYER_PASSES[pass_name]
+    if target_kind == "cycles":
+        if getattr(layer, "cycles", None) is None:
+            return (
+                f"{pass_name}: Cycles is not available on view layer '{getattr(layer, 'name', '')}' "
+                f"(scene.{getattr(layer, 'name', '')}.cycles is unset)"
+            )
+        return f"{pass_name}: cycles.{attribute} is not exposed by this Blender build"
+    return f"{pass_name}: layer.{attribute} is not exposed by this Blender build"
+
+
+def _is_multilayer(render: Any) -> bool:
+    """Return True when the output container is a multi-layer EXR.
+
+    Multi-layer output is a property of the container format
+    (``OPEN_EXR_MULTILAYER``), not of ``use_single_layer``, which only controls
+    whether all layers are rendered.
+    """
+    settings = getattr(render, "image_settings", None)
+    return getattr(settings, "file_format", None) == _MULTILAYER_FORMAT
 
 
 def _read_pass_states(layer: Any, names: Sequence[str] | None = None) -> dict:
@@ -114,7 +167,7 @@ def get_view_layer_passes(view_layer_name: str | None = None, scene_name: str | 
         scene, error = _resolve_scene(bpy, scene_name)
         if error:
             return error
-        layer, error = _resolve_view_layer(scene, view_layer_name)
+        layer, error = _resolve_view_layer(bpy, scene, view_layer_name, use_active=scene_name is None)
         if error:
             return error
         states = _read_pass_states(layer)
@@ -165,34 +218,47 @@ def set_view_layer_passes(
             "Unsupported view-layer pass",
             f"Unsupported passes: {', '.join(unknown)}. Supported passes: {', '.join(sorted(_VIEW_LAYER_PASSES))}.",
         )
+    conflict = sorted(set(requested_enable) & set(requested_disable))
+    if conflict:
+        return skill_error(
+            "Conflicting pass changes",
+            f"Passes listed in both enable and disable: {', '.join(conflict)}. "
+            "List each pass in at most one of the two arguments.",
+        )
     try:
         import bpy
 
         scene, error = _resolve_scene(bpy, scene_name)
         if error:
             return error
-        layer, error = _resolve_view_layer(scene, view_layer_name)
+        layer, error = _resolve_view_layer(bpy, scene, view_layer_name, use_active=scene_name is None)
         if error:
             return error
 
+        # Preflight every target before writing anything: a partially applied
+        # batch is worse than a rejected one because the caller cannot tell
+        # what changed.
         unavailable = []
-        changes: list = []
+        targets: list = []
         for pass_name, desired in (*((n, True) for n in requested_enable), *((n, False) for n in requested_disable)):
             owner, attribute = _pass_owner(layer, pass_name)
             if owner is None:
-                unavailable.append(pass_name)
-                continue
+                unavailable.append(_pass_unavailable_reason(layer, pass_name))
+            else:
+                targets.append((owner, attribute, pass_name, desired))
+        if unavailable:
+            return skill_error(
+                "View-layer pass unavailable",
+                "Unavailable: " + "; ".join(unavailable) + ". No passes were changed.",
+            )
+
+        changes: list = []
+        for owner, attribute, pass_name, desired in targets:
             if bool(getattr(owner, attribute, False)) != desired:
                 setattr(owner, attribute, desired)
                 changes.append({"pass": pass_name, "enabled": desired})
             else:
                 changes.append({"pass": pass_name, "enabled": desired, "changed": False})
-
-        if unavailable:
-            return skill_error(
-                "View-layer pass unavailable in this Blender version",
-                f"Unavailable passes: {', '.join(sorted(set(unavailable)))}.",
-            )
 
         states = _read_pass_states(layer)
         return skill_success(
@@ -201,7 +267,7 @@ def set_view_layer_passes(
             view_layer_name=layer.name,
             changes=changes,
             enabled_passes=sorted(name for name, value in states.items() if value),
-            prompt="Use get_view_layer_passes to verify, then set_render_output for a multilayer EXR.",
+            prompt="Use get_view_layer_passes to verify, then set_render_output for a multi-layer EXR.",
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
@@ -260,47 +326,36 @@ def set_render_denoise(
                 "scene.cycles.use_denoising is not exposed by this Blender build.",
             )
 
-        applied: dict = {}
+        # Preflight every setting before writing, so an unsupported one cannot
+        # leave the rest half-applied.
+        pending: list = []
         if enabled is not None:
-            cycles.use_denoising = bool(enabled)
-            layer, layer_error = _resolve_view_layer(scene, None)
+            pending.append(("use_denoising", "scene.cycles.use_denoising", bool(enabled)))
+        if denoiser is not None:
+            pending.append(("denoiser", "scene.cycles.denoiser", str(denoiser).upper()))
+        if input_passes is not None:
+            pending.append(("denoising_input_passes", "scene.cycles.denoising_input_passes", str(input_passes).upper()))
+        if prefilter is not None:
+            pending.append(("denoising_prefilter", "scene.cycles.denoising_prefilter", str(prefilter).upper()))
+        if use_gpu is not None:
+            pending.append(("use_denoising_use_gpu", "scene.cycles.use_denoising_use_gpu", bool(use_gpu)))
+        unsupported = [path for _key, path, _value in pending if not hasattr(cycles, path.rsplit(".", 1)[-1])]
+        if unsupported:
+            return skill_error(
+                "Denoise setting unavailable",
+                "Not exposed by this Blender build: " + ", ".join(unsupported) + ". Nothing was changed.",
+            )
+
+        applied: dict = {}
+        for key, _path, value in pending:
+            setattr(cycles, key, value)
+            applied[key] = getattr(cycles, key, value)
+        if enabled is not None and "denoising" in _VIEW_LAYER_PASSES:
+            layer, layer_error = _resolve_view_layer(bpy, scene, None, use_active=scene_name is None)
             if layer_error is None:
-                owner, attribute = _pass_owner(layer, "denoising") if "denoising" in _VIEW_LAYER_PASSES else (None, "")
+                owner, attribute = _pass_owner(layer, "denoising")
                 if owner is not None:
                     setattr(owner, attribute, bool(enabled))
-            applied["use_denoising"] = bool(enabled)
-        if denoiser is not None:
-            if not hasattr(cycles, "denoiser"):
-                return skill_error(
-                    "Denoiser selection unavailable",
-                    "scene.cycles.denoiser is not exposed by this Blender build.",
-                )
-            cycles.denoiser = str(denoiser).upper()
-            applied["denoiser"] = cycles.denoiser
-        if input_passes is not None:
-            if not hasattr(cycles, "denoising_input_passes"):
-                return skill_error(
-                    "Denoise input pass selection unavailable",
-                    "scene.cycles.denoising_input_passes is not exposed by this Blender build.",
-                )
-            cycles.denoising_input_passes = str(input_passes).upper()
-            applied["denoising_input_passes"] = cycles.denoising_input_passes
-        if prefilter is not None:
-            if not hasattr(cycles, "denoising_prefilter"):
-                return skill_error(
-                    "Denoise prefilter unavailable",
-                    "scene.cycles.denoising_prefilter is not exposed by this Blender build.",
-                )
-            cycles.denoising_prefilter = str(prefilter).upper()
-            applied["denoising_prefilter"] = cycles.denoising_prefilter
-        if use_gpu is not None:
-            if not hasattr(cycles, "use_denoising_use_gpu"):
-                return skill_error(
-                    "GPU denoising unavailable",
-                    "scene.cycles.use_denoising_use_gpu is not exposed by this Blender build.",
-                )
-            cycles.use_denoising_use_gpu = bool(use_gpu)
-            applied["use_denoising_use_gpu"] = bool(use_gpu)
 
         return skill_success(
             f"Updated denoise settings for {getattr(scene, 'name', scene_name)}",
@@ -337,7 +392,7 @@ def get_render_output(scene_name: str | None = None) -> dict:
             exr_codec=getattr(settings, "exr_codec", None),
             use_preview=getattr(render, "use_preview", None),
             use_single_layer=getattr(render, "use_single_layer", None),
-            multilayer=not getattr(render, "use_single_layer", True),
+            multilayer=_is_multilayer(render),
             use_file_extension=getattr(render, "use_file_extension", None),
             use_overwrite=getattr(render, "use_overwrite", None),
             use_placeholder=getattr(render, "use_placeholder", None),
@@ -372,7 +427,10 @@ def set_render_output(
         color_mode: ``RGB``, ``RGBA``, ``BW``, or ``RGBA_PREMUL``.
         color_depth: ``8``, ``10``, ``12``, ``16``, ``16F``, or ``32F``.
         exr_codec: EXR compression codec, for example ``DWAA``.
-        multilayer: ``False`` writes all render layers into one multi-layer EXR.
+        multilayer: ``True`` switches the container to ``OPEN_EXR_MULTILAYER`` and
+            renders every layer into that single file. ``False`` drops back to
+            ``OPEN_EXR`` when the container was multi-layer and renders every
+            layer. Applied after ``file_format``, so it wins if both are given.
         use_preview: Write a preview image next to the output.
         use_file_extension: Append the format extension to the output path.
         use_overwrite: Overwrite existing files.
@@ -426,8 +484,26 @@ def set_render_output(
             return error
         render = scene.render
         settings = render.image_settings
-        applied: dict = {}
 
+        # Preflight every property before writing, so an unavailable one cannot
+        # leave the rest half-applied.
+        unsupported = [
+            path
+            for requested, attribute, path in (
+                (color_mode, "color_mode", "scene.render.image_settings.color_mode"),
+                (color_depth, "color_depth", "scene.render.image_settings.color_depth"),
+                (exr_codec, "exr_codec", "scene.render.image_settings.exr_codec"),
+                (multilayer, "use_single_layer", "scene.render.use_single_layer"),
+            )
+            if requested is not None and not hasattr(settings if attribute != "use_single_layer" else render, attribute)
+        ]
+        if unsupported:
+            return skill_error(
+                "Output setting unavailable",
+                "Not exposed by this Blender build: " + ", ".join(unsupported) + ". Nothing was changed.",
+            )
+
+        applied: dict = {}
         if filepath is not None:
             render.filepath = str(filepath)
             applied["filepath"] = str(filepath)
@@ -435,37 +511,27 @@ def set_render_output(
             settings.file_format = str(file_format).upper()
             applied["file_format"] = settings.file_format
         if color_mode is not None:
-            if not hasattr(settings, "color_mode"):
-                return skill_error(
-                    "Color mode unavailable",
-                    "scene.render.image_settings.color_mode is not exposed for this format.",
-                )
             settings.color_mode = str(color_mode).upper()
             applied["color_mode"] = settings.color_mode
         if color_depth is not None:
-            if not hasattr(settings, "color_depth"):
-                return skill_error(
-                    "Color depth unavailable",
-                    "scene.render.image_settings.color_depth is not exposed for this format.",
-                )
             settings.color_depth = str(color_depth).upper()
             applied["color_depth"] = settings.color_depth
         if exr_codec is not None:
-            if not hasattr(settings, "exr_codec"):
-                return skill_error(
-                    "EXR codec unavailable",
-                    "scene.render.image_settings.exr_codec is not exposed for this format.",
-                )
             settings.exr_codec = str(exr_codec).upper()
             applied["exr_codec"] = settings.exr_codec
         if multilayer is not None:
-            if not hasattr(render, "use_single_layer"):
-                return skill_error(
-                    "Multi-layer EXR unavailable in this Blender version",
-                    "scene.render.use_single_layer is not exposed by this Blender build.",
-                )
-            render.use_single_layer = not bool(multilayer)
+            # Multi-layer output is a container format, not a switch on
+            # use_single_layer: use_single_layer only decides whether every
+            # layer is rendered. Both have to move together.
+            if bool(multilayer):
+                settings.file_format = _MULTILAYER_FORMAT
+                render.use_single_layer = False
+            else:
+                if _is_multilayer(render):
+                    settings.file_format = _SINGLE_LAYER_EXR_FORMAT
+                render.use_single_layer = True
             applied["multilayer"] = bool(multilayer)
+            applied["file_format"] = settings.file_format
         for flag, attribute in (
             (use_preview, "use_preview"),
             (use_file_extension, "use_file_extension"),
@@ -482,7 +548,8 @@ def set_render_output(
             applied=applied,
             filepath=getattr(render, "filepath", None),
             file_format=getattr(settings, "file_format", None),
-            multilayer=not getattr(render, "use_single_layer", True),
+            multilayer=_is_multilayer(render),
+            use_single_layer=getattr(render, "use_single_layer", None),
             prompt="Use set_view_layer_passes to choose the AOVs written into a multi-layer EXR.",
         )
     except ImportError:
@@ -615,8 +682,10 @@ def get_render_status(scene_name: str | None = None, view_layer_name: str | None
             if frame_step > 0 and frame_end >= frame_start:
                 frame_count = ((frame_end - frame_start) // frame_step) + 1
 
-        layer, layer_error = _resolve_view_layer(scene, view_layer_name)
-        passes = _read_pass_states(layer, sorted(_VIEW_LAYER_PASSES)) if layer_error is None else {}
+        layer, layer_error = _resolve_view_layer(bpy, scene, view_layer_name, use_active=scene_name is None)
+        if layer_error:
+            return layer_error
+        passes = _read_pass_states(layer, sorted(_VIEW_LAYER_PASSES))
 
         cycles = getattr(scene, "cycles", None)
         return skill_success(
@@ -635,7 +704,7 @@ def get_render_status(scene_name: str | None = None, view_layer_name: str | None
             has_active_camera=getattr(scene, "camera", None) is not None,
             filepath=getattr(render, "filepath", None),
             file_format=getattr(settings, "file_format", None),
-            multilayer=not getattr(render, "use_single_layer", True),
+            multilayer=_is_multilayer(render),
             border_enabled=getattr(render, "use_border", None),
             border_region={
                 "min_x": getattr(render, "border_min_x", None),

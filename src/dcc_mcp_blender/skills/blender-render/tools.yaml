@@ -380,7 +380,7 @@ tools:
           enum: [NONE, PXR24, ZIP, PIZ, RLE, ZIPS, B44, B44A, DWAA, DWAB]
         multilayer:
           type: boolean
-          description: False writes all render layers into one multi-layer EXR file.
+          description: True switches the container to OPEN_EXR_MULTILAYER and renders every layer into that one file. False drops back to OPEN_EXR when the container was multi-layer. Applied after file_format.
         use_preview:
           type: boolean
         use_file_extension:

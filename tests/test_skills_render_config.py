@@ -515,3 +515,161 @@ def test_new_tools_declare_required_contract_fields():
         assert tool["affinity"] == "main", name
         source = Path("src/dcc_mcp_blender/skills") / SKILL / tool["source_file"]
         assert source.is_file(), f"missing source script: {source}"
+
+
+# ---------------------------------------------------------------------------
+# Review regressions (PR #222)
+# ---------------------------------------------------------------------------
+
+
+def _scene_with_active_layer(active_layer, *others):
+    scene = FakeScene()
+    scene.view_layers = FakeViewLayerCollection([*others, active_layer])
+    bpy = _bpy_with_scene(scene)
+    bpy.context.view_layer = active_layer
+    return scene, bpy
+
+
+def test_multilayer_true_switches_the_container_format():
+    """Multi-layer output is a container format, not a use_single_layer switch."""
+    scene = _default_scene()
+    result = _call("set_render_output", _bpy_with_scene(scene), multilayer=True)
+
+    assert result["success"] is True
+    assert scene.render.image_settings.file_format == "OPEN_EXR_MULTILAYER"
+    assert scene.render.use_single_layer is False
+    assert result["context"]["multilayer"] is True
+
+
+def test_multilayer_false_downgrades_a_multilayer_container():
+    scene = _default_scene()
+    bpy = _bpy_with_scene(scene)
+    _call("set_render_output", bpy, multilayer=True)
+    result = _call("set_render_output", bpy, multilayer=False)
+
+    assert result["success"] is True
+    assert scene.render.image_settings.file_format == "OPEN_EXR"
+    assert scene.render.use_single_layer is True
+    assert result["context"]["multilayer"] is False
+
+
+def test_multilayer_false_leaves_a_non_exr_container_alone():
+    scene = _default_scene()
+    result = _call("set_render_output", _bpy_with_scene(scene), multilayer=False)
+
+    assert result["success"] is True
+    assert scene.render.image_settings.file_format == "PNG"
+    assert result["context"]["multilayer"] is False
+
+
+def test_read_tools_derive_multilayer_from_the_format():
+    """use_single_layer alone must not be reported as multi-layer output."""
+    scene = _default_scene()
+    scene.render.use_single_layer = False
+    bpy = _bpy_with_scene(scene)
+
+    readout = _call("get_render_output", bpy)
+    status = _call("get_render_status", bpy)
+    assert readout["context"]["multilayer"] is False
+    assert status["context"]["multilayer"] is False
+
+    _call("set_render_output", bpy, multilayer=True)
+    assert _call("get_render_output", bpy)["context"]["multilayer"] is True
+    assert _call("get_render_status", bpy)["context"]["multilayer"] is True
+
+
+def test_active_view_layer_wins_over_the_default_name():
+    active = FakeViewLayer("ShotCam")
+    active.use_pass_z = True
+    scene, bpy = _scene_with_active_layer(active, FakeViewLayer("ViewLayer"))
+
+    result = _call("get_view_layer_passes", bpy)
+    assert result["success"] is True
+    assert result["context"]["view_layer_name"] == "ShotCam"
+    assert result["context"]["enabled_passes"] == ["z"]
+
+
+def test_set_view_layer_passes_writes_the_active_layer():
+    active = FakeViewLayer("ShotCam")
+    other = FakeViewLayer("ViewLayer")
+    _scene, bpy = _scene_with_active_layer(active, other)
+
+    result = _call("set_view_layer_passes", bpy, enable=["mist"])
+    assert result["success"] is True
+    assert result["context"]["view_layer_name"] == "ShotCam"
+    assert active.use_pass_mist is True
+    assert other.use_pass_mist is False
+
+
+def test_named_scene_does_not_use_the_context_view_layer():
+    """The context view layer may belong to a different scene."""
+    other_scene = FakeScene("Other")
+    other_scene.view_layers = FakeViewLayerCollection([FakeViewLayer("ViewLayer")])
+    active = FakeViewLayer("ShotCam")
+    _scene, bpy = _scene_with_active_layer(active, FakeViewLayer("ViewLayer"))
+
+    result = _call("set_view_layer_passes", bpy, scene_name="Scene", enable=["mist"])
+    assert result["success"] is True
+    assert result["context"]["view_layer_name"] == "ViewLayer"
+
+
+def test_unavailable_pass_leaves_the_batch_unapplied():
+    """A rejected batch must not partially mutate the scene."""
+    scene = _default_scene()
+    layer = scene.view_layers.get("ViewLayer")
+    layer.cycles = None
+
+    result = _call("set_view_layer_passes", _bpy_with_scene(scene), enable=["combined", "denoising"])
+    assert result["success"] is False
+    assert layer.use_pass_combined is False, "nothing may be written before preflight passes"
+    assert "nothing was changed" in result["error"].lower() or "no passes were changed" in result["error"].lower()
+
+
+def test_missing_cycles_is_distinguished_from_an_old_blender_build():
+    scene = _default_scene()
+    scene.view_layers.get("ViewLayer").cycles = None
+    result = _call("set_view_layer_passes", _bpy_with_scene(scene), enable=["denoising"])
+
+    assert result["success"] is False
+    assert "cycles is not available" in result["error"].lower()
+
+
+def test_unavailable_output_setting_leaves_the_batch_unapplied():
+    scene = _default_scene()
+    del scene.render.image_settings.color_mode
+
+    result = _call(
+        "set_render_output",
+        _bpy_with_scene(scene),
+        filepath="//out/v1",
+        file_format="OPEN_EXR",
+        color_mode="RGB",
+    )
+    assert result["success"] is False
+    assert scene.render.filepath == "//render", "nothing may be written before preflight passes"
+    assert "image_settings.color_mode" in result["error"]
+
+
+def test_unavailable_denoise_setting_leaves_the_batch_unapplied():
+    scene = _default_scene()
+    del scene.cycles.denoiser
+
+    result = _call("set_render_denoise", _bpy_with_scene(scene), enabled=True, denoiser="OPTIX")
+    assert result["success"] is False
+    assert scene.cycles.use_denoising is False, "nothing may be written before preflight passes"
+    assert "cycles.denoiser" in result["error"]
+
+
+def test_get_render_status_reports_an_unknown_view_layer():
+    result = _call("get_render_status", _bpy_with_scene(_default_scene()), view_layer_name="Ghost")
+    assert result["success"] is False
+    assert "view layer not found" in result["message"].lower()
+
+
+def test_enable_and_disable_intersection_is_rejected():
+    scene = _default_scene()
+    result = _call("set_view_layer_passes", _bpy_with_scene(scene), enable=["z"], disable=["z"])
+
+    assert result["success"] is False
+    assert "both enable and disable" in result["error"].lower()
+    assert scene.view_layers.get("ViewLayer").use_pass_z is False

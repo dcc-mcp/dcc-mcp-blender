@@ -463,7 +463,7 @@ def create_compositor_node(
             if isinstance(location, (str, bytes)) or len(location) != 2:
                 return skill_error("Invalid location", "location must be [x, y].")
             node_location = (float(location[0]), float(location[1]))
-        except (TypeError, ValueError, KeyError):
+        except (TypeError, ValueError, KeyError, OverflowError):
             return skill_error("Invalid location", "location must be [x, y].")
     try:
         import bpy

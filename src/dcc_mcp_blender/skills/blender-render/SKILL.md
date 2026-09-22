@@ -83,10 +83,16 @@ rendering a sub-rectangle:
 pass has to be turned off again. Passes listed in neither `enable` nor `disable`
 keep their current state.
 
-Denoise settings are Cycles-only; EEVEE ignores them. Multi-layer EXR is
-controlled by `multilayer: true` (which clears `render.use_single_layer`), and
-`get_render_status` reports the resolved value plus the enabled passes that will
-be written into the file.
+Denoise settings are Cycles-only; EEVEE ignores them.
+
+Multi-layer EXR is a property of the **container format**, so
+`multilayer: true` switches `image_settings.file_format` to
+`OPEN_EXR_MULTILAYER` *and* clears `render.use_single_layer` (render every
+layer). `multilayer: false` drops back to `OPEN_EXR` when the container was
+multi-layer. `use_single_layer` alone only controls which layers are rendered —
+it cannot produce a multi-layer file. Both read tools report `multilayer`
+derived from `file_format`. When neither `scene_name` nor `view_layer_name` is
+given, these tools operate on `bpy.context.view_layer`.
 
 Poll using the existing `get_render_job(job_id)` and retain `job_directory`.
 After an adapter restart, `get_render_job(job_id, job_directory)` recovers
