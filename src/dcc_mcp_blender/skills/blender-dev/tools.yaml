@@ -458,3 +458,76 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: install_addon
+    description: "Install a Blender add-on from a .py file or a .zip bundle, optionally enabling it."
+    source_file: scripts/install_addon.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        file_path:
+          type: string
+          minLength: 1
+          description: A .py single-file add-on or a .zip bundle to install.
+        addon_module:
+          type: string
+          minLength: 1
+          description: Expected module name after install. Blender derives one from the file name, but an explicit name is safer for archives.
+        overwrite:
+          type: boolean
+          default: false
+          description: Replace an already installed copy of the same add-on.
+        enable:
+          type: boolean
+          default: true
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+
+  - name: remove_addon
+    description: "Disable and uninstall a Blender add-on."
+    source_file: scripts/remove_addon.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [addon_module]
+      properties:
+        addon_module:
+          type: string
+          minLength: 1
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: refresh_addons
+    description: "Rescan the add-on paths so newly installed add-ons become visible. Reports the add-on count before and after."
+    source_file: scripts/refresh_addons.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false

@@ -40,3 +40,32 @@ inspect add-on state, attach a checkout to `sys.path`, reload development
 modules, run a named diagnostic check, inspect structured UI metadata, or start
 an optional `debugpy` listener. Code execution helpers can run arbitrary Python
 inside Blender and should be used only for explicit development or test flows.
+
+## Add-on lifecycle
+
+`list_addons` / `get_addon_status` / `enable_addon` / `disable_addon` cover
+add-ons Blender already knows about. These three cover the rest:
+
+| Tool | Description |
+|---|---|
+| `install_addon` | Install a `.py` single-file add-on or a `.zip` bundle, then optionally enable it |
+| `remove_addon` | Disable and uninstall an add-on (works in background mode) |
+| `refresh_addons` | Rescan the add-on paths and report the count change |
+
+Two things that otherwise surprise callers:
+
+- **Installing does not refresh the module list.** `install_addon` runs
+  `addon_refresh` itself, but if you drop a file into an add-on directory by
+  other means, call `refresh_addons` before `list_addons` will show it.
+- **Give `addon_module` for archives.** Blender derives a module name from the
+  file name, which does not always match the package inside a zip, so the
+  install can succeed while the module never appears. Passing `addon_module`
+  lets the tool confirm it; if the name is wrong you get an error naming it
+  instead of a silent success.
+- **`remove_addon` does not use Blender's `addon_remove` operator.** That
+  operator calls `context.area.tag_redraw()`, which is `None` under
+  `blender --background`, so it raises there. Removal instead disables through
+  the operator, deletes the module files directly, refreshes, and then confirms
+  the add-on is gone — if it is still registered the call fails rather than
+  reporting success. Single-file add-ons delete the `.py`; packages delete the
+  whole directory.

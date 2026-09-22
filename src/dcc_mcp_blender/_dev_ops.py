@@ -7,6 +7,7 @@ import importlib.metadata
 import io
 import platform
 import runpy
+import shutil
 import sys
 import time
 import traceback
@@ -297,9 +298,23 @@ def _addon_bl_info(module: Any) -> Dict[str, Any]:
 
 
 def _addon_modules() -> List[Any]:
+    """Return the cached add-on module list.
+
+    addon_utils caches the list, so a call here does not see a module that was
+    just installed or removed. Call ``_refresh_addon_modules()`` first when the
+    result needs to reflect a change made in this session, otherwise checks such
+    as "is it installed" silently answer from stale data.
+    """
     import addon_utils
 
     return list(addon_utils.modules(refresh=False))
+
+
+def _refresh_addon_modules() -> List[Any]:
+    """Rescan the add-on paths and return the refreshed module list."""
+    import addon_utils
+
+    return list(addon_utils.modules(refresh=True))
 
 
 def _addon_status_data(addon_module: str) -> Dict[str, Any]:
@@ -572,3 +587,258 @@ def get_python_environment(include_sys_path: bool = True) -> dict:
     if include_sys_path:
         context["sys_path"] = list(sys.path)
     return skill_success("Python environment retrieved", **context)
+
+
+def install_addon(
+    file_path: Optional[str] = None,
+    addon_module: Optional[str] = None,
+    overwrite: bool = False,
+    enable: bool = True,
+) -> dict:
+    """Install a Blender add-on from a .py file or a .zip bundle.
+
+    Args:
+        file_path: The ``.py`` single-file add-on or ``.zip`` bundle to install.
+            Required. Reinstall an add-on Blender already knows by passing its
+            file again with ``overwrite=True``; a file dropped into an add-on
+            directory by other means is picked up by ``refresh_addons``.
+        addon_module: Expected module name after install, for example
+            ``io_scene_gltf2`` or ``my_addon``. Blender derives this from the
+            file name when omitted, but the derived name does not always match
+            the package inside an archive, so an explicit name is safer.
+        overwrite: Replace an already installed copy of the same add-on.
+        enable: Enable the add-on right after installing it.
+    """
+    # A source is mandatory: installing without one would call
+    # addon_install(filepath="") and fail inside Blender rather than here, and
+    # there is nothing to reinstall from. Reinstalling an add-on Blender
+    # already knows is done by passing its file again with overwrite=true.
+    if not file_path:
+        return skill_error(
+            "No add-on file supplied",
+            "install_addon needs file_path (a .py or .zip). To reinstall an add-on Blender "
+            "already knows, pass its file again with overwrite=true. To make a manually "
+            "dropped file visible instead, use refresh_addons.",
+        )
+
+    path = Path(file_path).expanduser()
+    if not path.exists():
+        return skill_error(f"Add-on file not found: {path}", f"No file or directory at '{path}'.")
+    if path.is_dir():
+        return skill_error(
+            f"Add-on source is a directory: {path}",
+            "Pass a .py single-file add-on or a .zip bundle; a plain directory is not installable.",
+        )
+    if path.suffix.lower() not in {".py", ".zip"}:
+        return skill_error(
+            f"Unsupported add-on file: {path.name}",
+            "Blender installs .py single-file add-ons and .zip bundles.",
+        )
+
+    try:
+        import bpy
+
+        try:
+            bpy.ops.preferences.addon_install(filepath=str(path), overwrite=bool(overwrite))
+        except Exception as exc:
+            return skill_exception(exc, message=f"Failed to install add-on from {path}")
+
+        # Installing does not refresh the module cache, so a freshly installed
+        # add-on is invisible until the list is refreshed.
+        try:
+            bpy.ops.preferences.addon_refresh()
+        except Exception:
+            pass
+        try:
+            _refresh_addon_modules()
+        except Exception:
+            pass
+
+        # Without addon_module there is nothing to confirm: the derived name is
+        # not reported back, because it routinely differs from the package name.
+        if addon_module is None:
+            return skill_success(
+                f"Installed add-on from {path.name}",
+                file_path=str(path),
+                module=None,
+                enabled=False,
+                refreshed=True,
+                prompt=(
+                    "Pass addon_module to confirm and enable the installed add-on; the module "
+                    "name Blender derives from a zip does not always match its package."
+                ),
+            )
+        resolved = addon_module
+
+        status = _addon_status_data(resolved)
+        if not status.get("installed"):
+            return skill_error(
+                f"Installed add-on not found: {resolved}",
+                f"Blender installed the file but no module named '{resolved}' is registered. "
+                "The module name derived from an archive does not always match its package, "
+                "so pass addon_module explicitly or check the name with list_addons.",
+            )
+
+        if not enable:
+            return skill_success(
+                f"Installed add-on {resolved}",
+                module=resolved,
+                enabled=False,
+                status=status,
+                prompt=f"Use enable_addon('{resolved}') to activate it.",
+            )
+
+        before = _addon_status_data(resolved)
+        try:
+            bpy.ops.preferences.addon_enable(module=resolved)
+        except Exception as exc:
+            return skill_exception(
+                exc,
+                message=f"Installed but failed to enable add-on {resolved}",
+                before=before,
+                after=_addon_status_data(resolved),
+            )
+        after = _addon_status_data(resolved)
+        if not after.get("enabled"):
+            return skill_error(
+                f"Add-on was not enabled: {resolved}",
+                "Blender completed the enable operation but the add-on is still disabled.",
+                before=before,
+                after=after,
+            )
+        return skill_success(f"Installed and enabled add-on {resolved}", before=before, after=after)
+    except ImportError:
+        return skill_error("Blender not available", "bpy or addon_utils could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to install add-on {path if path else addon_module}")
+
+
+def remove_addon(addon_module: str) -> dict:
+    """Disable and uninstall a Blender add-on.
+
+    Blender's own addon_remove operator calls ``context.area.tag_redraw()``,
+    which is None under ``blender --background``, so the operator raises an
+    AttributeError there. Since background mode is how this adapter normally
+    runs, this disables through the operator (which does work headless), then
+    removes the module files directly and refreshes the cache. Removal is
+    confirmed afterwards, so a silent no-op is not possible.
+
+    Args:
+        addon_module: Module name of the installed add-on, for example
+            ``io_scene_gltf2``.
+    """
+    try:
+        import bpy
+
+        before = _addon_status_data(addon_module)
+        if before.get("enabled"):
+            try:
+                bpy.ops.preferences.addon_disable(module=addon_module)
+            except Exception as exc:
+                return skill_exception(
+                    exc,
+                    message=f"Failed to disable add-on {addon_module} before removing it",
+                    before=before,
+                    after=_addon_status_data(addon_module),
+                )
+
+        removed_paths = _delete_addon_files(addon_module)
+
+        # Both the operator and the file deletion leave the module cache stale,
+        # so the post-condition would otherwise still report it as installed.
+        try:
+            bpy.ops.preferences.addon_refresh()
+        except Exception:
+            pass
+        try:
+            _refresh_addon_modules()
+        except Exception:
+            pass
+
+        after = _addon_status_data(addon_module)
+        if after.get("installed"):
+            return skill_error(
+                f"Add-on was not removed: {addon_module}",
+                "The add-on is still registered after deleting its files. Another "
+                "installed copy may exist, or Blender could not write to the add-on "
+                "directory.",
+                before=before,
+                after=after,
+                removed_paths=removed_paths,
+            )
+        return skill_success(
+            f"Removed add-on {addon_module}",
+            before=before,
+            after=after,
+            removed_paths=removed_paths,
+            prompt="Use list_addons to confirm the add-on is gone.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy or addon_utils could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to remove add-on {addon_module}")
+
+
+def _delete_addon_files(addon_module: str) -> List[str]:
+    """Delete an add-on's module file or package directory and return the paths.
+
+    Returns an empty list when the module is not on disk, which is not an error:
+    an add-on can be built into Blender or installed somewhere else.
+    """
+    import addon_utils
+
+    removed: List[str] = []
+    module = next(
+        (candidate for candidate in _addon_modules() if getattr(candidate, "__name__", None) == addon_module), None
+    )
+    if module is None:
+        return removed
+
+    file_path = getattr(module, "__file__", None)
+    if not file_path:
+        return removed
+
+    path = Path(file_path)
+    if path.name == "__init__.py":
+        # A package: remove the whole directory.
+        target: Path = path.parent
+        shutil.rmtree(target, ignore_errors=True)
+        removed.append(str(target))
+    elif path.exists():
+        path.unlink()
+        removed.append(str(path))
+
+    if removed:
+        addon_utils.modules(refresh=True)
+    return removed
+
+
+def refresh_addons() -> dict:
+    """Rescan the add-on paths so newly dropped files become visible.
+
+    Installing from disk or copying a file into an add-on directory leaves
+    Blender's cached module list stale until it is refreshed. Returns the
+    add-on count before and after so a caller can see what appeared.
+    """
+    try:
+        import bpy
+
+        before_count = len(_addon_modules())
+        try:
+            bpy.ops.preferences.addon_refresh()
+        except Exception as exc:
+            return skill_exception(exc, message="Failed to refresh add-ons")
+        # The operator updates Blender's state, but addon_utils keeps its own
+        # cache; without refresh=True here the after count never changes.
+        after_count = len(_refresh_addon_modules())
+        return skill_success(
+            f"Refreshed add-ons ({before_count} -> {after_count})",
+            before_count=before_count,
+            after_count=after_count,
+            added=max(0, after_count - before_count),
+            prompt="Use list_addons to inspect the refreshed list.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy or addon_utils could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to refresh add-ons")

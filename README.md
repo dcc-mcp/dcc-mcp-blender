@@ -248,8 +248,8 @@ HDRI by Poly Haven (CC0), and
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport`, `get_view_layer_passes`, `set_view_layer_passes`, `set_render_denoise`, `get_render_output`, `set_render_output`, `set_render_region`, `clear_render_region`, `get_render_status` |
 | **blender-render-farm** | `validate_scene_for_farm`, `write_render_job`, `submit_render_job`, `get_render_job_status`, `list_render_jobs`, `cancel_render_job`, `cooperative_cancel`, `render_farm_status` |
 | **blender-scripting** | `execute_python`, `execute_script_file`, `get_blender_info` |
-| **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `enable_addon`, `disable_addon`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |
-| **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation` |
+| **blender-dev** | `attach_project`, `reload_modules`, `run_check`, `run_entrypoint`, `run_script`, `list_addons`, `get_addon_status`, `install_addon`, `enable_addon`, `disable_addon`, `remove_addon`, `refresh_addons`, `capture_ui_snapshot`, `find_ui_elements`, `start_debug_server`, `get_python_environment` |
+| **blender-animation** | `set_keyframe`, `set_frame_range`, `get_frame_range`, `set_current_frame`, `get_keyframes`, `delete_keyframes`, `bake_animation`, `list_animation_actions`, `list_nla_tracks`, `add_nla_track`, `remove_nla_track`, `add_nla_strip`, `set_nla_strip`, `remove_nla_strip`, `list_action_fcurves`, `set_action_fcurve_extrapolation` |
 | **blender-lighting** | `create_light`, `set_light_properties`, `list_lights`, `set_world_background` |
 | **blender-light-rig** | `create_three_point_light_rig`, `create_area_softbox`, `create_hdri_world`, `animate_hdri_rotation`, `list_light_rigs`, `set_light_rig_intensity`, `aim_light_at_object`, `group_lights`, `set_render_view_transform`, `get_lighting_summary` |
 | **blender-camera** | `create_camera`, `set_active_camera`, `set_camera_properties`, `list_cameras` |
