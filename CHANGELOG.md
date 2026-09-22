@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.6](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.5...v0.2.6) (2026-09-22)
+
+
+### Features
+
+* add blender-compositor skill for compositor authoring ([#220](https://github.com/dcc-mcp/dcc-mcp-blender/issues/220)) ([e6ac145](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e6ac1454aef1ec04b2e931b9295d5840a9e77bdd))
+* add render output configuration tools to blender-render ([#222](https://github.com/dcc-mcp/dcc-mcp-blender/issues/222)) ([a3d3742](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a3d3742adc88cd1ef1b9cf6e74fd91e313c4e935))
+
 ## [0.2.5](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.4...v0.2.5) (2026-09-19)
 
 
