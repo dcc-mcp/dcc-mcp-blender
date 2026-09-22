@@ -166,3 +166,265 @@ tools:
       destructive_hint: false
       idempotent_hint: false
       open_world_hint: false
+
+  - name: list_animation_actions
+    description: "List the actions available to animate with, optionally restricted to one object."
+    source_file: scripts/list_animation_actions.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+          description: Restrict to this object's active and NLA actions; omit to list every action in the file.
+        filter:
+          type: string
+          minLength: 1
+          description: Case-insensitive substring match on the action name.
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: &read_only_annotations
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: list_nla_tracks
+    description: "List the NLA tracks on an object and the strips each track holds."
+    source_file: scripts/list_nla_tracks.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: add_nla_track
+    description: "Create an NLA track on an object."
+    source_file: scripts/add_nla_track.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        track_name:
+          type: string
+          minLength: 1
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: &mutating_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: remove_nla_track
+    description: "Remove an NLA track and every strip it holds."
+    source_file: scripts/remove_nla_track.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, track_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        track_name:
+          type: string
+          minLength: 1
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: add_nla_strip
+    description: "Place an action on an NLA track as a new strip."
+    source_file: scripts/add_nla_strip.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, action_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        action_name:
+          type: string
+          minLength: 1
+          description: Action to place; must already exist in the file.
+        track_name:
+          type: string
+          minLength: 1
+          description: Target track; defaults to the first track, created if the object has none.
+        frame_start:
+          type: number
+          description: Frame where the strip starts; defaults to the current frame.
+        strip_name:
+          type: string
+          minLength: 1
+          description: Strip name; defaults to the action name.
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: *mutating_annotations
+
+  - name: set_nla_strip
+    description: "Update an NLA strip's timing, scaling, blending, influence, or mute state."
+    source_file: scripts/set_nla_strip.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, strip_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        strip_name:
+          type: string
+          minLength: 1
+        track_name:
+          type: string
+          minLength: 1
+          description: Track holding the strip; defaults to searching every track.
+        frame_start:
+          type: number
+        action_frame_start:
+          type: number
+        action_frame_end:
+          type: number
+        scale:
+          type: number
+          minimum: 0.0001
+          maximum: 1000
+        repeat:
+          type: number
+          minimum: 0.01
+          maximum: 1000
+        influence:
+          type: number
+          minimum: 0
+          maximum: 1
+        blend_type:
+          type: string
+          enum: [REPLACE, ADD, SUBTRACT, MULTIPLY]
+        extrapolation:
+          type: string
+          enum: [NOTHING, HOLD, HOLD_FORWARD]
+        muted:
+          type: boolean
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: &mutating_idempotent_annotations
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: remove_nla_strip
+    description: "Remove an NLA strip from a track."
+    source_file: scripts/remove_nla_strip.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, strip_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        strip_name:
+          type: string
+          minLength: 1
+        track_name:
+          type: string
+          minLength: 1
+          description: Track holding the strip; defaults to searching every track.
+    read_only: false
+    destructive: true
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: false
+
+  - name: list_action_fcurves
+    description: "List the fcurves inside an action, optionally filtered by data path."
+    source_file: scripts/list_action_fcurves.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [action_name]
+      properties:
+        action_name:
+          type: string
+          minLength: 1
+        data_path:
+          type: string
+          minLength: 1
+          description: Restrict to this data path, for example location.
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: *read_only_annotations
+
+  - name: set_action_fcurve_extrapolation
+    description: "Set how an action's fcurves behave before the first and after the last keyframe."
+    source_file: scripts/set_action_fcurve_extrapolation.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [action_name, extrapolation]
+      properties:
+        action_name:
+          type: string
+          minLength: 1
+        extrapolation:
+          type: string
+          enum: [CONSTANT, LINEAR, CUSTOM]
+          description: CONSTANT holds the end value; LINEAR keeps the end slope; CUSTOM uses a driver-ish curve.
+        data_path:
+          type: string
+          minLength: 1
+        array_index:
+          type: integer
+          minimum: 0
+          description: Restrict to one component, for example 0 for X.
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: *mutating_idempotent_annotations
