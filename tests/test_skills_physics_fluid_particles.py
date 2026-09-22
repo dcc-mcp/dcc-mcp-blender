@@ -112,13 +112,16 @@ def test_add_fluid_modifier_creates_a_domain():
 
 
 def test_add_fluid_modifier_accepts_flow_and_effector():
-    obj = _make_obj()
-    bpy = _bpy_with_objects(obj)
-    _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="flow", name="Inflow")
-    _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="effector", name="Stir")
+    """Each fluid type needs its own object: FLUID is a singleton per object."""
+    flow_obj = _make_obj("FlowCube")
+    effector_obj = _make_obj("EffectorCube")
+    bpy = _bpy_with_objects(flow_obj, effector_obj)
 
-    assert obj.modifiers.get("Inflow").fluid_type == "FLOW"
-    assert obj.modifiers.get("Stir").fluid_type == "EFFECTOR"
+    _call("add_fluid_modifier", bpy, object_name="FlowCube", fluid_type="flow", name="Inflow")
+    _call("add_fluid_modifier", bpy, object_name="EffectorCube", fluid_type="effector", name="Stir")
+
+    assert flow_obj.modifiers.get("Inflow").fluid_type == "FLOW"
+    assert effector_obj.modifiers.get("Stir").fluid_type == "EFFECTOR"
 
 
 def test_add_fluid_modifier_rejects_unknown_type():
@@ -688,3 +691,40 @@ def test_bake_particle_system_requests_a_bake_length_timeout():
     tools = {tool["name"]: tool for tool in doc["tools"]}
     assert tools["bake_particle_system"]["timeout_hint_secs"] == 120
     assert tools["bake_simulation"]["timeout_hint_secs"] == 120
+
+
+def test_second_fluid_modifier_reports_the_existing_one():
+    """Blender allows one FLUID modifier per object and returns None after."""
+    obj = _make_obj()
+    bpy = _bpy_with_objects(obj)
+
+    first = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="FLOW", name="Inflow")
+    assert first["success"] is True
+
+    second = _call("add_fluid_modifier", bpy, object_name="Cube", fluid_type="DOMAIN", name="Second")
+    assert second["success"] is False
+    assert "already has a fluid modifier" in second["message"].lower()
+    assert "Inflow" in second["error"], "the error must name the existing modifier"
+    assert len(obj.modifiers) == 1, "the rejected call must not add a modifier"
+
+
+def test_particle_bake_narrows_the_scene_range():
+    """The ptcache operator bakes the scene range, not the cache range."""
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj)
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=60)
+    assert result["success"] is True
+    assert result["context"]["scene_changes"] == {"frame_start": 1, "frame_end": 60}
+    assert bpy.context.scene.frame_end == 60
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 60}
+
+
+def test_particle_bake_failure_reports_both_range_changes():
+    obj = _obj_with_particle_system()
+    bpy, _calls = _bpy_with_temp_override(obj, result=("CANCELLED",))
+
+    result = _call("bake_particle_system", bpy, object_name="Cube", frame_start=1, frame_end=30)
+    assert result["success"] is False
+    assert result["context"]["scene_changes"] == {"frame_start": 1, "frame_end": 30}
+    assert result["context"]["cache_changes"] == {"frame_start": 1, "frame_end": 30}
