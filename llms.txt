@@ -147,6 +147,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-export-preset | `list/save/load/delete_export_preset` |
 | blender-collection | `create_collection`, `link_to_collection`, `list_collections` |
 | blender-node-graph | `list_all_node_graphs`, `list_compositor_nodes`, `get_compositor_node_tree` |
+| blender-compositor | `setup_compositor_tree`, `create_compositor_node`, `connect_compositor_nodes`, `set_compositor_node_value`, `list_compositor_node_types` |
 | blender-import-to-scene | `import_to_scene` |
 
 See `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` for staged loading guidance, task-to-skill chains, and side-effect profiles.
