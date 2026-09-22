@@ -447,7 +447,10 @@ class TestParticleAuthoringE2E:
         # assertion has to be relative to the value before the call rather
         # than a literal taken from the fixture.
         before = psettings.rendered_child_count
-        result = children_mod.set_particle_children(object_name=obj.name, child_nbr=12)
+        before_type = psettings.child_type
+        # Send child_nbr together with a sibling parameter: the rejection has
+        # to be atomic, not write child_type and then fail.
+        result = children_mod.set_particle_children(object_name=obj.name, child_type="SIMPLE", child_nbr=12)
 
         if hasattr(psettings, "child_nbr"):
             # Blender 3.x still has the display amount.
@@ -456,9 +459,11 @@ class TestParticleAuthoringE2E:
         else:
             assert result["success"] is False
             assert "child_nbr is not available" in result["message"].lower()
-            assert "rendered_child_count" in result["error"]
-            # Critically: nothing was written to the render amount instead.
+            assert "nothing was changed" in result["error"].lower()
+            # Critically: nothing was written to the render amount instead, and
+            # the sibling parameter was not half-applied either.
             assert psettings.rendered_child_count == before
+            assert psettings.child_type == before_type
 
         bpy.ops.mesh.primitive_plane_add(size=0.2)
         instance = bpy.context.active_object

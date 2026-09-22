@@ -411,6 +411,31 @@ def test_set_particle_children_rejects_child_nbr_when_absent():
     assert obj.modifiers[0].particle_system.settings.rendered_child_count == 0
 
 
+def test_child_nbr_rejection_writes_nothing_alongside_siblings():
+    """A rejected child_nbr must not leave child_type already written.
+
+    child_nbr is checked before anything is written, so a caller that sends it
+    together with child_type on Blender 4.x gets a clean rejection instead of a
+    half-applied system.
+    """
+    obj = _obj_with_particle_system()
+    psettings = obj.modifiers[0].particle_system.settings
+    psettings.child_type = "NONE"
+    del psettings.child_nbr
+
+    result = _call(
+        "set_particle_children",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        child_type="SIMPLE",
+        child_nbr=10,
+    )
+    assert result["success"] is False
+    assert "nothing was changed" in result["error"].lower()
+    assert psettings.child_type == "NONE", "the rejected call must not write child_type"
+    assert psettings.rendered_child_count == 0
+
+
 def test_set_particle_children_rejects_unknown_type_and_range():
     obj = _obj_with_particle_system()
     bpy = _bpy_with_objects(obj)
