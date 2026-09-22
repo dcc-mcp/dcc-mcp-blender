@@ -1535,7 +1535,11 @@ def set_fluid_settings(
     Args:
         object_name: Mesh object owning the fluid modifier.
         modifier_name: Fluid modifier name; defaults to the first one.
-        settings: Modifier-level properties.
+        settings: Properties on the FLUID modifier itself. A FluidModifier only
+            exposes ``fluid_type`` and the three settings blocks, so the usual
+            Mantaflow knobs (resolution, viscosity, noise, time scale) are not
+            valid here; pass them in ``domain_settings``. Asking for one here
+            fails with that hint instead of being skipped.
         domain_settings: Properties applied to ``modifier.domain_settings``,
             where Mantaflow keeps resolution, viscosity, noise, and mesh options.
     """
@@ -1565,6 +1569,20 @@ def set_fluid_settings(
             )
 
         applied, skipped = _apply_settings(modifier, settings, FLUID_NUMERIC_SETTINGS)
+        # Domain-only names sent to `settings` would be skipped and still
+        # reported as a success, which is how a wrong route went unnoticed.
+        # Point the caller at the argument that can serve them. This is a hint,
+        # not an allowlist: anything else unknown still skips.
+        misrouted = [
+            key for key in skipped if domain is not None and hasattr(domain, key) and not hasattr(modifier, key)
+        ]
+        if misrouted:
+            return skill_error(
+                "Fluid settings belong on the domain block",
+                f"{', '.join(sorted(misrouted))} not found on the FLUID modifier but present on "
+                "modifier.domain_settings; pass them in domain_settings instead. Nothing was changed.",
+            )
+
         domain_applied: Dict[str, Any] = {}
         if domain_settings:
             domain_applied, domain_skipped = _apply_settings(domain, domain_settings, FLUID_NUMERIC_SETTINGS)
