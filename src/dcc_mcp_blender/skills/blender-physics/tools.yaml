@@ -1288,7 +1288,7 @@ tools:
           type: integer
           minimum: 0
           maximum: 10000
-          description: Children per parent.
+          description: Display amount of children per parent. Blender 3.x only; 4.x removed it, and the call then fails rather than substituting another property.
         rendered_child_count:
           type: integer
           minimum: 0

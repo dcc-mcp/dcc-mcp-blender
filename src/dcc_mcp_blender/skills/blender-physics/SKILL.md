@@ -80,6 +80,10 @@ but nothing could create or tune them. Use these tools to close that gap:
 
 Domain options live on `modifier.domain_settings`, so `set_fluid_settings`
 takes a separate `domain_settings` object; only a DOMAIN modifier exposes it.
+Use `resolution_max` for domain resolution — `resolution_divisions` was removed
+in Blender 2.82 and exists on no supported version. The domain, flow, and
+effector settings blocks are all `None` while `fluid_type` is `NONE`; they
+appear once the matching type is set.
 
 **Fluid and Dynamic Paint baking is not exposed by these tools.**
 `bake_simulation` only targets cloth, soft-body, and particle point caches and
@@ -102,14 +106,19 @@ surface with `bpy.ops.dpaint.surface_slot_add()` instead.
 | Tool | Description |
 |---|---|
 | `set_particle_hair` | Switch a system between EMITTER and HAIR and set hair properties |
-| `set_particle_children` | Set child type, `child_nbr`, and `rendered_child_count` |
+| `set_particle_children` | Set child type and the rendered child count |
 | `set_particle_instance` | Instance a scene object per particle and control emitter visibility |
 | `bake_particle_system` | Bake or free the point cache of one particle system |
 
 `add_particle_system` already accepted `instance_object_name` and
 `show_emitter`; use `set_particle_instance` to change them later or to set
-`render_type` and `particle_size`. `set_particle_children` validates
-`child_nbr` against Blender's 0-10000 range.
+`render_type` and `particle_size`.
+
+Use `rendered_child_count` for the number of children to render: live RNA
+confirms it on every version from 3.6.5 to 5.2.1. `child_nbr` is the **display**
+amount, a different knob, and Blender 4.x removed it — passing it there fails
+with a message naming the replacement rather than writing to a different
+property. Point caches live on `particle_system`, not on the modifier.
 
 Baking and cache-clearing tools mutate scene state; pass `dry_run=true` when
 you only need target discovery and frame-range validation.

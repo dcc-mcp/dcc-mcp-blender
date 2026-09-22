@@ -1344,12 +1344,15 @@ DYNAMIC_PAINT_TYPES = ("CANVAS", "BRUSH")
 DYNAMIC_PAINT_SURFACE_TYPES = ("PAINT", "DISPLACE", "WEIGHT", "WAVE")
 
 FLUID_NUMERIC_SETTINGS = {
-    "resolution_divisions",
+    # Verified against live RNA on Blender 3.6.5, 4.5.13 and 5.2.1. The domain
+    # resolution is `resolution_max`; `resolution_divisions` was removed in
+    # 2.82 and the CFL property is not exposed as `cfl` on any of them.
+    "resolution_max",
+    "domain_resolution",
     "viscosity_base",
     "viscosity_exponent",
     "domain_size",
     "time_scale",
-    "cfl",
     "timesteps_max",
     "timesteps_min",
     "burning_rate",
@@ -1921,8 +1924,12 @@ def set_particle_children(
         system_name: Particle system name; defaults to the first one.
         child_type: ``NONE``, ``SIMPLE``, or ``INTERPOLATED``. ``FACES`` is a
             child distribution option in the UI, not a ``child_type`` member.
-        child_nbr: Children per parent; Blender caps this at 10000.
-        rendered_child_count: Children actually rendered.
+        child_nbr: Display amount of children per parent. Only present on
+            Blender 3.x; 4.x removed it. Caps at 10000 where available.
+        rendered_child_count: Amount of children actually rendered. This is the
+            property to use: live RNA confirms it on every version from 3.6.5
+            to 5.2.1. It is not the same knob as ``child_nbr`` (display vs
+            render), so the two are never substituted for one another.
         settings: Extra child properties such as ``child_length``.
     """
     if child_type is not None and str(child_type).upper() not in CHILD_TYPES:
@@ -1956,7 +1963,6 @@ def set_particle_children(
         skipped: List[str] = []
         for key, value in (
             ("child_type", str(child_type).upper() if child_type is not None else None),
-            ("child_nbr", int(child_nbr) if child_nbr is not None else None),
             ("rendered_child_count", int(rendered_child_count) if rendered_child_count is not None else None),
         ):
             if value is None:
@@ -1966,6 +1972,22 @@ def set_particle_children(
                 continue
             setattr(psettings, key, value)
             applied[key] = value
+
+        # child_nbr is the display amount and only exists on Blender 3.x. It is
+        # deliberately not mapped onto rendered_child_count: they are different
+        # knobs, and silently writing one for the other is how this batch got
+        # here. Say so instead.
+        if child_nbr is not None:
+            if hasattr(psettings, "child_nbr"):
+                psettings.child_nbr = int(child_nbr)
+                applied["child_nbr"] = int(child_nbr)
+            else:
+                return skill_error(
+                    "child_nbr is not available in this Blender version",
+                    "Blender 4.x removed ParticleSettings.child_nbr (display amount). "
+                    "Use rendered_child_count, which controls the rendered amount and "
+                    "exists on every supported version. Nothing was changed.",
+                )
 
         extra_applied, extra_skipped = _apply_settings(psettings, settings, PARTICLE_HAIR_NUMERIC_SETTINGS)
         applied.update(extra_applied)
