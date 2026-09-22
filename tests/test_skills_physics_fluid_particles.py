@@ -803,3 +803,62 @@ def test_particle_children_reports_unapplied_settings_in_the_message():
     assert result["success"] is True
     assert result["context"]["not_applied"] == ["not_a_real_property"]
     assert "not_a_real_property" in result["message"]
+
+
+def test_domain_only_settings_via_settings_are_rejected():
+    """A domain knob sent to settings must fail, not silently skip.
+
+    A FluidModifier only exposes fluid_type and the settings blocks, so the
+    Mantaflow knobs sent through `settings` can never take effect. Reporting
+    that as a success is the same silent no-op this batch removes.
+    """
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"time_scale": 2.0},
+    )
+    assert result["success"] is False
+    assert "domain block" in result["message"].lower()
+    assert "time_scale" in result["error"]
+    assert modifier.domain_settings.time_scale == 1.0, "a rejected call must not write"
+
+
+def test_domain_settings_route_still_works():
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {"time_scale": 1.0})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        domain_settings={"time_scale": 2.0},
+    )
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["domain_applied"] == {"time_scale": 2.0}
+    assert modifier.domain_settings.time_scale == 2.0
+
+
+def test_unknown_settings_are_still_skipped_not_rejected():
+    """The misroute hint is not an allowlist; unknown keys still skip."""
+    obj = _make_obj()
+    modifier = obj.modifiers.new("Fluid Domain", "FLUID")
+    modifier.fluid_type = "DOMAIN"
+    modifier.domain_settings = type("Domain", (), {})()
+
+    result = _call(
+        "set_fluid_settings",
+        _bpy_with_objects(obj),
+        object_name="Cube",
+        settings={"totally_made_up": 1},
+    )
+    assert result["success"] is True
+    assert result["context"]["not_applied"] == ["totally_made_up"]
+    assert "totally_made_up" in result["message"]

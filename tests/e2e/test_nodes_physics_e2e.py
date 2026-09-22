@@ -233,12 +233,12 @@ class TestFluidE2E:
         assert result["context"]["skipped"] == []
         assert domain.resolution_max == 48
 
-    def test_solid_fluid_settings_reject_half_applied_batches(self):
-        """A rejected domain_settings must leave modifier settings untouched.
+    def test_domain_settings_round_trip_on_a_domain_modifier(self):
+        """Domain knobs go in domain_settings and come back changed.
 
-        time_scale lives on the domain block, and only a DOMAIN modifier has
-        one: on a FLOW modifier domain_settings is None, so this has to read
-        the value through the domain of a DOMAIN modifier.
+        time_scale lives on the domain block, not on the modifier, so it has to
+        be sent through domain_settings; sent via settings it is skipped, and
+        the tool now rejects that route instead of reporting success.
         """
         obj = self._cube()
         add_mod = load_skill("blender-physics", "add_fluid_modifier")
@@ -252,14 +252,32 @@ class TestFluidE2E:
         result = set_mod.set_fluid_settings(
             object_name=obj.name,
             modifier_name="E2E Domain",
-            settings={"time_scale": before + 0.5},
-            domain_settings={"resolution_max": 64},
+            domain_settings={"time_scale": before + 0.5},
         )
-        # rejection here comes from the missing `domain_settings` argument being
-        # unsatisfiable only when the block is absent, so drive that case
-        # explicitly instead of relying on a modifier type that cannot fail.
         assert result["success"] is True, result.get("error")
+        assert result["context"]["domain_applied"] == {"time_scale": pytest.approx(before + 0.5)}
+        assert result["context"]["not_applied"] == []
         assert modifier.domain_settings.time_scale == pytest.approx(before + 0.5)
+
+    def test_domain_only_settings_via_settings_are_rejected(self):
+        """A domain knob sent to settings must fail, not silently skip."""
+        obj = self._cube()
+        add_mod = load_skill("blender-physics", "add_fluid_modifier")
+        add_mod.add_fluid_modifier(object_name=obj.name, fluid_type="DOMAIN", name="E2E Domain")
+
+        modifier = obj.modifiers["E2E Domain"]
+        before = modifier.domain_settings.time_scale
+
+        set_mod = load_skill("blender-physics", "set_fluid_settings")
+        result = set_mod.set_fluid_settings(
+            object_name=obj.name,
+            modifier_name="E2E Domain",
+            settings={"time_scale": before + 0.5},
+        )
+        assert result["success"] is False
+        assert "domain block" in result["message"].lower()
+        assert "time_scale" in result["error"]
+        assert modifier.domain_settings.time_scale == before, "rejected call must not write"
 
     def test_fluid_settings_reject_half_applied_batches(self):
         """A rejected domain_settings must leave modifier settings untouched."""
@@ -271,11 +289,9 @@ class TestFluidE2E:
         result = set_mod.set_fluid_settings(
             object_name=obj.name,
             modifier_name="E2E Flow",
-            settings={"use_speed_vector": True},
             domain_settings={"resolution_max": 64},
         )
-        # FLOW has no domain block, so the call must fail before writing
-        # anything, and the modifier-level setting must stay untouched.
+        # FLOW has no domain block, so the call must fail before writing.
         assert result["success"] is False
         assert "nothing was changed" in result["error"].lower()
 
