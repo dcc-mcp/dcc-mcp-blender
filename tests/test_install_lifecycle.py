@@ -670,3 +670,21 @@ def test_windows_lock_is_a_restart_boundary_not_a_clean_install_failure(tmp_path
     assert report["status"] == "requires_restart"
     assert report["verify"]["failure_stage"] == "install"
     assert report["verify"]["failure_reason"] == "windows_file_lock"
+
+
+def _ci_workflow():
+    """Parsed ``.github/workflows/ci.yml`` for the repository under test."""
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def test_ci_core_latest_job_resolves_a_real_core_version():
+    """The early-warning job must fail loudly rather than test an empty pin."""
+    job = _ci_workflow()["jobs"]["core-latest"]
+    resolve = [step for step in job["steps"] if step.get("id") == "core"]
+    assert resolve, "core-latest job has no version resolution step"
+
+    script = resolve[0]["run"]
+    assert "exit 1" in script, "empty version resolution must fail the job"
+    assert "::error::" in script
