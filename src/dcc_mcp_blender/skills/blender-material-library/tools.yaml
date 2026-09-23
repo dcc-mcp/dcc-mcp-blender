@@ -337,7 +337,11 @@ tools:
     read_only: false
     destructive: false
     idempotent: true
-    annotations: *mutating_idempotent
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
 
   - name: pack_image
     description: "Embed an image into the .blend file so the file is self-contained."

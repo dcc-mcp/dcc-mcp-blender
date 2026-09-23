@@ -9,9 +9,9 @@ metadata:
     layer: domain
     stage: lookdev
     version: "1.0.0"
-    tags: [blender, lighting, lights, world, IES, light-linking]
-    search-hint: "create light, point, sun, area, spot, energy, color, world background, environment lighting, list lights, IES profile, light linking, receiver, blocker"
-    search-aliases: [create light, point light, sun light, area light, spot light, set light color, light energy, world color, environment lighting, list lights, IES texture, photometric light, light linking, exclude light from object, block light]
+    tags: [blender, lighting, lights, world, light-linking]
+    search-hint: "create light, point, sun, area, spot, energy, color, world background, environment lighting, list lights, light linking, receiver, blocker"
+    search-aliases: [create light, point light, sun light, area light, spot light, set light color, light energy, world color, environment lighting, list lights, light linking, exclude light from object, block light]
     recall-context:
       app_type: blender
       domain: lookdev
@@ -38,20 +38,23 @@ Blender lighting management skill.
 
 ## Lighting detail
 
-`create_light` and `set_light_properties` cover the basics. These two cover
-real-world falloff and per-object control:
+`create_light` and `set_light_properties` cover the basics. This one covers
+per-object control:
 
 | Tool | Description |
 |---|---|
-| `set_light_ies` | Attach an IES profile to a spot light and set its strength |
 | `set_light_linking` | Restrict a light to a receiver collection, with an optional blocker collection |
 
-Both are version or light-type dependent, and neither silently no-ops:
+It is version dependent and does not silently no-op:
 
-- **IES is spot lights only.** A point, sun, or area light is rejected. Lights
-  with no `ies_file` property report that IES is unavailable on that build
-  rather than accepting a path that is then ignored.
-- **Light linking needs Blender 4.1+.** Pre-4.1 lights have no `light_linking`
-  property, so the tool refuses with that reason instead of writing to a
+- **Light linking needs Blender 4.1+.** Blender 4.1 added it on the object as
+  `Object.light_linking`, not on the light data block. Pre-4.1 objects have no
+  such property, so the tool refuses with that reason instead of writing to a
   property that does not exist.
-- Both affect Cycles and EEVEE Next; neither changes the light's energy.
+- Both collections are resolved before either is assigned, so a missing
+  collection cannot leave the light half-linked.
+- It affects Cycles and EEVEE Next and does not change the light's energy.
+
+IES profiles are not exposed here. Blender has no `Light.ies_file` property, so
+attaching one means building an IES node in the light's shader tree, which this
+skill does not do yet.

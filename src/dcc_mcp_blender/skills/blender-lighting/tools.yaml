@@ -32,48 +32,6 @@ tools:
     destructive: false
     idempotent: true
 
-  - name: set_light_ies
-    description: "Attach an IES texture to a spot light and set its strength. IES is spot-light only and unavailable on older lights."
-    source_file: scripts/set_light_ies.py
-    execution: sync
-    affinity: main
-    input_schema:
-      type: object
-      additionalProperties: false
-      required: [light_name]
-      properties:
-        light_name:
-          type: string
-          minLength: 1
-        ies_file_path:
-          type: string
-          minLength: 1
-          description: Path to a .ies file describing the light's real-world falloff.
-        ies_strength:
-          type: number
-          minimum: 0
-          description: Multiplier for the IES profile.
-        clear:
-          type: boolean
-          default: false
-          description: Remove the current IES file instead of setting one.
-    output_schema:
-      type: object
-      additionalProperties: true
-      required: [success]
-      properties:
-        success: {type: boolean}
-        message: {type: string}
-        context: {type: object}
-    read_only: false
-    destructive: false
-    idempotent: true
-    annotations:
-      read_only_hint: false
-      destructive_hint: false
-      idempotent_hint: true
-      open_world_hint: true
-
   - name: set_light_linking
     description: "Restrict which objects a light illuminates using light linking (Blender 4.1+): a receiver collection and an optional blocker collection."
     source_file: scripts/set_light_linking.py

@@ -167,60 +167,41 @@ class TestLightingDetailE2E:
         bpy.context.scene.collection.objects.link(obj)
         return obj
 
-    def test_ies_attaches_to_a_spot_light(self, tmp_path):
-        obj = self._spot()
-        ies = tmp_path / "profile.ies"
-        ies.write_text("IESNA:LM-63-1995\n", encoding="utf-8")
-
-        result = _lighting("set_light_ies").set_light_ies(light_name=obj.name, ies_file_path=str(ies), ies_strength=2.0)
-        if not hasattr(obj.data, "ies_file"):
-            # No IES support on this build: the tool has to say so rather than
-            # reporting success for an attachment that never happened.
-            assert result["success"] is False, result.get("context")
-            assert "ies_file" in result["error"]
-            return
-
-        assert result["success"] is True, result.get("error")
-        # Read it back off the light data.
-        assert obj.data.ies_file == str(ies)
-        assert obj.data.ies_strength == pytest.approx(2.0)
-
-    def test_ies_rejects_a_point_light(self, tmp_path):
-        light = bpy.data.lights.new("Point", type="POINT")
-        obj = bpy.data.objects.new("Point", light)
-        bpy.context.scene.collection.objects.link(obj)
-
-        ies = tmp_path / "profile.ies"
-        ies.write_text("IESNA:LM-63-1995\n", encoding="utf-8")
-
-        result = _lighting("set_light_ies").set_light_ies(light_name="Point", ies_file_path=str(ies))
-        assert result["success"] is False
-        assert "not a spot light" in result["message"].lower()
-
     def test_light_linking_assigns_a_receiver(self):
+        """Light linking must actually link, on the object, on 4.1+.
+
+        The version branch is the only allowed escape: below 4.1 the tool has to
+        refuse, and from 4.1 on it has to work. Using hasattr on the light data
+        block as the escape made the tool's own predicate the test's predicate,
+        so a tool that could never work passed on every lane.
+        """
         obj = self._spot()
         collection = bpy.data.collections.new("Chars")
 
         result = _lighting("set_light_linking").set_light_linking(light_name=obj.name, receiver_collection="Chars")
-        if not hasattr(obj.data, "light_linking"):
-            # Pre-4.1 lights have no linking: refusal, not a skipped check.
+        if bpy.app.version < (4, 1, 0):
             assert result["success"] is False, result.get("context")
             assert "unavailable" in result["message"].lower()
             return
 
         assert result["success"] is True, result.get("error")
-        assert obj.data.light_linking.receiver_collection is collection
+        # Read it back off the object: light linking is Object.light_linking,
+        # not a property of the light data block.
+        assert obj.light_linking.receiver_collection is collection
 
         cleared = _lighting("set_light_linking").set_light_linking(light_name=obj.name, clear=True)
         assert cleared["success"] is True, cleared.get("error")
-        assert obj.data.light_linking.receiver_collection is None
+        assert obj.light_linking.receiver_collection is None
 
     def test_light_linking_reports_a_missing_collection(self):
         obj = self._spot()
+        bpy.data.collections.new("Chars")
 
         result = _lighting("set_light_linking").set_light_linking(
             light_name=obj.name, receiver_collection="NoSuchCollection"
         )
         assert result["success"] is False, result.get("context")
-        if hasattr(obj.data, "light_linking"):
+        if bpy.app.version >= (4, 1, 0):
             assert "collection not found" in result["message"].lower()
+            # The failure must be whole: nothing may be assigned on the way to it.
+            assert obj.light_linking.receiver_collection is None

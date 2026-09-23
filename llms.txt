@@ -135,7 +135,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-render | `render_scene`, `set_render_settings`, `capture_viewport`, `set_view_layer_passes`, `set_render_denoise`, `set_render_output`, `set_render_region`, `get_render_status` |
 | blender-render-farm | `submit_render_job`, `get_render_job_status`, `cancel_render_job` |
 | blender-animation | `set_keyframe`, `set_frame_range`, `bake_animation`, `list_nla_tracks`, `add_nla_strip`, `set_nla_strip`, `list_action_fcurves` |
-| blender-lighting / blender-light-rig | `create_light`, `set_light_ies`, `set_light_linking`, `create_three_point_light_rig`, `create_hdri_world`, `animate_hdri_rotation` |
+| blender-lighting / blender-light-rig | `create_light`, `set_light_linking`, `create_three_point_light_rig`, `create_hdri_world`, `animate_hdri_rotation` |
 | blender-camera | `create_camera`, `set_active_camera`, `set_camera_properties` |
 | blender-physics | `add_rigid_body`, `add_cloth_modifier`, `add_force_field`, `bake_simulation`, `add_fluid_modifier`, `set_fluid_settings`, `add_dynamic_paint_modifier`, `add_dynamic_paint_surface`, `set_particle_hair`, `set_particle_children`, `set_particle_instance`, `bake_particle_system` |
 | blender-geometry-nodes | `create_geometry_node_group`, `set_geometry_node_modifier_input` |

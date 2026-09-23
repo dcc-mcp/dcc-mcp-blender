@@ -6,8 +6,8 @@ _material_pipeline_ops so a caller sees the same shape as list_images and
 reload_image.
 
 Lighting tools here cover what create_light and set_light_properties do not:
-IES textures and Blender 4.x light linking, both of which are version or
-engine dependent and therefore checked before being reported as available.
+Blender 4.x light linking, which is version dependent and therefore checked
+before being reported as available.
 """
 
 from __future__ import annotations
@@ -26,6 +26,33 @@ def _resolve_image(bpy: Any, image_name: str) -> Tuple[Any, Optional[dict]]:
     if image is None:
         return None, skill_error(f"Image not found: {image_name}", f"No image named '{image_name}'.")
     return image, None
+
+
+def _abspath(bpy: Any, value: str) -> str:
+    """Resolve a Blender path, including the ``//`` blend-relative form.
+
+    ``//`` is Blender's default way to store image paths, so reading it as a
+    literal makes a file that sits next to the .blend look missing, and makes a
+    successful save look failed because the write is checked at the wrong path.
+    """
+    resolve = getattr(getattr(bpy, "path", None), "abspath", None)
+    if callable(resolve):
+        try:
+            resolved = resolve(value)
+        except Exception:
+            resolved = None
+        if isinstance(resolved, str) and resolved:
+            return resolved
+    return str(Path(value).expanduser())
+
+
+def _file_state(path: Path) -> Optional[Tuple[int, int]]:
+    """Return (mtime_ns, size) for a write check, or None when absent."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
 
 
 def load_image(
@@ -126,14 +153,18 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
             return error
 
         if file_path:
-            destination = Path(file_path).expanduser()
+            destination = Path(_abspath(bpy, file_path))
         else:
             if not image.filepath:
                 return skill_error(
                     f"{image_name} has no file path",
                     "The image was generated or packed; pass file_path explicitly.",
                 )
-            destination = Path(image.filepath).expanduser()
+            # image.filepath is usually blend-relative ("//textures/x.png"), and
+            # image.save() writes relative to the .blend, so the destination has
+            # to be resolved the same way or a successful save is reported as a
+            # failure.
+            destination = Path(_abspath(bpy, image.filepath))
 
         # Assigning image.filepath is deliberately avoided. Under background
         # mode it re-associates the datablock with that file and invalidates the
@@ -154,6 +185,11 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                 has_data=has_data,
             )
 
+        # Record the state before writing: a file that is already there proves
+        # nothing about this call, so the check below has to be a change, not an
+        # existence test.
+        before = _file_state(destination)
+
         try:
             if file_path:
                 image.save_render(str(destination))
@@ -169,12 +205,22 @@ def save_image(image_name: str, file_path: Optional[str] = None) -> dict:
                 has_data=getattr(image, "has_data", None),
             )
 
-        # Confirm the file exists rather than trusting the call: a save that
-        # silently wrote nothing must be reported as a failure.
-        if not destination.is_file():
+        # Confirm the write rather than trusting the call. A file that already
+        # existed is not evidence of this save, so require the file both to
+        # exist and to differ from the state recorded before the write.
+        after = _file_state(destination)
+        if after is None:
             return skill_error(
                 f"Image was not saved: {image_name}",
                 f"Blender completed the save call but no file exists at '{destination}'.",
+                filepath=str(destination),
+                has_data=getattr(image, "has_data", None),
+            )
+        if before is not None and before == after:
+            return skill_error(
+                f"Image was not written: {image_name}",
+                f"Blender completed the save call but '{destination}' is unchanged "
+                f"(mtime_ns {before[0]}, size {before[1]}), so nothing was written this time.",
                 filepath=str(destination),
                 has_data=getattr(image, "has_data", None),
             )
@@ -303,7 +349,10 @@ def image_file_status(image_name: str) -> dict:
 
         filepath = getattr(image, "filepath", "") or ""
         packed = getattr(image, "packed_file", None) is not None
-        exists_on_disk = bool(filepath) and Path(filepath).expanduser().is_file()
+        # Resolve "blend-relative" paths before asking the disk, or an image
+        # that is present next to the .blend is reported as missing.
+        resolved = _abspath(bpy, filepath) if filepath else ""
+        exists_on_disk = bool(resolved) and Path(resolved).expanduser().is_file()
 
         if packed:
             state = "packed"
@@ -358,7 +407,9 @@ def list_image_tiles(image_name: str) -> dict:
             f"Image {image.name} has {len(tiles)} tile(s)",
             image=_image_info(image),
             source=source,
-            is_udim=source == "UDIM" or len(tiles) > 1,
+            # TILED is Blender's single-tile UDIM source, so matching UDIM alone
+            # misreports a one-tile UDIM image as a plain image.
+            is_udim=source in ("UDIM", "TILED") or len(tiles) > 1,
             count=len(tiles),
             tiles=tiles,
             prompt="Use load_image with a UDIM path pattern to populate tiles, then save_image.",
@@ -381,79 +432,6 @@ def _resolve_light(bpy: Any, light_name: str) -> Tuple[Any, Optional[dict]]:
     return obj, None
 
 
-def set_light_ies(
-    light_name: str,
-    ies_file_path: Optional[str] = None,
-    ies_strength: Optional[float] = None,
-    clear: bool = False,
-) -> dict:
-    """Configure an IES texture on a spot light.
-
-    IES describes a light's real-world falloff. Blender applies it to SPOT
-    lights only, and older lights have no ``ies_file`` property, so both are
-    checked and reported rather than written and ignored.
-
-    Args:
-        light_name: Spot light to configure.
-        ies_file_path: Path to the ``.ies`` file.
-        ies_strength: Multiplier for the IES profile.
-        clear: Remove the current IES file instead of setting one.
-    """
-    try:
-        import bpy
-
-        obj, error = _resolve_light(bpy, light_name)
-        if error:
-            return error
-        light = obj.data
-
-        if getattr(light, "type", None) != "SPOT":
-            return skill_error(
-                f"{light_name} is not a spot light",
-                f"IES textures apply to spot lights only; this light is {getattr(light, 'type', '?')}.",
-            )
-        if not hasattr(light, "ies_file"):
-            return skill_error(
-                "IES unavailable on this Blender version",
-                f"{light_name} exposes no ies_file property, so an IES profile cannot be attached here.",
-            )
-
-        if clear:
-            light.ies_file = ""
-            return skill_success(
-                f"Cleared IES on {light_name}",
-                object_name=light_name,
-                ies_file=None,
-                prompt="Use set_light_ies with ies_file_path to attach a profile again.",
-            )
-
-        if ies_file_path:
-            path = Path(ies_file_path).expanduser()
-            if not path.is_file():
-                return skill_error(f"IES file not found: {path}", f"No file at '{path}'.")
-            try:
-                light.ies_file = str(path)
-            except Exception as exc:
-                return skill_exception(exc, message=f"Failed to set IES file on {light_name}")
-
-        if ies_strength is not None:
-            if ies_strength < 0:
-                return skill_error("Invalid IES strength", "ies_strength must not be negative.")
-            light.ies_strength = float(ies_strength)
-
-        return skill_success(
-            f"Updated IES on {light_name}",
-            object_name=light_name,
-            ies_file=getattr(light, "ies_file", None) or None,
-            ies_strength=getattr(light, "ies_strength", None),
-            prompt="IES affects Cycles renders; use render_scene to see it.",
-        )
-    except ImportError:
-        return skill_error("Blender not available", "bpy could not be imported")
-    except Exception as exc:
-        return skill_exception(exc, message=f"Failed to set IES on {light_name}")
-
-
 def set_light_linking(
     light_name: str,
     receiver_collection: Optional[str] = None,
@@ -463,9 +441,10 @@ def set_light_linking(
     """Restrict which objects a light affects using Blender 4.x light linking.
 
     Light linking makes a light only illuminate a chosen collection, and lets
-    another collection block it. It was added in Blender 4.1 and is not
-    present on lights in earlier versions, so availability is reported rather
-    than assumed.
+    another collection block it. Blender 4.1 added it on the *object*
+    (``Object.light_linking``), not on the light data block, so the object is
+    what is read here. Earlier versions have no such property and are reported
+    rather than assumed.
 
     Args:
         light_name: Light to constrain.
@@ -484,16 +463,21 @@ def set_light_linking(
         obj, error = _resolve_light(bpy, light_name)
         if error:
             return error
-        light = obj.data
 
-        linking = getattr(light, "light_linking", None)
+        # Light linking lives on the object. Reading it from obj.data (the Light
+        # data block) reports "unavailable" on the builds that do have the
+        # feature, which turns the tool into a permanent no-op.
+        linking = getattr(obj, "light_linking", None)
         if linking is None:
             return skill_error(
                 "Light linking unavailable on this Blender version",
                 f"{light_name} exposes no light_linking property. Light linking was added in Blender 4.1.",
             )
 
-        applied: Dict[str, Any] = {}
+        # Resolve every collection before writing any of them. Assigning the
+        # receiver and then failing on the blocker leaves the light half-linked
+        # while the caller is told the call failed.
+        resolved: List[Tuple[str, Optional[Any]]] = []
         for role, collection_name in (
             ("receiver_collection", receiver_collection),
             ("blocker_collection", blocker_collection),
@@ -508,8 +492,7 @@ def set_light_linking(
                     f"light_linking exposes no {role}; this build does not support {role.replace('_', ' ')}.",
                 )
             if clear or collection_name is None:
-                setattr(linking, role, None)
-                applied[role] = None
+                resolved.append((role, None))
                 continue
             collection = bpy.data.collections.get(collection_name)
             if collection is None:
@@ -517,8 +500,12 @@ def set_light_linking(
                     f"Collection not found: {collection_name}",
                     f"No collection named '{collection_name}'.",
                 )
+            resolved.append((role, collection))
+
+        applied: Dict[str, Any] = {}
+        for role, collection in resolved:
             setattr(linking, role, collection)
-            applied[role] = collection_name
+            applied[role] = getattr(collection, "name", None)
 
         return skill_success(
             f"Updated light linking on {light_name}",

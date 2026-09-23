@@ -254,6 +254,24 @@ def test_save_image_fails_when_blender_writes_nothing(tmp_path):
     assert str(tmp_path / "out.png") in result["error"]
 
 
+def test_save_image_rejects_a_save_that_changed_nothing(tmp_path):
+    """A file that is already there proves nothing about this call.
+
+    The destination may predate the call, so "it exists" is not evidence that
+    Blender wrote it now. Only a change in mtime or size is.
+    """
+    source = tmp_path / "source.png"
+    source.write_bytes(b"SAVED")
+    image = _make_image(filepath=str(source))
+    image.save = MagicMock()  # completes silently without writing
+    _ = image.pixels[0]
+
+    result = _call(LIBRARY, "save_image", _bpy_with_images(image), image_name="Tex")
+    assert result["success"] is False
+    assert "not written" in result["message"].lower()
+    assert source.read_bytes() == b"SAVED"
+
+
 def test_save_image_reports_an_empty_pixel_collection(tmp_path):
     """An image whose pixels vanish is a failure with the state included.
 
@@ -399,6 +417,51 @@ def test_image_file_status_reports_unsaved():
     assert result["context"]["state"] == "unsaved"
 
 
+def test_image_file_status_resolves_a_blend_relative_path(tmp_path):
+    """'//textures/wood.png' is Blender's default form, not a literal path."""
+    textures = tmp_path / "textures"
+    textures.mkdir()
+    (textures / "wood.png").write_bytes(b"png")
+
+    image = _make_image(filepath="//textures/wood.png")
+    bpy = _bpy_with_images(image)
+    bpy.path = SimpleNamespace(abspath=lambda value: str(tmp_path / value.lstrip("/")))
+
+    result = _call(LIBRARY, "image_file_status", bpy, image_name="Tex")
+    assert result["success"] is True, result.get("error")
+    assert result["context"]["exists_on_disk"] is True, "the file is next to the .blend"
+
+
+def test_save_image_writes_in_place_at_a_blend_relative_path(tmp_path):
+    """A '//' path is written relative to the .blend, so checking it as a
+    literal reports a successful save as a failure."""
+    textures = tmp_path / "textures"
+    textures.mkdir()
+    target = textures / "wood.png"
+    target.write_bytes(b"ORIGINAL")
+
+    class _RelativeImage(_Image):
+        """Stands in for Blender, which resolves in-place saves against the .blend."""
+
+        def _save(self):
+            if not self.has_data:
+                raise RuntimeError(f"Image {self.name!r} does not have any image data")
+            self._write(self._blend_dir / self.filepath.lstrip("/"), "save")
+
+    image = _RelativeImage(
+        name="Tex", filepath="//textures/wood.png", size=(2, 2), source="FILE", packed=False, tiles=()
+    )
+    image._blend_dir = tmp_path
+    _ = image.pixels[0]
+
+    bpy = _bpy_with_images(image)
+    bpy.path = SimpleNamespace(abspath=lambda value: str(tmp_path / value.lstrip("/")))
+
+    result = _call(LIBRARY, "save_image", bpy, image_name="Tex")
+    assert result["success"] is True, result.get("error")
+    assert target.read_bytes() == b"SAVED"
+
+
 def test_list_image_tiles_reports_non_udim():
     image = _make_image(tiles=[SimpleNamespace(number=0, label="")])
     result = _call(LIBRARY, "list_image_tiles", _bpy_with_images(image), image_name="Tex")
@@ -415,19 +478,22 @@ def test_list_image_tiles_reports_udim():
     assert result["context"]["tiles"][0]["number"] == 1001
 
 
+def test_list_image_tiles_reports_a_single_tile_udim_as_udim():
+    """TILED is Blender's single-tile UDIM source, so UDIM alone misses it."""
+    image = _make_image(source="TILED", tiles=[SimpleNamespace(number=1001, label="1001")])
+    result = _call(LIBRARY, "list_image_tiles", _bpy_with_images(image), image_name="Tex")
+    assert result["success"] is True
+    assert result["context"]["is_udim"] is True
+
+
 def test_list_image_tiles_reports_a_missing_image():
     result = _call(LIBRARY, "list_image_tiles", _bpy_with_images(), image_name="Ghost")
     assert result["success"] is False
     assert "image not found" in result["message"].lower()
 
 
-# ---------------------------------------------------------------------------
-# IES
-# ---------------------------------------------------------------------------
-
-
-def _light_object(name="Spot", light_type="SPOT", **light_attrs):
-    light = SimpleNamespace(type=light_type, **light_attrs)
+def _light_object(name="Spot", light_type="SPOT"):
+    light = SimpleNamespace(type=light_type)
     return SimpleNamespace(name=name, type="LIGHT", data=light)
 
 
@@ -439,81 +505,15 @@ def _bpy_with_lights(*objects, collections=()):
     return bpy
 
 
-def test_set_light_ies_attaches_a_profile(tmp_path):
-    path = tmp_path / "profile.ies"
-    path.write_text("x", encoding="utf-8")
-    obj = _light_object(ies_file="", ies_strength=1.0)
-
-    result = _call(
-        LIGHTING,
-        "set_light_ies",
-        _bpy_with_lights(obj),
-        light_name="Spot",
-        ies_file_path=str(path),
-        ies_strength=2.5,
-    )
-    assert result["success"] is True, result.get("error")
-    assert obj.data.ies_file == str(path)
-    assert obj.data.ies_strength == 2.5
-
-
-def test_set_light_ies_rejects_a_missing_file(tmp_path):
-    obj = _light_object(ies_file="")
-    result = _call(
-        LIGHTING, "set_light_ies", _bpy_with_lights(obj), light_name="Spot", ies_file_path=str(tmp_path / "n.ies")
-    )
-    assert result["success"] is False
-    assert "ies file not found" in result["message"].lower()
-    assert obj.data.ies_file == ""
-
-
-def test_set_light_ies_rejects_non_spot_lights(tmp_path):
-    path = tmp_path / "profile.ies"
-    path.write_text("x", encoding="utf-8")
-    obj = _light_object(light_type="POINT", ies_file="")
-
-    result = _call(LIGHTING, "set_light_ies", _bpy_with_lights(obj), light_name="Spot", ies_file_path=str(path))
-    assert result["success"] is False
-    assert "not a spot light" in result["message"].lower()
-    assert obj.data.ies_file == ""
-
-
-def test_set_light_ies_reports_a_light_without_ies_support(tmp_path):
-    """A light with no ies_file property must be reported, not silently skipped."""
-    path = tmp_path / "profile.ies"
-    path.write_text("x", encoding="utf-8")
-    obj = _light_object()  # no ies_file attribute at all
-    assert not hasattr(obj.data, "ies_file")
-
-    result = _call(LIGHTING, "set_light_ies", _bpy_with_lights(obj), light_name="Spot", ies_file_path=str(path))
-    assert result["success"] is False
-    assert "unavailable" in result["message"].lower()
-    assert "ies_file" in result["error"]
-
-
-def test_set_light_ies_can_clear():
-    obj = _light_object(ies_file="/tmp/p.ies", ies_strength=1.0)
-    result = _call(LIGHTING, "set_light_ies", _bpy_with_lights(obj), light_name="Spot", clear=True)
-    assert result["success"] is True
-    assert obj.data.ies_file == ""
-    assert result["context"]["ies_file"] is None
-
-
-def test_set_light_ies_rejects_negative_strength():
-    obj = _light_object(ies_file="", ies_strength=1.0)
-    result = _call(LIGHTING, "set_light_ies", _bpy_with_lights(obj), light_name="Spot", ies_strength=-1)
-    assert result["success"] is False
-    assert "strength" in result["message"].lower()
-
-
 # ---------------------------------------------------------------------------
 # light linking
 # ---------------------------------------------------------------------------
 
 
 def _linking_object(name="Spot", light_type="SPOT"):
-    linking = SimpleNamespace(receiver_collection=None, blocker_collection=None)
-    obj = _light_object(name=name, light_type=light_type, light_linking=linking)
+    """A light object with Blender 4.1+ light linking on the object itself."""
+    obj = _light_object(name=name, light_type=light_type)
+    obj.light_linking = SimpleNamespace(receiver_collection=None, blocker_collection=None)
     return obj
 
 
@@ -531,8 +531,8 @@ def test_set_light_linking_assigns_receiver_and_blocker():
         blocker_collection="Occluders",
     )
     assert result["success"] is True, result.get("error")
-    assert obj.data.light_linking.receiver_collection is receivers
-    assert obj.data.light_linking.blocker_collection is blockers
+    assert obj.light_linking.receiver_collection is receivers
+    assert obj.light_linking.blocker_collection is blockers
     assert result["context"]["receiver"] == "Chars"
     assert result["context"]["blocker"] == "Occluders"
 
@@ -548,13 +548,13 @@ def test_set_light_linking_reports_a_missing_collection():
     )
     assert result["success"] is False
     assert "collection not found" in result["message"].lower()
-    assert obj.data.light_linking.receiver_collection is None
+    assert obj.light_linking.receiver_collection is None
 
 
 def test_set_light_linking_reports_a_light_without_support():
-    """Older lights have no light_linking; that must be an explicit error."""
+    """Pre-4.1 objects have no light_linking; that must be an explicit error."""
     obj = _light_object()  # no light_linking attribute
-    assert not hasattr(obj.data, "light_linking")
+    assert not hasattr(obj, "light_linking")
 
     result = _call(LIGHTING, "set_light_linking", _bpy_with_lights(obj), light_name="Spot", receiver_collection="Chars")
     assert result["success"] is False
@@ -571,7 +571,7 @@ def test_set_light_linking_requires_a_change():
 
 def test_set_light_linking_can_clear():
     obj = _linking_object()
-    obj.data.light_linking.receiver_collection = SimpleNamespace(name="Chars")
+    obj.light_linking.receiver_collection = SimpleNamespace(name="Chars")
 
     result = _call(LIGHTING, "set_light_linking", _bpy_with_lights(obj), light_name="Spot", clear=True)
     assert result["success"] is True
@@ -590,6 +590,28 @@ def test_set_light_linking_rejects_non_lights():
 # ---------------------------------------------------------------------------
 
 
+def test_set_light_linking_leaves_the_receiver_untouched_when_the_blocker_is_missing():
+    """A missing blocker must not leave the receiver already assigned.
+
+    Assigning as the loop goes leaves the light half-linked while the caller is
+    told the call failed, so every collection is resolved before any is written.
+    """
+    obj = _linking_object()
+    receivers = SimpleNamespace(name="Chars")
+
+    result = _call(
+        LIGHTING,
+        "set_light_linking",
+        _bpy_with_lights(obj, collections=[receivers]),
+        light_name="Spot",
+        receiver_collection="Chars",
+        blocker_collection="Ghost",
+    )
+    assert result["success"] is False
+    assert "collection not found" in result["message"].lower()
+    assert obj.light_linking.receiver_collection is None, "nothing may be assigned on a failed call"
+
+
 def test_tools_yaml_declares_the_new_tools():
     library = yaml.safe_load(Path(LIBRARY_PATH).read_text(encoding="utf-8"))
     lighting = yaml.safe_load(Path(LIGHTING_PATH).read_text(encoding="utf-8"))
@@ -603,7 +625,10 @@ def test_tools_yaml_declares_the_new_tools():
         "list_image_tiles",
     }.issubset(names)
     light_names = {tool["name"] for tool in lighting["tools"]}
-    assert {"set_light_ies", "set_light_linking"}.issubset(light_names)
+    assert "set_light_linking" in light_names
+    # Blender has no Light.ies_file property, so the IES tool was removed rather
+    # than left as a facade that can only ever report "unavailable".
+    assert "set_light_ies" not in light_names
 
 
 def test_new_tools_declare_required_contract_fields():
@@ -620,7 +645,7 @@ def test_new_tools_declare_required_contract_fields():
             "image_file_status",
             "list_image_tiles",
         ),
-        LIGHTING: ("set_light_ies", "set_light_linking"),
+        LIGHTING: ("set_light_linking",),
     }
     for skill, names in expected.items():
         tools = {tool["name"]: tool for tool in docs[skill]["tools"]}
@@ -639,3 +664,9 @@ def test_new_tools_are_not_flagged_destructive():
     for name in ("load_image", "save_image", "pack_image", "unpack_image", "image_file_status", "list_image_tiles"):
         assert library[name]["destructive"] is False, name
         assert library[name]["annotations"]["destructive_hint"] is False, name
+
+
+def test_save_image_declares_an_open_world_contract():
+    """save_image writes to a caller-supplied path, so planners must see that."""
+    library = {tool["name"]: tool for tool in yaml.safe_load(Path(LIBRARY_PATH).read_text(encoding="utf-8"))["tools"]}
+    assert library["save_image"]["annotations"]["open_world_hint"] is True
