@@ -51,8 +51,8 @@ actually mean when they say "Blender MCP".
 | MCP protocol | Implements MCP; version matrix not published in the README | `2025-03-26` and `2025-06-18` (see [protocol compatibility](protocol-compatibility.md)) |
 | Tool surface | Focused set: objects, materials, scene inspection, code execution, plus built-in generative-3D and asset integrations | 200+ typed tools across 25+ skill packages, loaded progressively |
 | Skill loading | Not applicable | Staged (`search_skills` to `load_skill` to call); see `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` |
-| Arbitrary Python | **On by default** — the AI can run any Python in Blender | Typed tools are the intended path; `execute_python` is an escape hatch |
-| Execution guardrails | Opt-in `BLENDER_MCP_SAFE_MODE=1` — pre-checks scripts and blocks file, subprocess, network and persistence calls | Opt-out `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` / `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` |
+| Arbitrary Python | **On by default** — the AI can run any Python in Blender | Typed tools are the intended path; `execute_python` and `execute_script_file` are escape hatches |
+| Execution guardrails | Opt-in `BLENDER_MCP_SAFE_MODE=1` — pre-checks scripts and blocks file, subprocess, network and persistence calls | Opt-out `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` / `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` — both escape hatches refuse to run while either is set |
 | Network exposure | Add-on socket has **no authentication or encryption**; anyone who can reach the port can run Python inside Blender | Loopback HTTP endpoint; see the Configuration section of the README for the execution opt-outs |
 | Cross-DCC scope | Blender only | Shares the `dcc-mcp` gateway and `dcc-mcp-cli` surface with Maya, Houdini, USD, 3ds Max and others |
 | Generative 3D / assets | Bundled: Poly Haven, Sketchfab, Poly Pizza, Hyper3D Rodin, Hunyuan3D | Installed on demand from the marketplace — see [extending with marketplace skills](#extending-with-marketplace-skills) |

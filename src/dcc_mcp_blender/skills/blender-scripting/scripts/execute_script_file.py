@@ -8,9 +8,14 @@ from contextlib import redirect_stderr, redirect_stdout
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._script_guard import guard_arbitrary_execution
+
 
 def execute_script_file(filepath: str) -> dict:
     """Execute a Python script file inside Blender's interpreter.
+
+    Refuses immediately when ``DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT`` or
+    ``DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`` is set.
 
     Args:
         filepath: Absolute path to the Python script file.
@@ -18,6 +23,10 @@ def execute_script_file(filepath: str) -> dict:
     Returns:
         ActionResultModel dict with stdout, stderr output.
     """
+    refusal = guard_arbitrary_execution("execute_script_file")
+    if refusal is not None:
+        return refusal
+
     try:
         import bpy  # noqa: F401
 

@@ -404,8 +404,8 @@ dcc_mcp_blender.stop_server()
 | `DCC_MCP_BLENDER_STRICT_SKILL_SCAN` | `false` | Raise on invalid skill YAML instead of logging a debug warning and skipping. |
 | `DCC_MCP_BLENDER_ENABLE_WORKFLOWS` | `true` | Enable workflow orchestration surface (`workflows.run`, `workflows.resume`, etc.). |
 | `DCC_MCP_BLENDER_ENABLE_GATEWAY_FAILOVER` | `true` | Enable gateway failover for high-availability configurations. |
-| `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` | `false` | Disable the `execute_python` tool to restrict arbitrary code execution. |
-| `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` | `false` | Disable arbitrary script execution; implies `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`. |
+| `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` | `false` | Refuse the `execute_python` and `execute_script_file` escape hatches to restrict arbitrary code execution. |
+| `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT` | `false` | Refuse all arbitrary script execution; implies `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`. |
 | `DCC_MCP_BLENDER_PROJECT_TOOLS` | *(none)* | Set to `0` to opt out of the four `project_*` MCP tools. |
 | `DCC_MCP_BLENDER_RESOURCES` | *(none)* | Set to `0` to opt out of MCP resource publishing (e.g. `scene://current`). |
 | `DCC_MCP_BLENDER_SKILL_PATHS` | *(none)* | Additional `os.pathsep`-delimited skill search paths extending the bundled set. |
@@ -452,9 +452,9 @@ add-on socket has no authentication or encryption.
 - **`dcc-mcp-blender`** — the production path. The MCP server runs embedded in
 Blender with no external process, exposing 200+ typed tools across 25+ skill
 packages over Streamable HTTP. Typed tools are schema-validated and testable,
-arbitrary execution can be switched off with
-`DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`, and Blender shares one gateway and
-CLI with Maya, Houdini, USD and 3ds Max.
+the `execute_python` and `execute_script_file` escape hatches can be switched
+off with `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT`, and Blender shares one
+gateway and CLI with Maya, Houdini, USD and 3ds Max.
 
 Pick `mcp-for-blender` for prompt-assisted exploration on a single machine.
 Pick `dcc-mcp-blender` for pipeline work, cross-DCC automation, headless/CI

@@ -57,15 +57,22 @@ def _resolve_opt_out(env_name: str, flag: Optional[bool]) -> bool:
     return raw.strip() != "0"
 
 
+def resolve_execute_python_opt_outs() -> tuple[str, ...]:
+    """Return the env vars that currently switch arbitrary execution off.
+
+    Both opt-outs are reported (not just the first match) so refusal messages
+    can name every variable an operator has to clear.
+    """
+    return tuple(name for name in (ENV_DISABLE_ARBITRARY_SCRIPT, ENV_DISABLE_EXECUTE_PYTHON) if _env_truthy(name))
+
+
 def resolve_execute_python_disabled() -> bool:
     """Return True when ``execute_python`` must refuse all calls.
 
     ``DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT`` implies this flag.  Used by
     ``blender-scripting`` scripts so studios can enforce skills-first workflows.
     """
-    if _env_truthy(ENV_DISABLE_ARBITRARY_SCRIPT):
-        return True
-    return _env_truthy(ENV_DISABLE_EXECUTE_PYTHON)
+    return bool(resolve_execute_python_opt_outs())
 
 
 def resolve_metrics_enabled(metrics_enabled: Optional[bool]) -> bool:
