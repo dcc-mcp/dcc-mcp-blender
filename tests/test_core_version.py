@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import pathlib
 import re
 
@@ -44,10 +43,34 @@ def _core_latest_job():
     return job
 
 
-def _core_latest_job_text():
-    # type: () -> str
-    """Return the whole ``core-latest`` job serialised, for substring assertions."""
-    return json.dumps(_core_latest_job(), default=str)
+def _core_latest_step_runs():
+    # type: () -> list
+    """Return the ``run`` script of every ``core-latest`` step, unserialised.
+
+    Asserting against the step scripts rather than one JSON blob of the whole job
+    keeps each check bound to the command that has to carry it -- a substring
+    found anywhere in the job is not evidence that the command doing the work
+    still has it.
+    """
+    steps = _core_latest_job().get("steps") or []
+    return [(step.get("run") or "") for step in steps if isinstance(step, dict)]
+
+
+def _core_latest_pytest_statements():
+    # type: () -> list
+    """Return every pytest invocation of the ``core-latest`` job, one per shell statement.
+
+    Splitting the ``run`` scripts on statement separators keeps the check honest:
+    ``pytest a; pytest b`` still reports success when the first suite fails,
+    because only the last exit code decides the step.
+    """
+    statements = []
+    for run in _core_latest_step_runs():
+        for statement in re.split(r";|\n", run):
+            statement = statement.strip()
+            if "pytest" in statement:
+                statements.append(statement)
+    return statements
 
 
 def test_core_dependency_range_is_pinned_to_the_020x_series():
@@ -98,13 +121,25 @@ def test_ci_exposes_a_core_latest_compatibility_job():
     upper bound is bumped, and it is trivially easy to drop in an unrelated workflow edit.
     """
     job = _core_latest_job()
+    runs = _core_latest_step_runs()
 
     # Advisory, not blocking: the whole point is to report drift without reddening the PR.
     assert job.get("continue-on-error") is True, job
-    text = _core_latest_job_text()
-    assert "dcc-mcp-core==" in text, "the job must pin the newest Core explicitly"
-    assert "test_install_lifecycle.py" in text, "the job must run the Install SOP contract"
-    assert "test_core_version.py" in text, "the job must run the dependency gates it protects"
+    # The resolved version must reach the install command itself. Asserting only
+    # the `dcc-mcp-core==` prefix would accept a hard-coded version, which
+    # freezes the job on one Core forever and disables the early warning
+    # silently -- the exact failure this job exists to surface.
+    assert any("dcc-mcp-core==${{ steps.core.outputs.version }}" in run for run in runs), (
+        "the job must install the resolved Core version, not a hard-coded one"
+    )
+    # Both suites must be exercised by one invocation, so neither can be moved to
+    # a step that runs before the newest Core is installed, and a failure in the
+    # first cannot hide the second.
+    pytest_cmds = _core_latest_pytest_statements()
+    assert pytest_cmds, "the core-latest job must run pytest"
+    assert any("test_install_lifecycle.py" in cmd and "test_core_version.py" in cmd for cmd in pytest_cmds), (
+        "the job must run both suites in a single pytest invocation"
+    )
 
 
 def test_core_latest_job_fails_when_the_core_version_cannot_be_resolved():
