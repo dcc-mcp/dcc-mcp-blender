@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -566,12 +567,15 @@ def test_runtime_dependencies_exclude_jsonschema():
 
     assert "jsonschema" not in runtime
     if install._native_report_validator() is None:
-        # Core renamed or dropped the symbol. That drift belongs to the
-        # core-latest early-warning job; failing here would redden the main
-        # matrix on a Core change, which is the opposite of what the pin is for.
+        # ``None`` covers both a renamed/removed export and a Core that cannot be
+        # imported at all. The pinned main matrix must not red on either -- that
+        # is what the pin is for -- but the drift has to stay visible somewhere,
+        # so the core-latest job, which tracks the newest Core, fails on it.
+        if os.environ.get("DCC_MCP_CORE_LATEST"):
+            pytest.fail("Core no longer exports `validate_install_sop_report`")
         pytest.skip(
             "Core does not export `validate_install_sop_report`; the core-latest "
-            "job reports this drift instead of the main matrix."
+            "job fails on this drift instead of the main matrix."
         )
 
 
