@@ -65,6 +65,16 @@ except ImportError:
         return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
+# Last-resort value for the report's own ``schema_version`` field, used only when Core's
+# schema document cannot be read at all. See ``report_schema_version()``.
+#
+# This is deliberately NOT Core's ``INSTALL_SOP_SCHEMA_VERSION``. That constant is the
+# revision of the published schema *artifact* (``-vN``); Core documents it as separate from
+# the report field, which stays at 1 because v2 only adds the optional ``catalog`` object.
+# The two values coincided at 1 through Core 0.20.33, which is why copying the constant
+# into the report looked correct right up until 0.20.34 bumped the artifact revision to 2.
+FALLBACK_REPORT_SCHEMA_VERSION = 1
+
 DCC_TYPE = "blender"
 COMMAND = "dcc-mcp-blender"
 MIN_BLENDER_VERSION = (3, 6)
@@ -390,10 +400,76 @@ def _resolve_context(dcc_path, python_path, environ):
     )
 
 
+def _published_schema():
+    # type: () -> Dict[str, Any]
+    """Return the Install SOP schema document Core publishes."""
+    return load_install_sop_schema()
+
+
+def _published_schema_or_none():
+    # type: () -> Optional[Dict[str, Any]]
+    """Return Core's schema document, or ``None`` if it cannot be trusted.
+
+    Reading the document touches the disk and is verified by Core with a SHA-256 digest, so
+    a partially installed, tampered, or otherwise unhealthy Core can make the read fail
+    instead of returning a document. Broken installs are exactly the situation this CLI
+    exists to report on, so every reader of the document must use this helper rather than
+    calling ``_published_schema()`` directly -- one unguarded call is enough to stop the CLI
+    from emitting the report it was about to print.
+    """
+    try:
+        return _published_schema()
+    except (RuntimeError, OSError, ValueError):
+        # Core signals schema_unavailable / schema_identity_mismatch / schema_digest_mismatch
+        # with RuntimeError, unreadable files with OSError, and a corrupt document with
+        # ValueError. None of them may stop this CLI from reporting.
+        return None
+
+
+def _published_schema_version(schema):
+    # type: (Optional[Dict[str, Any]]) -> Optional[int]
+    """Return the ``schema_version`` const a schema document enforces."""
+    if not isinstance(schema, dict):
+        return None
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return None
+    declared = properties.get("schema_version")
+    if not isinstance(declared, dict):
+        return None
+    value = declared.get("const")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def report_schema_version():
+    # type: () -> int
+    """Return the ``schema_version`` value every emitted report must carry.
+
+    Core enforces this value as the ``const`` of the ``schema_version`` property in the
+    schema document it ships, so that document is the authoritative source -- emitting
+    anything else produces reports Core's own validator rejects.
+
+    Core's exported ``INSTALL_SOP_SCHEMA_VERSION`` is deliberately NOT used. It is the
+    revision of the published schema *artifact* (``-vN``), a separate quantity from the
+    report's own field; the two merely happened to agree while both were 1. Populating the
+    report from that constant is the defect this function exists to avoid.
+
+    If the document cannot be read -- see ``_published_schema_or_none()`` -- the value falls
+    back to ``FALLBACK_REPORT_SCHEMA_VERSION`` rather than propagating, because this CLI's
+    job is to keep emitting a report precisely when the installation is broken.
+    """
+    published = _published_schema_version(_published_schema_or_none())
+    if published is not None:
+        return published
+    return FALLBACK_REPORT_SCHEMA_VERSION
+
+
 def _base_report(ctx, command, status):
     # type: (InstallContext, str, str) -> Dict[str, Any]
     return {
-        "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+        "schema_version": report_schema_version(),
         "status": status,
         "dcc_type": DCC_TYPE,
         "command": command,
@@ -605,7 +681,7 @@ def _receipt_payload(ctx, startup_path, installed_at, previous_version):
     # type: (InstallContext, Path, float, Optional[str]) -> Dict[str, Any]
     return {
         "receipt_version": 1,
-        "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+        "schema_version": report_schema_version(),
         "dcc_type": DCC_TYPE,
         "adapter_version": __version__,
         "core_version": ctx.core_version,
@@ -982,7 +1058,7 @@ def _failure_report(command, dcc_path, python_path, environ, exc):
     # type: (str, Optional[str], Optional[str], Mapping[str, str], LifecycleError) -> Dict[str, Any]
     receipt_path = Path(environ.get("DCC_MCP_BLENDER_RECEIPT", str(DEFAULT_RECEIPT_PATH))).expanduser().resolve()
     return {
-        "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+        "schema_version": report_schema_version(),
         "status": "requires_restart" if exc.exit_code == INSTALL_EXIT_REQUIRES_RESTART else "failed",
         "dcc_type": DCC_TYPE,
         "command": command,
@@ -1104,6 +1180,7 @@ if __name__ == "__main__":
 __all__ = [
     "COMMAND",
     "DCC_TYPE",
+    "FALLBACK_REPORT_SCHEMA_VERSION",
     "INSTALL_EXIT_ACQUIRE",
     "INSTALL_EXIT_CODES",
     "INSTALL_EXIT_INSTALL",
@@ -1115,4 +1192,5 @@ __all__ = [
     "LIFECYCLE_COMMANDS",
     "load_install_sop_schema",
     "main",
+    "report_schema_version",
 ]

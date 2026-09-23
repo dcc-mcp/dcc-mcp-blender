@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
+
+import pytest
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - Python 3.7-3.10
+    import tomli as tomllib
 
 ROOT = Path(__file__).parent.parent
 
@@ -86,7 +94,7 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
 
     report = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == install.report_schema_version()
     assert report["status"] == "planned"
     assert report["dcc_type"] == "blender"
     assert report["install_state"] == "fresh"
@@ -323,7 +331,15 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
     from dcc_mcp_blender import install
 
     schema = install.load_install_sop_schema()
-    assert schema["$id"] == "https://dcc-mcp.github.io/schemas/adapter-install-sop-v1.schema.json"
+    # Core names the artifact by revision (`adapter-install-sop-vN.schema.json`) and moved from
+    # v1 to v2 in 0.20.34, so pinning the file name would fail on every Core revision bump.
+    # Pin the contract identity instead: the shared Install SOP schema, whatever revision
+    # currently carries it.
+    assert re.fullmatch(
+        r"https://dcc-mcp\.github\.io/schemas/adapter-install-sop-v[0-9]+\.schema\.json",
+        schema["$id"],
+    ), schema["$id"]
+    assert install.report_schema_version() == schema["properties"]["schema_version"]["const"]
     required = set(schema["required"])
 
     blender = tmp_path / "blender"
@@ -344,7 +360,7 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
         install.main(arguments)
         report = json.loads(capsys.readouterr().out)
         assert required <= set(report), verb
-        assert report["schema_version"] == install.INSTALL_SOP_SCHEMA_VERSION
+        assert report["schema_version"] == install.report_schema_version()
 
 
 def test_missing_receipted_startup_is_reported_as_partial(tmp_path, monkeypatch, capsys):
@@ -578,3 +594,92 @@ def test_windows_lock_is_a_restart_boundary_not_a_clean_install_failure(tmp_path
     assert report["status"] == "requires_restart"
     assert report["verify"]["failure_stage"] == "install"
     assert report["verify"]["failure_reason"] == "windows_file_lock"
+
+
+def _schema_document(const):
+    """A minimal Core schema document enforcing one ``schema_version`` const."""
+    return {"properties": {"schema_version": {"const": const, "type": "integer"}}}
+
+
+def test_report_schema_version_follows_the_published_document(monkeypatch):
+    """The report field comes from the ``const`` Core enforces, not a literal."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(7))
+
+    assert install.report_schema_version() == 7
+
+
+def test_report_schema_version_ignores_cores_artifact_revision(monkeypatch):
+    """Core's exported constant is the artifact revision, not the report field.
+
+    Core 0.20.34 exports ``INSTALL_SOP_SCHEMA_VERSION = 2`` (the ``-v2`` artifact revision)
+    while the report field must stay at the document's ``const`` of 1, because v2 only adds an
+    optional ``catalog`` object. These are separate quantities that merely agreed while both
+    were 1, so the constant must never reach the report.
+    """
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(1))
+
+    assert install.report_schema_version() == 1
+
+
+def test_report_schema_version_falls_back_when_the_document_is_missing(monkeypatch):
+    """A Core with no readable schema document still yields a usable report."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: None)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Install SOP schema integrity error: schema_digest_mismatch"),
+        OSError("schema file unreadable"),
+        ValueError("schema document is not valid JSON"),
+    ],
+)
+def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
+    """An unhealthy Core must not stop the CLI from emitting a report.
+
+    Core verifies its schema document with a SHA-256 digest and raises on a missing, tampered,
+    or unparsable document. Broken installs are exactly the situation this CLI exists to
+    report on, so the read failure has to degrade to the fallback instead of propagating.
+    """
+    from dcc_mcp_blender import install
+
+    def _raise():
+        raise error
+
+    monkeypatch.setattr(install, "_published_schema", _raise)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+def test_core_dependency_stays_pinned_below_the_next_minor():
+    """``<1.0.0`` admits any future Core minor, which is how 0.20.34 shipped unannounced."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    core = next(item for item in pyproject["project"]["dependencies"] if item.startswith("dcc-mcp-core"))
+
+    assert "<0.21.0" in core, f"dcc-mcp-core pin drifted: {core}"
+
+
+def _ci_workflow():
+    """Parsed ``.github/workflows/ci.yml`` for the repository under test."""
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def test_ci_core_latest_job_resolves_a_real_core_version():
+    """The early-warning job must fail loudly rather than test an empty pin."""
+    job = _ci_workflow()["jobs"]["core-latest"]
+    resolve = [step for step in job["steps"] if step.get("id") == "core"]
+    assert resolve, "core-latest job has no version resolution step"
+
+    script = resolve[0]["run"]
+    assert "exit 1" in script, "empty version resolution must fail the job"
+    assert "::error::" in script

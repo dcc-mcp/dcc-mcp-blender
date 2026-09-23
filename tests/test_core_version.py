@@ -19,15 +19,30 @@ def _load_assemble_zip_module():
     return mod
 
 
+# The Core upper bound, read from the single source of truth so tightening it does not require
+# touching every dependency assertion.
+def _core_upper_bound() -> str:
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'"dcc-mcp-core>=[^,]+,<(?P<upper>[0-9][0-9A-Za-z.]*)"', pyproject)
+    assert match is not None
+    return match.group("upper")
+
+
 def test_core_dependency_floor_is_0200():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '"dcc-mcp-core>=0.20.0,<1.0.0"' in pyproject
+    assert '"dcc-mcp-core>=0.20.0,<%s"' % _core_upper_bound() in pyproject
+
+
+def test_core_dependency_upper_bound_excludes_the_next_core_minor():
+    # ``<1.0.0`` admitted any future Core minor, which is how 0.20.34 changed the Install SOP
+    # schema version without this adapter noticing.
+    assert _core_upper_bound() == "0.21.0"
 
 
 def test_packaging_core_floor_matches_pyproject():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'"dcc-mcp-core>=(?P<version>[^,]+),<1\.0\.0"', pyproject)
+    match = re.search(r'"dcc-mcp-core>=(?P<version>[^,]+),<%s"' % re.escape(_core_upper_bound()), pyproject)
 
     assert match is not None
     assert _load_assemble_zip_module().MIN_CORE_VERSION == match.group("version")
