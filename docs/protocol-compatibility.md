@@ -1,7 +1,7 @@
 # MCP protocol compatibility
 
 `dcc-mcp-blender` delegates MCP HTTP negotiation to `dcc-mcp-core`. The
-adapter's released dependency range is `dcc-mcp-core>=0.20.0,<1.0.0`; the
+adapter's released dependency range is `dcc-mcp-core>=0.20.0,<0.21.0`; the
 adapter must not copy Core's negotiation logic or require a development wheel.
 
 ## Compatibility matrix

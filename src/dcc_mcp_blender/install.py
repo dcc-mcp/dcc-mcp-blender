@@ -147,6 +147,70 @@ def report_schema_version():
     return FALLBACK_REPORT_SCHEMA_VERSION
 
 
+def _native_report_validator():
+    # type: () -> Optional[Callable[[Dict[str, Any]], None]]
+    """Return Core's Rust-backed Install SOP validator when available."""
+    try:
+        from dcc_mcp_core.deployment import validate_install_sop_report
+    except ImportError:
+        try:
+            from dcc_mcp_core import validate_install_sop_report
+        except ImportError:
+            return None
+    return validate_install_sop_report
+
+
+def validate_public_report(report):
+    # type: (Dict[str, Any]) -> None
+    """Raise ``ValueError`` when a report does not satisfy the shared contract.
+
+    Core compiles Draft 2020-12 validation into its ``_core`` extension module,
+    so the adapter needs no third-party JSON Schema package at runtime. When the
+    native validator is missing -- for example on the py37-lite pure-Python Core
+    wheel, or when Core's schema document cannot be read at all -- fall back to
+    the structural check this module has always been able to perform.
+    """
+    validator = _native_report_validator()
+    if validator is not None and _published_schema_or_none() is not None:
+        try:
+            validator(report)
+        except RuntimeError:
+            pass  # Native validator unusable in this Core build; degrade below.
+        else:
+            return
+    required = {
+        "schema_version",
+        "status",
+        "dcc_type",
+        "adapter_version",
+        "core_version",
+        "steps",
+        "next_steps",
+        "receipt_path",
+        "verify",
+    }
+    schema_version = report.get("schema_version")
+    if (
+        not required.issubset(report)
+        # ``type(...) is not int`` rather than ``not isinstance(...)``: bool is
+        # an int subclass, so ``isinstance(True, int)`` is true and ``True == 1``
+        # would let a non-integer report through the structural check.
+        or type(schema_version) is not int
+        or schema_version != report_schema_version()
+    ):
+        raise ValueError("Install SOP report is incomplete")
+
+
+def loads_public_report(value):
+    # type: (str) -> Dict[str, Any]
+    """Decode one emitted report and validate it against the shared contract."""
+    report = json.loads(value)
+    if not isinstance(report, dict):
+        raise ValueError("Install SOP output must be one JSON object")
+    validate_public_report(report)
+    return report
+
+
 DCC_TYPE = "blender"
 COMMAND = "dcc-mcp-blender"
 MIN_BLENDER_VERSION = (3, 6)
@@ -1196,6 +1260,8 @@ __all__ = [
     "INSTALL_SOP_SCHEMA_VERSION",
     "LIFECYCLE_COMMANDS",
     "load_install_sop_schema",
+    "loads_public_report",
     "main",
     "report_schema_version",
+    "validate_public_report",
 ]

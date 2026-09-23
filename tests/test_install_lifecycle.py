@@ -322,7 +322,12 @@ def test_verify_refuses_interpreter_drift_from_the_receipt(tmp_path, monkeypatch
 
 
 def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypatch, capsys):
-    """Every lifecycle verb emits the required shared result envelope."""
+    """Every lifecycle verb emits a report the adapter's own validator accepts.
+
+    The check runs through ``loads_public_report`` rather than comparing the
+    required key set: a structural check accepts reports Core's validator
+    rejects, so it cannot prove the emitted document satisfies the contract.
+    """
     from dcc_mcp_blender import install
 
     schema = install.load_install_sop_schema()
@@ -352,9 +357,11 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
     for verb in install.LIFECYCLE_COMMANDS:
         arguments = [verb, "--dry-run", *common] if verb != "status" else [verb, *common]
         install.main(arguments)
-        report = json.loads(capsys.readouterr().out)
+        report = install.loads_public_report(capsys.readouterr().out)
         assert required <= set(report), verb
         assert report["schema_version"] == install.report_schema_version()
+        # The document itself stays the reference: the adapter validator may
+        # degrade to a structural check when Core's native validator is absent.
         Draft202012Validator(schema).validate(report)
 
 
@@ -422,6 +429,141 @@ def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
     monkeypatch.setattr(install, "_published_schema", _raise)
 
     assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Install SOP schema integrity error: schema_digest_mismatch"),
+        OSError("schema file unreadable"),
+        ValueError("schema document is not valid JSON"),
+    ],
+)
+def test_validate_public_report_survives_schema_read_failure(monkeypatch, error):
+    """Validation must degrade, not raise, when the schema document is unreadable.
+
+    Reports are validated on their way out, including the failure report built
+    when an install is already broken. Guarding only the value lookup while
+    leaving the validation-path read unguarded lets the CLI compute a report it
+    then crashes on.
+    """
+    from dcc_mcp_blender import install
+
+    def _raise():
+        raise error
+
+    monkeypatch.setattr(install, "_published_schema", _raise)
+    report = {
+        "schema_version": install.report_schema_version(),
+        "status": "failed",
+        "dcc_type": "blender",
+        "adapter_version": "0.2.8",
+        "core_version": "0.20.34",
+        "steps": [],
+        "next_steps": [],
+        "receipt_path": None,
+        "verify": {
+            "directly_usable": False,
+            "failure_stage": "preflight",
+            "failure_reason": "not_installed",
+        },
+    }
+
+    install.validate_public_report(report)  # must not raise
+
+    # Degrading must not mean accepting anything.
+    broken = dict(report)
+    broken["schema_version"] = install.report_schema_version() + 1
+    with pytest.raises(ValueError):
+        install.validate_public_report(broken)
+
+
+def test_public_report_validation_uses_cores_native_validator(tmp_path, monkeypatch, capsys):
+    """Report validation runs through Core's Rust-backed validator, not jsonschema."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
+
+    install.main(["status", "--json", "--dcc-path", str(blender), "--python", sys.executable])
+    report = json.loads(capsys.readouterr().out)
+
+    calls = []
+    monkeypatch.setattr(install, "_native_report_validator", lambda: calls.append)
+
+    install.validate_public_report(report)
+
+    assert calls == [report]
+    # The adapter itself must never reach for a third-party schema package:
+    # Core compiles Draft 2020-12 validation into its native extension module.
+    source = Path(install.__file__).read_text(encoding="utf-8")
+    assert "jsonschema" not in source
+
+
+def test_public_report_validation_still_rejects_invalid_reports(tmp_path, monkeypatch, capsys):
+    """A report that breaks the Install SOP contract still raises ValueError."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
+
+    install.main(["status", "--json", "--dcc-path", str(blender), "--python", sys.executable])
+    report = json.loads(capsys.readouterr().out)
+
+    report["schema_version"] = install.report_schema_version() + 1
+    with pytest.raises(ValueError):
+        install.validate_public_report(report)
+
+    report["schema_version"] = install.report_schema_version()
+    del report["verify"]
+    with pytest.raises(ValueError):
+        install.validate_public_report(report)
+
+
+def test_structural_fallback_rejects_non_integer_schema_version(tmp_path, monkeypatch, capsys):
+    """The degraded structural check must not accept ``schema_version: true``.
+
+    ``bool`` is an ``int`` subclass and ``True == 1``, so a plain equality test
+    lets a boolean through whenever the expected value is 1. The degraded path
+    runs whenever Core's native validator or schema document is unavailable,
+    which is exactly when a malformed external document is most likely to be
+    read -- and Core's own schema requires the field to be an integer.
+    """
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
+    monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
+    monkeypatch.setattr(install, "_native_report_validator", lambda: None)
+
+    install.main(["status", "--json", "--dcc-path", str(blender), "--python", sys.executable])
+    report = json.loads(capsys.readouterr().out)
+
+    expected = install.report_schema_version()
+    for bogus in (True, False, float(expected), str(expected), None):
+        candidate = dict(report)
+        candidate["schema_version"] = bogus
+        with pytest.raises(ValueError):
+            install.validate_public_report(candidate)
+
+
+def test_runtime_dependencies_exclude_jsonschema():
+    """The adapter validates at runtime through Core, not a third-party package."""
+    from dcc_mcp_blender import install
+
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    runtime = pyproject.split("[project.optional-dependencies]")[0]
+
+    assert "jsonschema" not in runtime
+    assert install._native_report_validator() is not None
 
 
 def test_emitted_report_satisfies_cores_published_schema():

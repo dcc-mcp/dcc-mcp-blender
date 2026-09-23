@@ -28,7 +28,14 @@ classifiers = [
 
 dependencies = [
     # v0.20.0: native UI Control is provided by standalone dcc-cua 0.4.0+.
-    "dcc-mcp-core>=0.20.0,<1.0.0",
+    #
+    # The upper bound is pinned to the 0.20.x series: ``<1.0.0`` admitted any
+    # future minor, so a Core minor release could silently break this adapter's
+    # CI (0.20.34 changed the Install SOP schema revision). Failing at
+    # dependency resolution is louder and cheaper than failing the whole test
+    # matrix. Runtime installs into a user's Blender stay permissive via
+    # MIN_CORE_VERSION in install.py.
+    "dcc-mcp-core>=0.20.0,<0.21.0",
 ]
 
 [project.optional-dependencies]

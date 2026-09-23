@@ -47,8 +47,11 @@ SRC_DIR = PACKAGE_ROOT / "src" / "dcc_mcp_blender"
 ADDON_ENTRY_DIR = PACKAGE_ROOT / "packaging" / "addon_entry"
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 
-# Must stay in sync with ``pyproject.toml`` dependency floor.
+# Must stay in sync with the ``dcc-mcp-core`` constraint in ``pyproject.toml``.
 MIN_CORE_VERSION = "0.20.0"
+# Exclusive upper bound: bundling a Core release the adapter's own dependency
+# spec rejects would ship an addon ZIP that cannot satisfy its runtime.
+MAX_CORE_VERSION = "0.21.0"
 CORE_PACKAGE = "dcc-mcp-core"
 ADDON_PLATFORMS = ("win64", "linux", "macos")
 
@@ -137,9 +140,10 @@ def resolve_core_version(min_version: str = MIN_CORE_VERSION) -> str:
 
     available = [Version(v) for v in data["releases"].keys() if not Version(v).is_prerelease]
     min_ver = Version(min_version)
-    compatible = [v for v in available if v >= min_ver and v < Version("1.0.0")]
+    max_ver = Version(MAX_CORE_VERSION)
+    compatible = [v for v in available if v >= min_ver and v < max_ver]
     if not compatible:
-        raise RuntimeError(f"No compatible {CORE_PACKAGE} release found (>={min_version},<1.0.0)")
+        raise RuntimeError(f"No compatible {CORE_PACKAGE} release found (>={min_version},<{MAX_CORE_VERSION})")
     best = sorted(compatible)[-1]
     print(f"Resolved {CORE_PACKAGE} version: {best}")
     return str(best)

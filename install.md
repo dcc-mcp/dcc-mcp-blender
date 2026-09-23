@@ -10,7 +10,7 @@ selected Blender interpreter. It never controls Blender's UI.
 - **Blender:** 3.6 or newer for the Python/startup-hook path. The Blender
   Extensions ZIP requires Blender 4.2 or newer.
 - **Python:** Blender's selected bundled interpreter, Python 3.7 or newer.
-- **dcc-mcp-core:** `>=0.20.0,<1.0.0` in that exact interpreter.
+- **dcc-mcp-core:** `>=0.20.0,<0.21.0` in that exact interpreter.
 - **Platforms:** Windows, macOS, and Linux.
 - **Permissions:** write access to the selected version's user `scripts/startup`
   directory and the user receipt directory.
@@ -35,7 +35,7 @@ blender --python-use-system-env
 
 | Adapter | dcc-mcp-core | Blender | Python | Platforms |
 |---|---|---|---|---|
-| Current `0.2.x` | `>=0.20.0,<1.0.0` | `3.6+` startup hook; `4.2+` Extension ZIP | `3.7+` | Windows, macOS, Linux |
+| Current `0.2.x` | `>=0.20.0,<0.21.0` | `3.6+` startup hook; `4.2+` Extension ZIP | `3.7+` | Windows, macOS, Linux |
 
 Preflight runs `<blender> --version`, rejects unsupported hosts, and binds the
 matching versioned user profile. `--dcc-path` and `--python` always select the
