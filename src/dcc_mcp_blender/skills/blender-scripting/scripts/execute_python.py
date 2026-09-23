@@ -9,11 +9,16 @@ from typing import Any, Dict, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._script_guard import guard_arbitrary_execution
+
 
 def execute_python(code: str, context: Optional[Dict[str, Any]] = None) -> dict:
     """Execute a Python code snippet inside Blender's interpreter.
 
     The code has full access to ``bpy`` and the entire Blender Python API.
+
+    Refuses immediately when ``DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT`` or
+    ``DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`` is set.
 
     Args:
         code: Python source code to execute.
@@ -22,6 +27,10 @@ def execute_python(code: str, context: Optional[Dict[str, Any]] = None) -> dict:
     Returns:
         ActionResultModel dict with stdout, stderr, and any result value.
     """
+    refusal = guard_arbitrary_execution("execute_python")
+    if refusal is not None:
+        return refusal
+
     try:
         import bpy  # noqa: F401 - ensure bpy is available
 
