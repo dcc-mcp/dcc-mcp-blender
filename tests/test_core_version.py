@@ -101,6 +101,21 @@ def test_packaging_core_ceiling_matches_pyproject():
     assert _load_assemble_zip_module().MAX_CORE_VERSION == max_version
 
 
+def test_packaging_resolver_ignores_releases_above_the_ceiling(monkeypatch):
+    """The resolver must filter on the ceiling, not merely declare it.
+
+    Asserting that ``MAX_CORE_VERSION`` equals the pyproject bound only pins a
+    constant. Filtering on ``< 1.0.0`` while leaving the constant untouched
+    keeps that test green and ships an addon ZIP bundling a Core the adapter's
+    own dependency spec refuses to install next to.
+    """
+    module = _load_assemble_zip_module()
+    releases = ["0.20.32", "0.20.34", "0.21.0", "0.21.3", "1.0.0"]
+    monkeypatch.setattr(module, "_fetch_json", lambda url: {"releases": {name: [] for name in releases}})
+
+    assert module.resolve_core_version() == "0.20.34"
+
+
 def test_preloaded_core_below_floor_is_rejected():
     from dcc_mcp_blender._core_compat import require_compatible_core
 
@@ -132,9 +147,10 @@ def test_ci_exposes_a_core_latest_compatibility_job():
     assert any("dcc-mcp-core==${{ steps.core.outputs.version }}" in run for run in runs), (
         "the job must install the resolved Core version, not a hard-coded one"
     )
-    # Both suites must be exercised by one invocation, so neither can be moved to
-    # a step that runs before the newest Core is installed, and a failure in the
-    # first cannot hide the second.
+    # Both suites must be exercised by one invocation, so a failure in the
+    # first cannot hide the second behind a shared exit code. Step order is not
+    # asserted: hoisting pytest above the install step would fail loudly on a
+    # missing pytest binary, so it cannot weaken the gate quietly.
     pytest_cmds = _core_latest_pytest_statements()
     assert pytest_cmds, "the core-latest job must run pytest"
     assert any("test_install_lifecycle.py" in cmd and "test_core_version.py" in cmd for cmd in pytest_cmds), (

@@ -146,6 +146,10 @@ jobs:
           python -m pip show dcc-mcp-core
 
       - name: Install SOP contract and dependency gates against newest Core
+        env:
+          # Tells the drift-sensitive tests that this is the early-warning job:
+          # a missing Core export skips in the pinned matrix but must fail here.
+          DCC_MCP_CORE_LATEST: "1"
         run: pytest tests/test_install_lifecycle.py tests/test_core_version.py -v --tb=short
 
   # Ensure sdist/wheel build succeeds before release (PyPI / hatchling).
