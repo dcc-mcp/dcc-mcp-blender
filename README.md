@@ -428,6 +428,60 @@ env var is unset.
 
 ---
 
+## When to use the "official" Blender MCP vs dcc-mcp-blender
+
+**There is no Blender-official MCP server.** If you arrived here searching for the
+"official Blender MCP", you are most likely looking for
+[`mcp-for-blender`](https://github.com/ahujasid/mcp-for-blender) (formerly
+`blender-mcp`), a widely used community project whose README states:
+
+> **Disclaimer:** This is a third-party integration and not made by Blender
+
+The `blender` GitHub organization publishes no MCP server, and neither the
+Blender source tree nor the bundled add-on tree contains MCP code. Verified on
+2026-09-23.
+
+Both projects let an agent drive Blender. They optimize for different work:
+
+- **`mcp-for-blender`** — the fast, exploratory path. A Blender add-on opens a
+socket server and a separate process relays MCP over it. It supports Blender
+3.0+, runs arbitrary Python by default, and bundles generative-3D and asset
+integrations (Poly Haven, Sketchfab, Poly Pizza, Hyper3D Rodin, Hunyuan3D).
+Set `BLENDER_MCP_SAFE_MODE=1` to pre-check generated scripts; note that the
+add-on socket has no authentication or encryption.
+- **`dcc-mcp-blender`** — the production path. The MCP server runs embedded in
+Blender with no external process, exposing 200+ typed tools across 25+ skill
+packages over Streamable HTTP. Typed tools are schema-validated and testable,
+arbitrary execution can be switched off with
+`DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON`, and Blender shares one gateway and
+CLI with Maya, Houdini, USD and 3ds Max.
+
+Pick `mcp-for-blender` for prompt-assisted exploration on a single machine.
+Pick `dcc-mcp-blender` for pipeline work, cross-DCC automation, headless/CI
+runs, and places where you want to constrain what the agent can execute.
+
+See [Blender MCP vs dcc-mcp-blender](docs/blender-mcp-comparison.md) for the
+full comparison, including the architecture, version, and security rows.
+
+### Extending with marketplace skills
+
+Third-party models and asset libraries are **not** bundled into this adapter.
+Install them as marketplace skills instead:
+
+```bash
+dcc-mcp-cli marketplace search
+dcc-mcp-cli marketplace install dcc-asset-polyhaven
+dcc-mcp-cli marketplace install dcc-ai-hunyuan3d
+```
+
+Generative-3D and asset integrations available this way include
+`dcc-ai-hunyuan3d`, `dcc-ai-tripo3d`, `dcc-asset-polyhaven`,
+`dcc-asset-sketchfab`, `dcc-asset-poly-pizza` and `dcc-asset-ambientcg`. The
+catalog is the source of truth — run `dcc-mcp-cli marketplace search` for the
+current list.
+
+---
+
 ## Development
 
 ```bash

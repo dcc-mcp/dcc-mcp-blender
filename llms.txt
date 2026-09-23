@@ -91,6 +91,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | `src/dcc_mcp_blender/skills/` | 25+ built-in skill packages (200+ typed MCP tools) |
 | `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` | Staged loading guide and task-to-skill chains |
 | `README.md` | Human overview |
+| `docs/blender-mcp-comparison.md` | Blender MCP (`mcp-for-blender`) vs dcc-mcp-blender comparison |
 | `AGENTS.md` | Progressive disclosure map |
 
 ---
