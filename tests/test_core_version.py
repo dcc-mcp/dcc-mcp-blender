@@ -19,18 +19,32 @@ def _load_assemble_zip_module():
     return mod
 
 
-def test_core_dependency_floor_is_0200():
+def test_core_dependency_range_is_pinned_to_the_020x_series():
+    """A future Core minor must fail at install time, not inside the matrix."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '"dcc-mcp-core>=0.20.0,<1.0.0"' in pyproject
+    assert '"dcc-mcp-core>=0.20.0,<0.21.0"' in pyproject
+
+
+def _core_constraint():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'"dcc-mcp-core>=(?P<min>[^,]+),<(?P<max>[^"]+)"', pyproject)
+
+    assert match is not None
+    return match.group("min"), match.group("max")
 
 
 def test_packaging_core_floor_matches_pyproject():
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'"dcc-mcp-core>=(?P<version>[^,]+),<1\.0\.0"', pyproject)
+    min_version, _ = _core_constraint()
 
-    assert match is not None
-    assert _load_assemble_zip_module().MIN_CORE_VERSION == match.group("version")
+    assert _load_assemble_zip_module().MIN_CORE_VERSION == min_version
+
+
+def test_packaging_core_ceiling_matches_pyproject():
+    """The addon ZIP must never bundle a Core the dependency spec rejects."""
+    _, max_version = _core_constraint()
+
+    assert _load_assemble_zip_module().MAX_CORE_VERSION == max_version
 
 
 def test_preloaded_core_below_floor_is_rejected():
