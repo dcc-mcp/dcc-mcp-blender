@@ -145,8 +145,8 @@ jobs:
           python -m pip install --upgrade "dcc-mcp-core==${{ steps.core.outputs.version }}"
           python -m pip show dcc-mcp-core
 
-      - name: Install SOP contract against newest Core
-        run: pytest tests/test_install_lifecycle.py -v --tb=short
+      - name: Install SOP contract and dependency gates against newest Core
+        run: pytest tests/test_install_lifecycle.py tests/test_core_version.py -v --tb=short
 
   # Ensure sdist/wheel build succeeds before release (PyPI / hatchling).
   build:
