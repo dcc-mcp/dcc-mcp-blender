@@ -211,7 +211,11 @@ def _empty_version_branch(script):
         body = []
         indent = len(line) - len(line.lstrip())
         for follower in lines[index + 1 :]:
-            if not follower.strip():
+            stripped = follower.strip()
+            # Comment lines are skipped before the indent check: a commented-out
+            # `exit 1` inside the branch used to be collected as body and kept
+            # the assertion above green while the branch did nothing.
+            if not stripped or stripped.startswith("#"):
                 continue
             follower_indent = len(follower) - len(follower.lstrip())
             if follower_indent <= indent:
