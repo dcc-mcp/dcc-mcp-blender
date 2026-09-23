@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.8...v0.2.9) (2026-09-23)
+
+
+### Bug Fixes
+
+* **install:** derive report schema_version from Core's published Install SOP document ([#229](https://github.com/dcc-mcp/dcc-mcp-blender/issues/229)) ([dd1236d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/dd1236deebaadfe3bea8113f786e0fc67c9cd43b))
+
 ## [0.2.8](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.7...v0.2.8) (2026-09-23)
 
 
