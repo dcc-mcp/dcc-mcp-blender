@@ -39,7 +39,7 @@ a running server.
 `dcc-mcp-blender` embeds a standards-compliant MCP Streamable HTTP server directly inside Blender. It exposes 200+ Blender operations as MCP tools that any AI agent (Claude, Gemini, Cursor, etc.) can call over HTTP — no external gateway, no subprocess bridge.
 
 **Current version:** 0.2.3 <!-- x-release-please-version -->
-**Core dependency:** `dcc-mcp-core>=0.20.0,<1.0.0`
+**Core dependency:** `dcc-mcp-core>=0.20.0,<0.21.0`
 **Python:** Use Blender's bundled interpreter; 5.2 uses 3.13, 4.5 uses 3.11.
 **Blender CI targets:** 5.2.1 LTS and 4.5.13 LTS on Windows/Linux/macOS;
 legacy matrix and acceptance boundaries are documented in README.md.
