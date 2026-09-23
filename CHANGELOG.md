@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.8](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.7...v0.2.8) (2026-09-23)
+
+
+### Features
+
+* add add-on lifecycle tools and NLA animation tools ([#226](https://github.com/dcc-mcp/dcc-mcp-blender/issues/226)) ([9a79183](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9a79183eb112dd50a20c72199ee1520263e053ee))
+* add image lifecycle and lighting detail tools ([#228](https://github.com/dcc-mcp/dcc-mcp-blender/issues/228)) ([be98ca2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/be98ca2ea4bd540d83e345ee3ffbc13080725b1d))
+
 ## [0.2.7](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.6...v0.2.7) (2026-09-22)
 
 
