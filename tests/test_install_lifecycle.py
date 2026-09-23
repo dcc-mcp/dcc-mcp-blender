@@ -442,10 +442,12 @@ def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
 def test_validate_public_report_survives_schema_read_failure(monkeypatch, error):
     """Validation must degrade, not raise, when the schema document is unreadable.
 
-    Reports are validated on their way out, including the failure report built
-    when an install is already broken. Guarding only the value lookup while
-    leaving the validation-path read unguarded lets the CLI compute a report it
-    then crashes on.
+    The emitter in ``main()`` prints the report without validating it, so this
+    covers the consumer side: ``loads_public_report()`` and any other caller that
+    validates a report, including the failure report built when an install
+    is already broken. Guarding only the value lookup while leaving the
+    validation-path read unguarded lets a caller compute a report it then
+    crashes on.
     """
     from dcc_mcp_blender import install
 
@@ -563,7 +565,14 @@ def test_runtime_dependencies_exclude_jsonschema():
     runtime = pyproject.split("[project.optional-dependencies]")[0]
 
     assert "jsonschema" not in runtime
-    assert install._native_report_validator() is not None
+    if install._native_report_validator() is None:
+        # Core renamed or dropped the symbol. That drift belongs to the
+        # core-latest early-warning job; failing here would redden the main
+        # matrix on a Core change, which is the opposite of what the pin is for.
+        pytest.skip(
+            "Core does not export `validate_install_sop_report`; the core-latest "
+            "job reports this drift instead of the main matrix."
+        )
 
 
 def test_emitted_report_satisfies_cores_published_schema():
