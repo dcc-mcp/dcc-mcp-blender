@@ -6,6 +6,9 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+from jsonschema import Draft202012Validator
+
 ROOT = Path(__file__).parent.parent
 
 
@@ -86,7 +89,7 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
 
     report = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == install.report_schema_version()
     assert report["status"] == "planned"
     assert report["dcc_type"] == "blender"
     assert report["install_state"] == "fresh"
@@ -323,7 +326,14 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
     from dcc_mcp_blender import install
 
     schema = install.load_install_sop_schema()
-    assert schema["$id"] == "https://dcc-mcp.github.io/schemas/adapter-install-sop-v1.schema.json"
+    # Core republishes the Install SOP schema artifact: ``-v1`` is frozen at the bytes core
+    # 0.20.30-0.20.33 shipped and ``-v2`` is where content changes land from here on. The ``-vN``
+    # suffix is the identity of a published artifact, not an adapter contract, so assert the
+    # canonical id namespace plus the document's own pin on the report field rather than one
+    # revision. Hard-coding ``-v1`` here broke main the day core served ``-v2``.
+    assert schema["$id"].startswith("https://dcc-mcp.github.io/schemas/adapter-install-sop-v")
+    assert schema["$id"].endswith(".schema.json")
+    assert schema["properties"]["schema_version"]["const"] == install.report_schema_version()
     required = set(schema["required"])
 
     blender = tmp_path / "blender"
@@ -344,7 +354,89 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
         install.main(arguments)
         report = json.loads(capsys.readouterr().out)
         assert required <= set(report), verb
-        assert report["schema_version"] == install.INSTALL_SOP_SCHEMA_VERSION
+        assert report["schema_version"] == install.report_schema_version()
+        Draft202012Validator(schema).validate(report)
+
+
+def _schema_document(const):
+    """A minimal Core schema document enforcing one ``schema_version`` const."""
+    return {"properties": {"schema_version": {"const": const, "type": "integer"}}}
+
+
+def test_report_schema_version_follows_published_document(monkeypatch):
+    """The report field comes from the ``const`` Core's validator enforces."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(7))
+
+    assert install.report_schema_version() == 7
+
+
+def test_report_schema_version_ignores_cores_artifact_revision(monkeypatch):
+    """Core's exported constant is the artifact revision, not the report field.
+
+    Core 0.20.34 exports ``INSTALL_SOP_SCHEMA_VERSION = 2`` (the ``-v2`` artifact
+    revision) while the report field must stay at the document's ``const`` of 1,
+    because v2 only adds an optional ``catalog`` object. These are separate
+    quantities that merely agreed while both were 1, so the constant must never
+    reach the report.
+    """
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(1))
+    monkeypatch.setattr(install, "INSTALL_SOP_SCHEMA_VERSION", 2)
+
+    assert install.report_schema_version() == 1
+
+
+def test_report_schema_version_falls_back_when_document_is_unreadable(monkeypatch):
+    """A Core with no readable schema document still yields a usable report."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "_published_schema", lambda: None)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Install SOP schema integrity error: schema_digest_mismatch"),
+        OSError("schema file unreadable"),
+        ValueError("schema document is not valid JSON"),
+    ],
+)
+def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
+    """An unhealthy Core must not stop the CLI from emitting a report.
+
+    Core verifies its schema document with a SHA-256 digest and raises on a
+    missing, tampered, or unparsable document. Broken installs are exactly the
+    situation this CLI exists to report on, so the read failure has to degrade
+    to the fallback value instead of propagating.
+    """
+    from dcc_mcp_blender import install
+
+    def _raise():
+        raise error
+
+    monkeypatch.setattr(install, "_published_schema", _raise)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+def test_emitted_report_satisfies_cores_published_schema():
+    """The report field agrees with the const in the document Core serves.
+
+    Guards the real dependency rather than a stub: if Core ever republishes the
+    artifact with a different document version, this pins the adapter to follow
+    the document instead of the ``-vN`` revision constant.
+    """
+    from dcc_mcp_blender import install
+
+    schema = install.load_install_sop_schema()
+    const = schema["properties"]["schema_version"]["const"]
+
+    assert install.report_schema_version() == const
 
 
 def test_missing_receipted_startup_is_reported_as_partial(tmp_path, monkeypatch, capsys):
