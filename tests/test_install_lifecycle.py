@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parent.parent
 
 
@@ -86,7 +88,7 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
 
     report = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == install.report_schema_version()
     assert report["status"] == "planned"
     assert report["dcc_type"] == "blender"
     assert report["install_state"] == "fresh"
@@ -323,7 +325,12 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
     from dcc_mcp_blender import install
 
     schema = install.load_install_sop_schema()
-    assert schema["$id"] == "https://dcc-mcp.github.io/schemas/adapter-install-sop-v1.schema.json"
+    # Pin to the artifact revision Core actually exports instead of a literal
+    # ``-v1``: the published document is versioned independently of the report
+    # field, so a Core minor may move the URL without moving the contract.
+    assert schema["$id"] == (
+        "https://dcc-mcp.github.io/schemas/adapter-install-sop-v%s.schema.json" % install.INSTALL_SOP_SCHEMA_VERSION
+    )
     required = set(schema["required"])
 
     blender = tmp_path / "blender"
@@ -344,7 +351,10 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
         install.main(arguments)
         report = json.loads(capsys.readouterr().out)
         assert required <= set(report), verb
-        assert report["schema_version"] == install.INSTALL_SOP_SCHEMA_VERSION
+        assert report["schema_version"] == install.report_schema_version(), verb
+        # Every emitted report must survive the validator agents consume it
+        # through, not just carry the required keys.
+        install.validate_public_report(report)
 
 
 def test_missing_receipted_startup_is_reported_as_partial(tmp_path, monkeypatch, capsys):
@@ -578,3 +588,189 @@ def test_windows_lock_is_a_restart_boundary_not_a_clean_install_failure(tmp_path
     assert report["status"] == "requires_restart"
     assert report["verify"]["failure_stage"] == "install"
     assert report["verify"]["failure_reason"] == "windows_file_lock"
+
+
+def _schema_document(const):
+    """A minimal Core schema document enforcing one ``schema_version`` const."""
+    return {"properties": {"schema_version": {"const": const, "type": "integer"}}}
+
+
+def test_report_schema_version_follows_published_document(monkeypatch):
+    """The report field comes from the ``const`` Core's validator enforces."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "load_install_sop_schema", lambda: _schema_document(7))
+
+    assert install.report_schema_version() == 7
+
+
+def test_report_schema_version_ignores_cores_artifact_revision(monkeypatch):
+    """Core's exported constant is the artifact revision, not the report field.
+
+    Core 0.20.34 exports ``INSTALL_SOP_SCHEMA_VERSION = 2`` (the ``-v2``
+    artifact revision) while the report field must stay at the document's
+    ``const`` of 1, because v2 only adds an optional ``catalog`` object. These
+    are separate quantities that merely agreed while both were 1, so the
+    constant must never reach the report.
+    """
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "load_install_sop_schema", lambda: _schema_document(1))
+    monkeypatch.setattr(install, "INSTALL_SOP_SCHEMA_VERSION", 2)
+
+    assert install.report_schema_version() == 1
+
+
+def test_report_schema_version_falls_back_when_document_is_unreadable(monkeypatch):
+    """A Core with no readable schema document still yields a usable report."""
+    from dcc_mcp_blender import install
+
+    monkeypatch.setattr(install, "load_install_sop_schema", lambda: None)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Install SOP schema integrity error: schema_digest_mismatch"),
+        OSError("schema file unreadable"),
+        ValueError("schema document is not valid JSON"),
+    ],
+)
+def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
+    """An unhealthy Core must not stop the CLI from emitting a report.
+
+    Core verifies its schema document with a SHA-256 digest and raises on a
+    missing, tampered, or unparsable document. Broken installs are exactly the
+    situation this CLI exists to report on, so the read failure has to degrade
+    to the fallback value instead of propagating.
+    """
+    from dcc_mcp_blender import install
+
+    def _raise():
+        raise error
+
+    monkeypatch.setattr(install, "load_install_sop_schema", _raise)
+
+    assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Install SOP schema integrity error: schema_digest_mismatch"),
+        OSError("schema file unreadable"),
+        ValueError("schema document is not valid JSON"),
+    ],
+)
+def test_validate_public_report_survives_schema_read_failure(monkeypatch, error):
+    """Validation must degrade, not raise, when the schema document is unreadable.
+
+    The validator is the gate every emitted report passes through, including
+    the failure report built when an install is already broken. Guarding only
+    the value lookup while leaving the validation-path read unguarded lets the
+    CLI compute a report it then crashes on.
+    """
+    from dcc_mcp_blender import install
+
+    def _raise():
+        raise error
+
+    monkeypatch.setattr(install, "load_install_sop_schema", _raise)
+    report = {
+        "schema_version": install.report_schema_version(),
+        "status": "failed",
+        "dcc_type": "blender",
+        "adapter_version": "0.2.8",
+        "core_version": "0.20.34",
+        "steps": [],
+        "next_steps": [],
+        "receipt_path": None,
+        "verify": {
+            "directly_usable": False,
+            "failure_stage": "preflight",
+            "failure_reason": "not_installed",
+        },
+    }
+
+    install.validate_public_report(report)  # must not raise
+
+    # Degrading must not mean accepting anything.
+    broken = dict(report)
+    broken["schema_version"] = install.report_schema_version() + 1
+    with pytest.raises(ValueError):
+        install.validate_public_report(broken)
+
+
+def test_structural_fallback_rejects_non_integer_schema_version(tmp_path, monkeypatch, capsys):
+    """The degraded structural check must not accept ``schema_version: true``.
+
+    ``bool`` is an ``int`` subclass and ``True == 1``, so a plain equality test
+    lets a boolean through whenever the expected value is 1. The degraded path
+    runs whenever Core's native validator or schema document is unavailable,
+    which is exactly when a malformed external document is most likely to be
+    read -- and Core's own schema requires the field to be an integer.
+    """
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setattr(install, "_native_report_validator", lambda: None)
+
+    install.main(["status", "--json", "--dcc-path", str(blender), "--python", sys.executable])
+    report = json.loads(capsys.readouterr().out)
+
+    expected = install.report_schema_version()
+    for bogus in (True, False, float(expected), str(expected), None):
+        candidate = dict(report)
+        candidate["schema_version"] = bogus
+        with pytest.raises(ValueError):
+            install.validate_public_report(candidate)
+
+    # A genuine integer of the expected value must still be accepted.
+    candidate = dict(report)
+    candidate["schema_version"] = int(expected)
+    install.validate_public_report(candidate)
+
+
+def test_emitted_report_survives_cores_own_validator(tmp_path, monkeypatch, capsys):
+    """End-to-end: the emitted report passes Core's own validator."""
+    from dcc_mcp_blender import install
+
+    blender = tmp_path / "blender"
+    blender.write_bytes(b"")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setattr(install, "load_install_sop_schema", lambda: _schema_document(1))
+
+    install.main(["status", "--json", "--dcc-path", str(blender), "--python", sys.executable])
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["schema_version"] == 1
+    install.validate_public_report(report)
+
+
+def _ci_workflow():
+    """Parsed ``.github/workflows/ci.yml`` for the repository under test."""
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def test_ci_core_latest_job_resolves_a_real_core_version():
+    """The early-warning job must fail loudly rather than test an empty pin."""
+    job = _ci_workflow()["jobs"]["core-latest"]
+    resolve = [step for step in job["steps"] if step.get("id") == "core"]
+    assert resolve, "core-latest job has no version resolution step"
+
+    script = resolve[0]["run"]
+    assert "exit 1" in script, "empty version resolution must fail the job"
+    assert "::error::" in script
+
+
+def test_ci_test_matrix_covers_every_lifecycle_command():
+    """Guard the lifecycle smoke job that the schema pin depends on."""
+    job = _ci_workflow()["jobs"]["lifecycle-smoke"]
+    commands = " ".join(str(step.get("run", "")) for step in job["steps"])
+    assert "tests/test_install_lifecycle.py" in commands
