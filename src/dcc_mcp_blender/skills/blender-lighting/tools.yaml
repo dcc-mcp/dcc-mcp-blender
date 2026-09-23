@@ -31,3 +31,45 @@ tools:
     read_only: false
     destructive: false
     idempotent: true
+
+  - name: set_light_linking
+    description: "Restrict which objects a light illuminates using light linking (Blender 4.1+): a receiver collection and an optional blocker collection."
+    source_file: scripts/set_light_linking.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [light_name]
+      properties:
+        light_name:
+          type: string
+          minLength: 1
+        receiver_collection:
+          type: string
+          minLength: 1
+          description: Collection this light is allowed to illuminate.
+        blocker_collection:
+          type: string
+          minLength: 1
+          description: Collection that blocks this light.
+        clear:
+          type: boolean
+          default: false
+          description: Remove existing linking instead of setting it.
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
