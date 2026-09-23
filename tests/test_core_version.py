@@ -148,13 +148,25 @@ def test_ci_exposes_a_core_latest_compatibility_job():
         "the job must install the resolved Core version, not a hard-coded one"
     )
     # Both suites must be exercised by one invocation, so a failure in the
-    # first cannot hide the second behind a shared exit code. Step order is not
-    # asserted: hoisting pytest above the install step would fail loudly on a
-    # missing pytest binary, so it cannot weaken the gate quietly.
+    # first cannot hide the second behind a shared exit code.
     pytest_cmds = _core_latest_pytest_statements()
     assert pytest_cmds, "the core-latest job must run pytest"
     assert any("test_install_lifecycle.py" in cmd and "test_core_version.py" in cmd for cmd in pytest_cmds), (
         "the job must run both suites in a single pytest invocation"
+    )
+    # The suites have to run against the Core the job just resolved. Moved above
+    # the install step they would test whatever `pip install -e ".[dev]"`
+    # pulled in -- the pinned version -- and the gate would report on a Core it
+    # never upgraded to, with every assertion above still satisfied.
+    install_index = next(
+        (index for index, run in enumerate(runs) if "dcc-mcp-core==${{ steps.core.outputs.version }}" in run),
+        None,
+    )
+    pytest_index = next((index for index, run in enumerate(runs) if "pytest" in run), None)
+    assert install_index is not None and pytest_index is not None, (install_index, pytest_index)
+    assert install_index < pytest_index, (
+        "the resolved Core must be installed before pytest runs, or the suites "
+        "test the pinned version instead of the newest one"
     )
 
 
@@ -173,6 +185,37 @@ def test_core_latest_job_fails_when_the_core_version_cannot_be_resolved():
 
     assert resolve_step is not None, "the core-latest job has no step with `id: core`"
     run = resolve_step.get("run") or ""
-    assert "exit 1" in run, run
+    # `exit 1` anywhere in the script is not enough: it has to sit inside the
+    # branch that detects an empty version. Left outside -- or kept elsewhere in
+    # the script while this branch loses it -- the step would report success on
+    # a run that resolved nothing.
+    empty_version_block = _empty_version_branch(run)
+    assert empty_version_block is not None, run
+    assert "exit 1" in empty_version_block, run
     assert '>> "$GITHUB_OUTPUT"' in run, run
-    assert "could not resolve newest dcc-mcp-core version" in run, run
+    assert "could not resolve newest dcc-mcp-core version" in empty_version_block, run
+
+
+def _empty_version_branch(script):
+    # type: (str) -> Optional[str]
+    """Return the body of the ``if [ -z "${version}" ]`` branch, or None.
+
+    The branch is delimited by indentation, so this is a textual scope rather
+    than a shell parse: it is enough to tell an ``exit 1`` inside the branch
+    from one that merely exists elsewhere in the script.
+    """
+    lines = script.splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(r'if\s*\[\s*-z\s*"\$\{version\}"\s*\]', line):
+            continue
+        body = []
+        indent = len(line) - len(line.lstrip())
+        for follower in lines[index + 1 :]:
+            if not follower.strip():
+                continue
+            follower_indent = len(follower) - len(follower.lstrip())
+            if follower_indent <= indent:
+                break
+            body.append(follower)
+        return "\n".join(body)
+    return None
