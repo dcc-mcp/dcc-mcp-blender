@@ -56,9 +56,7 @@ def test_missing_path_entries_skips_unknown_dirs_and_present_entries(tmp_path):
     fresh.mkdir()
     gone = tmp_path / "gone"
 
-    missing = helper.missing_path_entries(
-        [str(existing), str(gone), str(fresh), str(fresh)], sys_path=[str(existing)]
-    )
+    missing = helper.missing_path_entries([str(existing), str(gone), str(fresh), str(fresh)], sys_path=[str(existing)])
     assert missing == [str(fresh.resolve())]
 
 

@@ -20,10 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Sequence
+from typing import Dict, List, Optional, Sequence
 
 #: Set to ``0`` / ``false`` / ``no`` / ``off`` to disable the repair entirely.
 ENV_REPAIR = "DCC_MCP_BLENDER_PYTHONPATH_REPAIR"
