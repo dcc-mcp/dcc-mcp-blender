@@ -41,7 +41,16 @@ class FakeNodes(list):
             name=type, type=type, bl_idname=type, inputs={}, outputs={}, label="", location=[0.0, 0.0]
         )
         self.append(node)
-        self._group.interface.mirror(node)
+        interface = getattr(self._group, "interface", None)
+        if interface is not None:
+            interface.mirror(node)
+        else:
+            for collection in (getattr(self._group, "inputs", []), getattr(self._group, "outputs", [])):
+                for socket in collection:
+                    if node.bl_idname == "NodeGroupInput" and socket.in_out == "INPUT":
+                        node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
+                    elif node.bl_idname == "NodeGroupOutput" and socket.in_out == "OUTPUT":
+                        node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
         return node
 
 
@@ -82,6 +91,42 @@ class FakeNodeGroup:
 
     def socket_names(self, in_out):
         return [socket.name for socket in self.interface if socket.in_out == in_out]
+
+
+class FakeLegacySockets(list):
+    """Blender 3.6 style ``node_tree.inputs`` / ``node_tree.outputs`` collection."""
+
+    def __init__(self, group, in_out):
+        super().__init__()
+        self._group = group
+        self._in_out = in_out
+
+    def _mirror(self, socket):
+        for node in self._group.nodes:
+            if self._in_out == "INPUT" and node.bl_idname == "NodeGroupInput":
+                node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
+            elif self._in_out == "OUTPUT" and node.bl_idname == "NodeGroupOutput":
+                node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
+
+    def new(self, socket_type, name):
+        socket = FakeSocket(name, socket_type, self._in_out)
+        self.append(socket)
+        self._mirror(socket)
+        return socket
+
+
+class FakeLegacyNodeGroup:
+    """Blender 3.6 geometry node tree: no ``interface`` API, legacy socket collections."""
+
+    def __init__(self, name="LegacyGroup"):
+        self.name = name
+        self.type = "GeometryNodeTree"
+        self.bl_idname = "GeometryNodeTree"
+        self.interface = None
+        self.nodes = FakeNodes(self)
+        self.links = FakeLinks()
+        self.inputs = FakeLegacySockets(self, "INPUT")
+        self.outputs = FakeLegacySockets(self, "OUTPUT")
 
 
 class FakeNodeGroups(list):
@@ -390,6 +435,24 @@ class TestGeometryNodeGroupTemplates:
         assert group.socket_names("INPUT") == []
         assert group.nodes == [custom]
         assert group.links == []
+
+    def test_pass_through_works_on_legacy_3_6_style_trees(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        legacy = FakeLegacyNodeGroup("LegacyGroup")
+        groups.append(legacy)
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "LegacyGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert [socket.name for socket in legacy.inputs] == ["Geometry"]
+        assert [socket.name for socket in legacy.outputs] == ["Geometry"]
+        assert created["context"]["input_count"] == 1
+        assert created["context"]["output_count"] == 1
+        assert len(legacy.links) == 1
+        assert legacy.links[0].from_socket.name == "Geometry"
+        assert legacy.links[0].to_socket.name == "Geometry"
 
     def test_unknown_template_returns_error(self):
         bpy = make_mock_bpy()

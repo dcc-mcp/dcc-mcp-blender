@@ -374,8 +374,8 @@ def _modifier_input_identifier(group: Any, input_name: str) -> str:
 
 
 def _add_group_socket(group: Any, name: str, socket_type: str, in_out: str) -> None:
-    for socket in _interface_sockets(group):
-        if getattr(socket, "name", None) == name and getattr(socket, "in_out", in_out) == in_out:
+    for record in _interface_socket_records(group):
+        if record["name"] == name and record["in_out"] == in_out:
             return
     interface = getattr(group, "interface", None)
     if interface is not None and callable(getattr(interface, "new_socket", None)):
