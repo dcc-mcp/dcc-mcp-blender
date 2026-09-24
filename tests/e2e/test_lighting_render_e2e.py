@@ -124,8 +124,13 @@ class TestLightingSkillsE2E:
                 return node
         return None
 
-    def test_world_background_color_applies(self):
+    def test_world_background_color_applies_to_node(self):
+        """Once the world runs on nodes, a color-only call must hit the socket."""
         mod = load_skill("blender-lighting", "set_world_background")
+
+        # A strength call switches the world onto nodes; that is the state the
+        # reported bug lived in from the second call onwards.
+        assert mod.set_world_background(color=[0.1, 0.1, 0.1], strength=1.0)["success"] is True
         result = mod.set_world_background(color=[0.2, 0.4, 0.6])
         assert result["success"] is True
 
@@ -135,6 +140,21 @@ class TestLightingSkillsE2E:
         assert abs(socket[0] - 0.2) < 1e-4
         assert abs(socket[1] - 0.4) < 1e-4
         assert abs(socket[2] - 0.6) < 1e-4
+
+    def test_world_background_linked_color_reports_failure(self):
+        """A linked Color socket (HDRI setup) must not be reported as success."""
+        mod = load_skill("blender-lighting", "set_world_background")
+        assert mod.set_world_background(color=[0.1, 0.1, 0.1], strength=1.0)["success"] is True
+
+        node = self._background_node()
+        node_tree = bpy.context.scene.world.node_tree
+        environment = node_tree.nodes.new("ShaderNodeTexEnvironment")
+        node_tree.links.new(environment.outputs["Color"], node.inputs["Color"])
+
+        result = mod.set_world_background(color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert "link" in result["message"].lower()
 
     def test_world_background_color_reapplied_on_second_call(self):
         """Regression for PIP-3545: color used to be dropped after the 1st call."""

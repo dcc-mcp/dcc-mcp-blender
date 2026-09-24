@@ -33,6 +33,33 @@ def _read_color(socket: Any) -> Optional[List[float]]:
     return values if len(values) >= 3 else None
 
 
+def _read_float(socket: Any) -> Optional[float]:
+    """Read a float socket back, or None when the value is not readable."""
+    try:
+        return float(socket.default_value)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _socket_link_state(socket: Any) -> Optional[bool]:
+    """Return the socket's link state, or None when it cannot be determined.
+
+    Only a real ``bool`` counts: mocked or unexpected sockets expose arbitrary
+    attributes that must not be mistaken for a link either way. Callers act on
+    an explicit ``True``/``False`` and skip the check when this is ``None``.
+    """
+    state = getattr(socket, "is_linked", None)
+    return state if isinstance(state, bool) else None
+
+
+def _first_output(node: Any) -> Any:
+    """Return a node's first output socket, or None when it has none."""
+    outputs = getattr(node, "outputs", None)
+    if not outputs:
+        return None
+    return outputs[0]
+
+
 def _find_node(nodes: Any, node_type: str) -> Any:
     """Return the first node of ``node_type``, or None."""
     for node in nodes:
@@ -95,12 +122,54 @@ def set_world_background(
         # background node keeps its own value, so the socket is written below.
         world.color = rgba[:3]
 
+        node_tree = getattr(world, "node_tree", None)
+        if strength is None and node_tree is None and not getattr(world, "use_nodes", False):
+            # No node tree in play, so ``world.color`` already is the value the
+            # renderer reads. Switching the world over to nodes here would be a
+            # silent change the caller never asked for.
+            return skill_success(
+                "World background updated",
+                color=rgba,
+                strength=strength,
+                prompt="World background updated. Render the scene to review environment lighting.",
+            )
+
         background = _ensure_background_node(world)
-        background.inputs["Color"].default_value = rgba
+        color_socket = background.inputs["Color"]
+
+        # A linked socket keeps accepting ``default_value`` writes, but the link
+        # wins at evaluation time, so the write would be a no-op for the render.
+        if _socket_link_state(color_socket) is True:
+            return skill_error(
+                "World background color is driven by a link",
+                "ShaderNodeBackground.Color is connected to another node, so its default value "
+                "cannot change the rendered background",
+                possible_solutions=[
+                    "Remove the link feeding ShaderNodeBackground.Color, then set the color again.",
+                    "Or drive the linked node instead (for example an Environment Texture).",
+                ],
+                color=rgba,
+                strength=strength,
+            )
+
+        # An isolated background node never reaches the world output either.
+        if _socket_link_state(_first_output(background)) is False:
+            return skill_error(
+                "World background node is not connected to the output",
+                "ShaderNodeBackground is not linked into ShaderNodeOutputWorld.Surface, so it "
+                "cannot affect the rendered background",
+                possible_solutions=[
+                    "Link the background node's Background output to the World Output Surface input.",
+                ],
+                color=rgba,
+                strength=strength,
+            )
+
+        color_socket.default_value = rgba
 
         # Guard against a wrapped success: only report success when the value
         # actually landed in the socket. Unreadable sockets skip the check.
-        applied_color = _read_color(background.inputs["Color"])
+        applied_color = _read_color(color_socket)
         if applied_color is not None and not all(
             abs(applied - requested) <= _COLOR_TOLERANCE for applied, requested in zip(applied_color, rgba)
         ):
@@ -110,18 +179,33 @@ def set_world_background(
                     [round(value, 6) for value in applied_color], rgba
                 ),
                 possible_solutions=[
-                    "Check whether the background Color socket is driven by a link or a driver.",
-                    "Remove the link or driver, then set the world background color again.",
+                    "Check whether the background Color socket is driven by a driver.",
+                    "Remove the driver, then set the world background color again.",
                 ],
                 color=rgba,
                 strength=strength,
             )
 
         if strength is not None:
-            if "Strength" in background.inputs:
-                background.inputs["Strength"].default_value = float(strength)
-            else:
-                world.strength = float(strength)
+            # No legacy fallback: a Background node always owns a Strength
+            # socket, so a missing one is a real error rather than something to
+            # paper over with a non-existent ``world.strength`` property.
+            strength_socket = background.inputs["Strength"]
+            strength_socket.default_value = float(strength)
+
+            applied_strength = _read_float(strength_socket)
+            if applied_strength is not None and abs(applied_strength - float(strength)) > _COLOR_TOLERANCE:
+                return skill_error(
+                    "World background strength was not applied",
+                    "ShaderNodeBackground.Strength is {0} after writing {1}".format(
+                        round(applied_strength, 6), float(strength)
+                    ),
+                    possible_solutions=[
+                        "Check whether the background Strength socket is driven by a link or a driver.",
+                    ],
+                    color=rgba,
+                    strength=strength,
+                )
 
         return skill_success(
             "World background updated",

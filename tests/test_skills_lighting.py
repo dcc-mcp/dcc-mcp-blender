@@ -117,8 +117,28 @@ class TestListLights:
 class _FakeSocket:
     """Minimal stand-in for a Blender node socket."""
 
-    def __init__(self, default_value):
+    def __init__(self, default_value, is_linked=False):
         self.default_value = default_value
+        self.is_linked = is_linked
+
+
+class _LockedSocket:
+    """Socket double whose ``default_value`` silently ignores every write.
+
+    Mirrors a socket that is driven by a link or a driver: the assignment is
+    accepted, but the stored value never changes.
+    """
+
+    def __init__(self, value):
+        self._value = value
+
+    @property
+    def default_value(self):
+        return self._value
+
+    @default_value.setter
+    def default_value(self, value):
+        pass  # silently ignored
 
 
 class _FakeNode:
@@ -162,6 +182,9 @@ class _FakeLinks:
         self.created = []
 
     def new(self, from_socket, to_socket):
+        # Blender marks both ends of a link as linked.
+        from_socket.is_linked = True
+        to_socket.is_linked = True
         self.created.append((from_socket, to_socket))
         return MagicMock()
 
@@ -194,7 +217,8 @@ class _FakeWorld:
             self._node_tree.links = _FakeLinks()
             background = self._node_tree.nodes.new("ShaderNodeBackground")
             background.inputs["Color"].default_value = list(self.color) + [1.0]
-            self._node_tree.nodes.new("ShaderNodeOutputWorld")
+            output = self._node_tree.nodes.new("ShaderNodeOutputWorld")
+            self._node_tree.links.new(background.outputs[0], output.inputs["Surface"])
         self._use_nodes = value
 
     @property
@@ -244,7 +268,7 @@ class TestSetWorldBackground:
     def test_creates_world_when_missing(self):
         bpy = make_mock_bpy()
         bpy.context.scene.world = None
-        new_world = MagicMock()
+        new_world = _FakeWorld()
         bpy.data.worlds.new.return_value = new_world
 
         result = load_and_call(
@@ -258,7 +282,8 @@ class TestSetWorldBackground:
         bpy.data.worlds.new.assert_called_once_with(name="World")
         assert bpy.context.scene.world is new_world
         assert new_world.color == [0.4, 0.5, 0.6]
-        assert new_world.strength == 2.5
+        assert new_world.background_color() == [0.4, 0.5, 0.6, 0.7]
+        assert new_world.background_strength() == 2.5
 
     def test_rejects_invalid_color_length(self):
         bpy = make_mock_bpy()
@@ -296,6 +321,7 @@ class TestSetWorldBackground:
 
     def test_four_component_color_is_applied(self):
         world = _FakeWorld()
+        world.use_nodes = True
         bpy = _make_world_bpy(world)
 
         result = load_and_call(
@@ -308,8 +334,9 @@ class TestSetWorldBackground:
         assert world.background_color() == [0.2, 0.3, 0.4, 0.5]
 
     def test_color_reaches_node_even_without_strength(self):
-        """Nodes are enabled for a color-only call, so the render is affected."""
+        """With a node tree in play, a color-only call still writes the socket."""
         world = _FakeWorld()
+        world.use_nodes = True  # the caller already runs this world on nodes
         bpy = _make_world_bpy(world)
 
         result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.9, 0.8, 0.7])
@@ -325,13 +352,14 @@ class TestSetWorldBackground:
         for node in list(world.node_tree.nodes):
             world.node_tree.nodes._nodes.remove(node)
         bpy = _make_world_bpy(world)
+        links_before = len(world.node_tree.links.created)
 
         result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.1, 0.4, 0.9])
 
         assert result["success"] is True
         assert world.background_color()[:3] == [0.1, 0.4, 0.9]
         assert any(node.type == "OUTPUT_WORLD" for node in world.node_tree.nodes)
-        assert len(world.node_tree.links.created) == 1
+        assert len(world.node_tree.links.created) == links_before + 1
 
     def test_reports_failure_when_color_does_not_stick(self):
         """A socket that refuses the write must surface as success=false."""
@@ -343,21 +371,85 @@ class TestSetWorldBackground:
         # stored value never changes, which is what real Blender does when the
         # socket is driven by a link or a driver.
         background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
-        sticky = [0.0, 0.0, 0.0, 1.0]
-
-        class _LockedSocket:
-            @property
-            def default_value(self):
-                return list(sticky)
-
-            @default_value.setter
-            def default_value(self, value):
-                pass  # silently ignored
-
-        background.inputs["Color"] = _LockedSocket()
+        background.inputs["Color"] = _LockedSocket([0.0, 0.0, 0.0, 1.0])
 
         result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
 
         assert result["success"] is False
         assert "not applied" in result["message"]
         assert result["context"]["color"] == [0.5, 0.1, 0.1, 1.0]
+
+    def test_reports_failure_when_color_socket_is_linked(self):
+        """An HDRI-style link on Color must not be reported as success."""
+        world = _FakeWorld()
+        world.use_nodes = True
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.inputs["Color"].is_linked = True
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert "link" in result["message"].lower()
+        assert result["context"]["color"] == [0.5, 0.1, 0.1, 1.0]
+
+    def test_reports_failure_when_background_node_is_isolated(self):
+        """A background node that never reaches World Output must not be a success."""
+        world = _FakeWorld()
+        world.use_nodes = True
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.outputs[0].is_linked = False
+        world.node_tree.links.created.clear()
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert "output" in result["message"].lower()
+
+    def test_reports_failure_when_strength_does_not_stick(self):
+        world = _FakeWorld()
+        world.use_nodes = True
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.inputs["Strength"] = _LockedSocket(1.0)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1], strength=2.5
+        )
+
+        assert result["success"] is False
+        assert "strength" in result["message"].lower()
+
+    def test_color_only_call_leaves_node_free_world_alone(self):
+        """Without a node tree, world.color is authoritative; nodes stay off."""
+        world = _FakeWorld()
+        bpy = _make_world_bpy(world)
+
+        first = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.3, 0.6, 0.9])
+        assert first["success"] is True
+        assert world.use_nodes is False
+        assert world.node_tree is None
+        assert world.color == [0.3, 0.6, 0.9]
+
+        # Repeated calls keep working on the non-node path.
+        second = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.9, 0.8, 0.7])
+        assert second["success"] is True
+        assert world.color == [0.9, 0.8, 0.7]
+
+    def test_strength_enables_nodes_on_a_node_free_world(self):
+        """Asking for strength still switches the world over to nodes."""
+        world = _FakeWorld()
+        bpy = _make_world_bpy(world)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_world_background.py", bpy, color=[0.2, 0.2, 0.2], strength=3.0
+        )
+
+        assert result["success"] is True
+        assert world.use_nodes is True
+        assert world.background_color()[:3] == [0.2, 0.2, 0.2]
+        assert world.background_strength() == 3.0
