@@ -424,6 +424,8 @@ def _socket_type_clashes(actual: Any, requested: str) -> bool:
     """
     if not isinstance(actual, str) or not actual:
         return False
+    actual = _canonical_socket_type(actual)
+    requested = _canonical_socket_type(requested)
     return actual.startswith("NodeSocket") and requested.startswith("NodeSocket") and actual != requested
 
 

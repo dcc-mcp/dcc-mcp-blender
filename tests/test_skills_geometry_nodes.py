@@ -891,8 +891,8 @@ class TestGroupSocketDedupeIsTypeAware:
         groups = FakeNodeGroups()
         legacy = FakeLegacyNodeGroup("LegacyClashGroup")
         # "VALUE" is a Float on 3.6, so reusing it as the pass-through Geometry
-        # input would silently wire the backbone to the wrong socket type.
-        legacy.inputs.append(FakeLegacySocket("Geometry", "VALUE", is_output=False))
+        # input would wire the backbone to the wrong socket type.
+        legacy.inputs.append(FakeLegacySocket("Geometry", "VALUE", "INPUT"))
         groups.append(legacy)
         bpy.data.node_groups = groups
 
