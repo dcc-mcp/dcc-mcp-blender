@@ -674,12 +674,74 @@ def _render_startup_script(ctx):
 
 from __future__ import annotations
 
+import os
 import site
+import sys
 
 site.addsitedir(%s)
 
+_EXPECTED_PACKAGE_ROOT = %s
+_USER_LEVEL_MARKERS = ("bl_ext", "user_default", "extensions", "addons")
 _server = None
 _owns_server = False
+
+
+def _is_user_level(path):
+    parts = [part for part in os.path.normcase(path).replace(chr(92), "/").split("/") if part]
+    for marker in _USER_LEVEL_MARKERS:
+        if marker in parts:
+            return True
+    return False
+
+
+def _origin_problems():
+    """Return (fatal, advisory) origins that sit outside the installed root."""
+    expected = os.path.normcase(os.path.realpath(_EXPECTED_PACKAGE_ROOT))
+    fatal = []
+    advisory = []
+    for name in ("dcc_mcp_blender", "dcc_mcp_core"):
+        module = sys.modules.get(name)
+        origin = getattr(module, "__file__", "") or ""
+        if not origin:
+            continue
+        root = os.path.dirname(os.path.dirname(os.path.abspath(origin)))
+        if os.path.normcase(os.path.realpath(root)) == expected:
+            continue
+        detail = name + " " + str(getattr(module, "__version__", "unknown")) + " from " + origin
+        # The adapter decides which runtime the host serves, so a foreign adapter
+        # is always fatal. A foreign Core is only fatal when it is a stale
+        # user-level copy: a Core installed into another interpreter directory of
+        # the same Blender version is legitimate and is gated by min_core_version.
+        if name == "dcc_mcp_blender" or _is_user_level(origin):
+            fatal.append(detail)
+        else:
+            advisory.append(detail)
+    return fatal, advisory
+
+
+def _assert_expected_origin():
+    """Reject a stale user-level copy that shadowed the installed package.
+
+    Blender loads user-level extension copies (bl_ext.<repository>.dcc_mcp_blender)
+    before this startup script runs, so "import dcc_mcp_blender" can return a copy
+    this lifecycle never wrote: an older adapter that starts, serves and records an
+    old version without raising anything. Compare the resolved origin against the
+    site-packages directory this script installed into before trusting it.
+    """
+    fatal, advisory = _origin_problems()
+    if not fatal:
+        if advisory:
+            print("[DCC MCP Blender] NOTE: " + "; ".join(advisory) + " (expected root " + _EXPECTED_PACKAGE_ROOT + ")")
+        return
+    message = (
+        "dcc-mcp-blender resolved outside " + _EXPECTED_PACKAGE_ROOT + ": " + ", ".join(fatal)
+        + ". A stale user-level copy is shadowing the installed package; remove that copy "
+        "(or the matching Blender user extension) and restart Blender."
+    )
+    if os.environ.get("DCC_MCP_BLENDER_STRICT_ORIGIN", "1").strip().lower() in ("0", "false", "no", "off"):
+        print("[DCC MCP Blender] WARNING: " + message)
+        return
+    raise RuntimeError(message)
 
 
 def register():
@@ -698,6 +760,8 @@ def register():
         log_dir=%s,
     ):
         from dcc_mcp_blender import get_server, start_server
+
+        _assert_expected_origin()
 
         existing = get_server()
         if existing is not None and getattr(existing, "is_running", False):
@@ -724,7 +788,7 @@ def unregister():
     finally:
         _server = None
         _owns_server = False
-''' % (site_packages, adapter_version, min_core_version, log_dir)
+''' % (site_packages, site_packages, adapter_version, min_core_version, log_dir)
 
 
 def _write_text(path, content):

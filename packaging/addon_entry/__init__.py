@@ -10,13 +10,16 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import re
 import webbrowser
 from contextlib import suppress
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 import bpy
 
 logger = logging.getLogger(__name__)
+
+_ECHO_PREFIX = "[DCC MCP Blender]"
 
 bl_info = {
     "name": "DCC MCP Blender",
@@ -42,11 +45,114 @@ _draw_handlers: List[Tuple[str, object]] = []
 _server_dispatcher: Any = None
 _server_host: Any = None
 _runtime_import_aliases: Any = None
+_canonical_package: Optional[str] = None
+
+
+def _normalised(path: str) -> str:
+    return os.path.normcase(os.path.realpath(str(path)))
+
+
+def _own_package_dir() -> str:
+    """Return the directory this entry point's own package code lives in."""
+    locations = [str(entry) for entry in (globals().get("__path__") or ())]
+    if locations:
+        return os.path.abspath(locations[0])
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _version_tuple(version: str) -> Tuple[int, int, int]:
+    parts: List[int] = []
+    for chunk in str(version).split(".")[:3]:
+        digits = "".join(character for character in chunk if character.isdigit())
+        parts.append(int(digits) if digits else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return (parts[0], parts[1], parts[2])
+
+
+def _package_version(package_dir: str) -> Optional[str]:
+    """Read a package directory's declared version without importing it."""
+    candidate = os.path.join(str(package_dir), "__version__.py")
+    try:
+        with open(candidate, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as exc:
+        logger.debug("version file unreadable at %s: %s", candidate, exc)
+        return None
+    match = re.search(r"__version__\s*=\s*[\"']([^\"']+)[\"']", text)
+    return match.group(1) if match else None
+
+
+def _resolve_canonical_package() -> str:
+    """Return the package the runtime must run from: the resolved copy wins.
+
+    Blender loads user-level extensions before a package environment is visible,
+    so a stale extension copy -- left behind by an earlier install under the same
+    Blender major version -- keeps answering ``import dcc_mcp_blender`` even when
+    a package manager resolved a newer copy for this session. The stale copy
+    satisfies its own, older compatibility gate, starts a server, and reports an
+    old version without a single error, so every capability captured from that
+    host silently describes the wrong runtime.
+
+    Whenever a real distribution is importable from ``sys.path`` and is at least
+    as new as the copy this entry point belongs to, the runtime hands over to
+    it. Otherwise the extension keeps control and says so out loud.
+
+    The comparison is against the version of the extension copy actually on
+    disk, not against ``__addon_version__``: an older extension that ships a
+    newer entry point would otherwise always win and keep serving silently.
+    """
+    global _canonical_package  # noqa: PLW0603
+    if _canonical_package is not None:
+        return _canonical_package
+    package = __package__ or ""
+    if not package.startswith("bl_ext."):
+        # Legacy add-on installs and the library package both serve the public
+        # distribution name. Only an extension namespace is a distinct tree.
+        _canonical_package = "dcc_mcp_blender"
+        return _canonical_package
+    _canonical_package = package
+    origin = None
+    try:
+        origin = importlib.import_module(f"{package}._extension_imports").public_package_origin("dcc_mcp_blender")
+    except Exception as exc:  # noqa: BLE001 - provenance is best effort, never fatal here
+        logger.debug("package origin lookup failed: %s", exc)
+    if not origin:
+        return _canonical_package
+    distribution_dir = os.path.dirname(str(origin))
+    if _normalised(distribution_dir) == _normalised(_own_package_dir()):
+        # Same source tree: this extension is the distribution (ZIP install).
+        return _canonical_package
+    resolved_version = _package_version(distribution_dir)
+    extension_version = _package_version(_own_package_dir())
+    if (
+        resolved_version is None
+        or extension_version is None
+        or _version_tuple(resolved_version) >= _version_tuple(extension_version)
+    ):
+        print(
+            f"{_ECHO_PREFIX} Running dcc_mcp_blender {resolved_version or 'unknown'} resolved by the environment at "
+            f"{distribution_dir} instead of this extension copy {extension_version or 'unknown'}."
+        )
+        _canonical_package = "dcc_mcp_blender"
+    else:
+        print(
+            f"{_ECHO_PREFIX} WARNING: dcc_mcp_blender {resolved_version} at {distribution_dir} is older than this "
+            f"extension copy ({extension_version}); keeping the extension. Remove the stale copy to let the "
+            "environment resolve the runtime, or export DCC_MCP_BLENDER_PACKAGE_ROOT to fail closed."
+        )
+    return _canonical_package
+
+
+def _reset_canonical_package() -> None:
+    """Drop the cached package resolution after ``sys.path`` changed."""
+    global _canonical_package  # noqa: PLW0603
+    _canonical_package = None
 
 
 def _addon_module(name: str):
     """Import a bundled module through the active add-on package namespace."""
-    package = __package__ if (__package__ or "").startswith("bl_ext.") else "dcc_mcp_blender"
+    package = _resolve_canonical_package()
     return importlib.import_module(f"{package}.{name}")
 
 
@@ -55,6 +161,10 @@ def _install_runtime_import_aliases() -> None:
     global _runtime_import_aliases  # noqa: PLW0603
     package = __package__ or ""
     if not package.startswith("bl_ext.") or _runtime_import_aliases is not None:
+        return
+    if _resolve_canonical_package() != package:
+        # The resolved distribution drives the runtime, so the public name already
+        # resolves to it. Bridging would shadow it with this extension copy.
         return
     installer = _addon_module("_extension_imports").install_extension_import_aliases
     _runtime_import_aliases = installer(package)
@@ -104,8 +214,11 @@ def _restore_isolated_pythonpath() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.debug("PYTHONPATH restore failed: %s", exc)
         return
+    # The repair can expose a resolved distribution that was invisible when this
+    # entry point loaded, so the package resolution has to be recomputed.
+    _reset_canonical_package()
     if restored:
-        print(f"[DCC MCP Blender] Restored {len(restored)} PYTHONPATH entries ignored by isolated Blender Python")
+        print(f"{_ECHO_PREFIX} Restored {len(restored)} PYTHONPATH entries ignored by isolated Blender Python")
 
 
 def _env_port(name: str, default: int) -> int:
@@ -539,6 +652,14 @@ _CLASSES = (
 
 def register() -> None:
     global _draw_handlers  # noqa: PLW0603
+
+    # Version and provenance self-checks run before anything is registered: a
+    # server started on a stale core is worse than an add-on that refuses to
+    # load, because the first one produces plausible but wrong evidence.
+    _restore_isolated_pythonpath()
+    _addon_module("_core_compat").require_compatible_core()
+    _addon_module("_provenance").require_expected_origin(echo=True)
+
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 

@@ -12,9 +12,13 @@ from __future__ import annotations
 import importlib
 import importlib.abc
 import importlib.util
+import logging
 import sys
+from importlib.machinery import PathFinder
 from types import ModuleType
 from typing import Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class _AliasModule(ModuleType):
@@ -98,6 +102,35 @@ class ExtensionImportAliases(importlib.abc.MetaPathFinder):
         return isinstance(module, ModuleType) and getattr(module, "_dcc_mcp_alias_owner", None) is self
 
 
+def public_package_origin(
+    public_package: str = "dcc_mcp_blender",
+    meta_path: Optional[List[Any]] = None,
+) -> Optional[str]:
+    """Return the path-based origin of ``public_package``, ignoring alias bridges.
+
+    Resolving through :data:`sys.meta_path` as it stands would report the
+    extension's own facade: the bridge sits at the front of the chain so skill
+    scripts keep working, and ``find_spec`` short-circuits on
+    :data:`sys.modules` before it ever looks at ``sys.path``. Searching the path
+    finders directly answers the question that actually matters for provenance
+    -- is a real distribution of the package importable, and where does it live?
+
+    Returns ``None`` when only the extension namespace provides the package.
+    """
+    del meta_path
+    try:
+        spec = PathFinder.find_spec(public_package)
+    except (ImportError, ValueError) as exc:
+        logger.debug("path-based lookup of %s failed: %s", public_package, exc)
+        spec = None
+    if spec is None:
+        return None
+    if spec.origin:
+        return str(spec.origin)
+    locations = [str(entry) for entry in (spec.submodule_search_locations or ())]
+    return locations[0] if locations else None
+
+
 def install_extension_import_aliases(
     canonical_package: str,
     public_package: str = "dcc_mcp_blender",
@@ -115,4 +148,8 @@ def install_extension_import_aliases(
     return ExtensionImportAliases(canonical_package, public_package).install()
 
 
-__all__ = ["ExtensionImportAliases", "install_extension_import_aliases"]
+__all__ = [
+    "ExtensionImportAliases",
+    "install_extension_import_aliases",
+    "public_package_origin",
+]

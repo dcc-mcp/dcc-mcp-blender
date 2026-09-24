@@ -41,6 +41,13 @@ from dcc_mcp_blender._project_tools import (
 from dcc_mcp_blender._project_tools import (
     attach_to_server as attach_project_tools,
 )
+from dcc_mcp_blender._provenance import (
+    PackageProvenanceError,
+    ProvenanceReport,
+    check_provenance,
+    collect_report,
+    require_expected_origin,
+)
 from dcc_mcp_blender._readiness import (
     ENV_READINESS_TIMEOUT_SECS,
     ReadinessBinder,
@@ -79,8 +86,20 @@ from dcc_mcp_blender.server import (
     stop_server,
 )
 
+# Report a runtime that the host resolved from a stale user-level copy before
+# any capability is served. A verbose warning is the loudest safe default here:
+# this module is imported by the copy that may itself be the stale one, so the
+# gate that fails closed lives in the add-on entry rather than in here.
+IMPORT_PROVENANCE_REPORT = check_provenance()
+
 __all__ = [
     "__version__",
+    "IMPORT_PROVENANCE_REPORT",
+    "PackageProvenanceError",
+    "ProvenanceReport",
+    "check_provenance",
+    "collect_report",
+    "require_expected_origin",
     "skill_entry",
     "skill_error",
     "skill_exception",
