@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -504,3 +505,125 @@ class TestAddGeometryNodesModifierTemplates:
         assert result["success"] is True
         assert result["context"]["group_template"] == "empty"
         assert group.socket_names("INPUT") == []
+
+
+def _documented_return_fields(skill_md: str, tool_name: str) -> set:
+    """Extract the return-contract field names SKILL.md documents for one tool.
+
+    Drift in either direction fails: a field the tool returns but the doc drops,
+    or a field the doc advertises but the tool never sets.
+    """
+    lines = skill_md.splitlines()
+    start = lines.index("## Return contract")
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("## ")),
+        len(lines),
+    )
+    section = lines[start:end]
+
+    fields = set()
+    active = False
+    for line in section:
+        marker = re.match(r"^`([a-z_]+)`", line)
+        if marker:
+            active = marker.group(1) == tool_name
+            continue
+        if not active:
+            continue
+        bullet = re.match(r"^- `([a-z_]+)`", line)
+        if bullet:
+            fields.add(bullet.group(1))
+    return fields
+
+
+class TestGeometryNodesReturnContract:
+    """SKILL.md must describe the context each tool really returns."""
+
+    CREATE_FIELDS = {
+        "group_name",
+        "template",
+        "created",
+        "template_applied",
+        "node_count",
+        "link_count",
+        "interface_sockets",
+        "input_count",
+        "output_count",
+    }
+    MODIFIER_FIELDS = {
+        "object_name",
+        "modifier_name",
+        "group_name",
+        "group_template",
+        "group_created",
+        "group_template_applied",
+    }
+
+    def _skill_md(self):
+        return Path("src/dcc_mcp_blender/skills/blender-geometry-nodes/SKILL.md").read_text(encoding="utf-8")
+
+    def _create(self, bpy, name, **kwargs):
+        return load_and_call(f"{GEOMETRY_NODES_DIR}/scripts/create_geometry_node_group.py", bpy, name=name, **kwargs)
+
+    def _add_modifier(self, bpy, **kwargs):
+        return load_and_call(
+            "blender-geometry-nodes/scripts/add_geometry_nodes_modifier.py",
+            bpy,
+            **kwargs,
+        )
+
+    def test_skill_md_lists_exactly_the_documented_fields(self):
+        skill_md = self._skill_md()
+        assert _documented_return_fields(skill_md, "create_geometry_node_group") == self.CREATE_FIELDS
+        assert _documented_return_fields(skill_md, "add_geometry_nodes_modifier") == self.MODIFIER_FIELDS
+
+    def test_create_geometry_node_group_returns_every_documented_field(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "ContractGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert _documented_return_fields(self._skill_md(), "create_geometry_node_group").issubset(created["context"])
+        assert created["context"]["node_count"] == 2
+        assert created["context"]["link_count"] == 1
+        assert created["context"]["template_applied"] is True
+
+    def test_add_geometry_nodes_modifier_returns_every_documented_field(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        bpy.data.node_groups = FakeNodeGroups()
+
+        result = self._add_modifier(bpy, object_name="Cube", group_name="Modifier Contract Group")
+
+        assert result["success"] is True
+        assert _documented_return_fields(self._skill_md(), "add_geometry_nodes_modifier").issubset(result["context"])
+        # The modifier tool reports the group under a `group_` prefix.
+        assert result["context"]["group_created"] is True
+        assert result["context"]["group_template_applied"] is True
+        assert result["context"]["group_template"] == "pass_through"
+
+    def test_add_geometry_nodes_modifier_reports_no_graph_detail(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        bpy.data.node_groups = FakeNodeGroups()
+
+        result = self._add_modifier(bpy, object_name="Cube", group_name="No Graph Detail")
+
+        assert result["success"] is True
+        assert {"node_count", "link_count", "interface_sockets"}.isdisjoint(result["context"])
+
+    def test_reused_group_reports_created_false(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        bpy.data.node_groups = FakeNodeGroups()
+
+        first = self._add_modifier(bpy, object_name="Cube", group_name="Reused Group")
+        second = self._add_modifier(bpy, object_name="Cube", group_name="Reused Group")
+
+        assert first["context"]["group_created"] is True
+        assert second["success"] is True
+        assert second["context"]["group_created"] is False

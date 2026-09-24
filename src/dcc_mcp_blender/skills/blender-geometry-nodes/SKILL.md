@@ -54,9 +54,41 @@ such as `list_nodes`, `connect_nodes`, and `set_node_input`.
 
 A template is only applied when the group is created, or when an existing group
 still has no nodes; an authored graph is never rewritten by a get-or-create
-call. Both tools report `template`, `template_applied`, `node_count`,
-`link_count` and `interface_sockets` so a caller can verify the interface
-without a separate read.
+call.
+
+## Return contract
+
+The two tools return **different** context payloads. Read the fields listed for
+the tool you actually called; the group-creation fields are **not** also present
+on the modifier tool.
+
+`create_geometry_node_group` reports the node group itself:
+
+- `group_name` - name of the created or loaded node group
+- `template` - resolved template, `pass_through` or `empty`
+- `created` - `True` when this call created the group
+- `template_applied` - `True` when the template was applied on this call
+- `node_count` - node count in the group after the call
+- `link_count` - link count in the group after the call
+- `interface_sockets` - list of interface socket records
+- `input_count` - number of `INPUT` interface sockets
+- `output_count` - number of `OUTPUT` interface sockets
+
+`add_geometry_nodes_modifier` reports the modifier assignment. It repeats three
+group facts under a `group_` prefix and reports no graph detail:
+
+- `object_name` - object the modifier was added to
+- `modifier_name` - name of the Geometry Nodes modifier
+- `group_name` - node group assigned to the modifier
+- `group_template` - template of the created or reused group
+- `group_created` - `True` when this call created the group
+- `group_template_applied` - `True` when the template was applied on this call
+
+`add_geometry_nodes_modifier` returns **no** `node_count`, `link_count` or
+`interface_sockets`. A missing value on that tool is not an empty interface:
+read the group with `inspect_geometry_node_interface` for socket identifiers
+and directions, or `evaluate_geometry_nodes_info` for modifier inputs and their
+values.
 
 ## Interface socket workflow (Blender 4.0+)
 
