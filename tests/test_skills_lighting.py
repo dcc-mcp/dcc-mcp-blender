@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from unittest.mock import MagicMock
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -139,6 +140,21 @@ class _LockedSocket:
     @default_value.setter
     def default_value(self, value):
         pass  # silently ignored
+
+
+class _Float32Socket:
+    """Socket double that stores values with Blender's float32 precision."""
+
+    def __init__(self, value=0.0):
+        self._value = value
+
+    @property
+    def default_value(self):
+        return struct.unpack("f", struct.pack("f", self._value))[0]
+
+    @default_value.setter
+    def default_value(self, value):
+        self._value = value
 
 
 class _FakeNode:
@@ -439,6 +455,51 @@ class TestSetWorldBackground:
         second = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.9, 0.8, 0.7])
         assert second["success"] is True
         assert world.color == [0.9, 0.8, 0.7]
+
+    def test_failure_restores_use_nodes(self):
+        """A rejected call must not leave the world rendering from nodes."""
+        world = _FakeWorld()
+        world.use_nodes = True  # build the tree
+        world.use_nodes = False  # user turns nodes off; the tree is retained
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.inputs["Color"].is_linked = True
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert world.use_nodes is False, "a failed call must not switch the world onto nodes"
+
+    def test_failure_restores_use_nodes_for_isolated_node(self):
+        world = _FakeWorld()
+        world.use_nodes = True
+        world.use_nodes = False
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.outputs[0].is_linked = False
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert world.use_nodes is False
+
+    def test_strength_write_back_tolerates_float32_rounding(self):
+        """Large strength values read back slightly off; that is not a failure."""
+        world = _FakeWorld()
+        world.use_nodes = True
+        bpy = _make_world_bpy(world)
+
+        background = next(node for node in world.node_tree.nodes if node.type == "BACKGROUND")
+        background.inputs["Strength"] = _Float32Socket(1.0)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_world_background.py", bpy, color=[0.1, 0.2, 0.3], strength=100.1
+        )
+
+        assert result["success"] is True
+        assert abs(background.inputs["Strength"].default_value - 100.1) < 1e-3
 
     def test_strength_enables_nodes_on_a_node_free_world(self):
         """Asking for strength still switches the world over to nodes."""
