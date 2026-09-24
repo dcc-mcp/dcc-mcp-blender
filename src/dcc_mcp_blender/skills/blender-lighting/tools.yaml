@@ -24,7 +24,7 @@ tools:
     destructive: false
     idempotent: true
   - name: set_world_background
-    description: "Set the scene world background color and optional strength"
+    description: "Set the scene world background color and optional strength; enables the world node tree when one is required"
     source_file: scripts/set_world_background.py
     execution: sync
     affinity: main
