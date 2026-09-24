@@ -85,6 +85,29 @@ def _bind_ui_control_to_host_process() -> None:
     os.environ[_UI_CONTROL_PROCESS_ID_ENV] = str(current_process_id)
 
 
+def _restore_isolated_pythonpath() -> None:
+    """Re-expose launcher-injected ``PYTHONPATH`` entries inside Blender.
+
+    Blender 5.x starts its embedded interpreter with an isolated configuration
+    that never reads ``PYTHONPATH``, so dependencies supplied by a studio
+    package manager are invisible from inside the host and the add-on would
+    fail on its first adapter import. The environment is still readable, so the
+    directories are restored here — a no-op on hosts that honour ``PYTHONPATH``.
+    """
+    try:
+        repair = _addon_module("_isolated_path").repair_sys_path
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("PYTHONPATH restore unavailable: %s", exc)
+        return
+    try:
+        restored = repair()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("PYTHONPATH restore failed: %s", exc)
+        return
+    if restored:
+        print(f"[DCC MCP Blender] Restored {len(restored)} PYTHONPATH entries ignored by isolated Blender Python")
+
+
 def _env_port(name: str, default: int) -> int:
     """Read a TCP port while preserving zero as the random-port request."""
     raw = os.environ.get(name, "").strip()
@@ -106,6 +129,7 @@ def _start_server_with_host():
     global _server_dispatcher, _server_host  # noqa: PLW0603
 
     _bind_ui_control_to_host_process()
+    _restore_isolated_pythonpath()
     _install_runtime_import_aliases()
     try:
         # The release ZIP replaces the library package entrypoint with this

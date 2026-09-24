@@ -352,6 +352,8 @@ blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
 
 The bootstrap prints `MCP_URL=...`, discovers bundled skills, and drives `BlenderHost` in headless mode until the process is stopped.
 
+On Blender 5.x the bootstrap also restores `PYTHONPATH` entries that the isolated interpreter dropped, so the same command works without `--python-use-system-env`. See [Blender 5.x and isolated Python](#blender-5x-and-isolated-python).
+
 In interactive add-on mode, `BlenderUiDispatcher` subclasses the shared core UI dispatcher and `BlenderTimerPump`
 contains the Blender-specific `bpy.app.timers` wiring. In background mode, `BlenderHost` keeps using core
 `BlockingDispatcher` with an explicit headless loop so automation does not depend on Blender UI timers.
@@ -410,6 +412,38 @@ dcc_mcp_blender.stop_server()
 | `DCC_MCP_BLENDER_RESOURCES` | *(none)* | Set to `0` to opt out of MCP resource publishing (e.g. `scene://current`). |
 | `DCC_MCP_BLENDER_SKILL_PATHS` | *(none)* | Additional `os.pathsep`-delimited skill search paths extending the bundled set. |
 | `DCC_MCP_SKILL_PATHS` | *(none)* | Shared across all DCC-MCP packages; skill-path search falls back here when the Blender-specific var is unset. |
+| `DCC_MCP_BLENDER_PYTHONPATH_REPAIR` | `1` (on) | Restore launcher-injected `PYTHONPATH` entries inside hosts that ignore them (Blender 5.x). Set to `0` to opt out. |
+| `DCC_MCP_BLENDER_EXTRA_SITE_DIRS` | *(none)* | Extra `os.pathsep`-delimited directories to make visible on any host; useful when `PYTHONPATH` is stripped by the launcher. |
+
+#### Blender 5.x and isolated Python
+
+Blender 5.x starts its embedded interpreter with an isolated CPython config
+(`sys.flags.isolated` / `sys.flags.ignore_environment` set), so `PYTHONPATH` is
+**not** read: dependencies injected by a package manager or CI resolve never
+reach `sys.path`, and the host ends up with zero adapter capability while the
+resolve reports success.
+
+The adapter repairs this from the inside — the process environment is still
+readable even when `PYTHONPATH` is ignored, so the entries are restored before
+any adapter import. It happens automatically when you use:
+
+- the add-on / extension (repaired before the first adapter import), or
+- `blender --background --python src/dcc_mcp_blender/blender_bootstrap.py`, or
+- any script that imports `dcc_mcp_blender` once the package itself is visible.
+
+For scripts that must import the adapter before it is on `sys.path`, either
+launch Blender with `--python-use-system-env` (Blender's own switch to honour
+`PYTHONPATH` again) or run the doctor first — it is a no-op on hosts that
+already honour `PYTHONPATH`:
+
+```bash
+blender --background --python tools/blender_path_doctor.py -- --deep
+```
+
+The doctor prints the interpreter flags, how many `PYTHONPATH` entries the host
+can see, which packages resolve and from where, and the reachable tool surface.
+It exits non-zero when the adapter is not importable, so a resolve that yields
+an unusable host fails loudly instead of silently.
 
 #### Enabling Semantic Skill Recall
 
