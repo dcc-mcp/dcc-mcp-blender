@@ -94,8 +94,17 @@ class TestNodeGraphE2E:
         create_group = load_skill("blender-geometry-nodes", "create_geometry_node_group")
         created = create_group.main(name="E2E Geometry Graph", template="pass_through")
         assert created["success"] is True
+        assert created["context"]["input_count"] >= 1
+        assert created["context"]["output_count"] >= 1
 
         group = bpy.data.node_groups["E2E Geometry Graph"]
+        if bpy.app.version >= (4, 0, 0):
+            assert [socket.name for socket in group.interface.items_tree if socket.in_out == "INPUT"] == ["Geometry"]
+        else:
+            assert [socket.name for socket in group.inputs] == ["Geometry"]
+        assert [
+            link for link in group.links if link.from_socket.name == "Geometry" and link.to_socket.name == "Geometry"
+        ], "pass_through must wire Group Input Geometry into Group Output Geometry"
         scale_identifier = None
         if bpy.app.version >= (4, 0, 0):
             scale_identifier = _add_float_group_input(group, "Scale")
