@@ -118,9 +118,13 @@ class TestListLights:
 class _FakeSocket:
     """Minimal stand-in for a Blender node socket."""
 
-    def __init__(self, default_value, is_linked=False):
+    def __init__(self, default_value, is_linked=False, node=None):
         self.default_value = default_value
         self.is_linked = is_linked
+        # Blender exposes socket.links and link.from_node / link.to_node; the
+        # doubles below keep that chain so a node can be traced from a socket.
+        self.links = []
+        self.node = node
 
 
 class _LockedSocket:
@@ -160,10 +164,20 @@ class _Float32Socket:
 class _FakeNode:
     """Minimal stand-in for a Blender shader node."""
 
-    def __init__(self, node_type, sockets):
+    def __init__(self, node_type, sockets, name=None):
         self.type = node_type
+        self.name = name if name is not None else node_type
         self.inputs = sockets
         self.outputs = [_FakeSocket(None)]
+        for socket in list(self.inputs.values()) + self.outputs:
+            socket.node = self
+
+
+# Blender names duplicate nodes "Background", "Background.001", ...
+_NODE_NAMES = {
+    "ShaderNodeBackground": "Background",
+    "ShaderNodeOutputWorld": "World Output",
+}
 
 
 class _FakeNodes:
@@ -181,16 +195,37 @@ class _FakeNodes:
     def __contains__(self, item):
         return any(node is item for node in self._nodes)
 
+    def _unique_name(self, node_type):
+        base = _NODE_NAMES.get(node_type, node_type)
+        name = base
+        suffix = 0
+        while any(node.name == name for node in self._nodes):
+            suffix += 1
+            name = "{0}.{1:03d}".format(base, suffix)
+        return name
+
     def new(self, node_type):
+        name = self._unique_name(node_type)
         if node_type == "ShaderNodeBackground":
             node = _FakeNode(
                 "BACKGROUND",
                 {"Color": _FakeSocket([0.0, 0.0, 0.0, 1.0]), "Strength": _FakeSocket(1.0)},
+                name=name,
             )
         else:
-            node = _FakeNode("OUTPUT_WORLD", {"Surface": _FakeSocket(None)})
+            node = _FakeNode("OUTPUT_WORLD", {"Surface": _FakeSocket(None)}, name=name)
         self._nodes.append(node)
         return node
+
+
+class _FakeLink:
+    """NodeLink double: Blender resolves a link to the nodes at both ends."""
+
+    def __init__(self, from_socket, to_socket):
+        self.from_socket = from_socket
+        self.from_node = from_socket.node
+        self.to_socket = to_socket
+        self.to_node = to_socket.node
 
 
 class _FakeLinks:
@@ -198,11 +233,20 @@ class _FakeLinks:
         self.created = []
 
     def new(self, from_socket, to_socket):
-        # Blender marks both ends of a link as linked.
+        # Blender marks both ends of a link as linked and exposes it on both.
         from_socket.is_linked = True
         to_socket.is_linked = True
+        link = _FakeLink(from_socket, to_socket)
+        from_socket.links.append(link)
+        to_socket.links.append(link)
         self.created.append((from_socket, to_socket))
-        return MagicMock()
+        return link
+
+
+def _unlink(socket):
+    """Drop every link on a socket, as removing a link in Blender would."""
+    socket.links.clear()
+    socket.is_linked = False
 
 
 class _FakeWorld:
@@ -265,6 +309,35 @@ def _make_world_bpy(world=None):
     bpy = make_mock_bpy()
     bpy.context.scene.world = world if world is not None else _FakeWorld()
     return bpy
+
+
+def _two_background_world(orphan_feeds_spare_output=False):
+    """World double whose first Background node does not drive the output.
+
+    Returns ``(world, first, driving, surface)``. The default tree wires
+    Background -> Output; that first background keeps its own link (or is left
+    isolated) while a second background is wired into ``OUTPUT_WORLD.Surface``,
+    so only the second one is what the renderer reads.
+    """
+    world = _FakeWorld()
+    world.use_nodes = True
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+
+    first = next(node for node in nodes if node.type == "BACKGROUND")
+    output = next(node for node in nodes if node.type == "OUTPUT_WORLD")
+    surface = output.inputs["Surface"]
+    _unlink(first.outputs[0])
+    _unlink(surface)
+
+    if orphan_feeds_spare_output:
+        # Still "linked", just not to the output the renderer reads.
+        spare_output = nodes.new("ShaderNodeOutputWorld")
+        links.new(first.outputs[0], spare_output.inputs["Surface"])
+
+    driving = nodes.new("ShaderNodeBackground")
+    links.new(driving.outputs[0], surface)
+    return world, first, driving, surface
 
 
 class TestSetWorldBackground:
@@ -514,3 +587,42 @@ class TestSetWorldBackground:
         assert world.use_nodes is True
         assert world.background_color()[:3] == [0.2, 0.2, 0.2]
         assert world.background_strength() == 3.0
+
+    # ── Regression: multiple Background nodes ────────────────────────────────
+
+    def test_writes_the_background_node_that_drives_the_output(self):
+        """The first Background is linked elsewhere; the second drives the surface."""
+        world, first, driving, _ = _two_background_world(orphan_feeds_spare_output=True)
+        bpy = _make_world_bpy(world)
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.2, 0.4, 0.6])
+
+        assert result["success"] is True
+        assert list(driving.inputs["Color"].default_value)[:3] == [0.2, 0.4, 0.6]
+        # The node that renders nothing must be left alone, not reported as a win.
+        assert list(first.inputs["Color"].default_value)[:3] == [0.0, 0.0, 0.0]
+
+    def test_orphan_background_does_not_shadow_the_driving_one(self):
+        """An isolated first Background must not fail the call nor be written."""
+        world, first, driving, _ = _two_background_world()
+        bpy = _make_world_bpy(world)
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.2, 0.4, 0.6])
+
+        assert result["success"] is True
+        assert list(driving.inputs["Color"].default_value)[:3] == [0.2, 0.4, 0.6]
+        assert list(first.inputs["Color"].default_value)[:3] == [0.0, 0.0, 0.0]
+
+    def test_fails_when_no_background_drives_the_output(self):
+        """Two Background nodes, neither wired to the output: still a failure."""
+        world, _, driving, surface = _two_background_world()
+        _unlink(driving.outputs[0])
+        _unlink(surface)
+        world.use_nodes = False  # the caller keeps this world off nodes
+        bpy = _make_world_bpy(world)
+
+        result = load_and_call("blender-lighting/scripts/set_world_background.py", bpy, color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert "output" in result["message"].lower()
+        assert world.use_nodes is False, "a failed call must not switch the world onto nodes"
