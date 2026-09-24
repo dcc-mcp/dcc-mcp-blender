@@ -234,3 +234,65 @@ class TestMeshSceneOpsE2E:
         assert lathed["success"] is True, lathed
         assert lathed["context"]["readback"]["face_count"] > 0
         assert bpy.data.objects.get("LatheProfile") is profile
+
+    def test_parent_object_keeps_the_world_transform_after_positioning(self):
+        """Regression: moving an object and parenting it afterwards.
+
+        Blender caches each object's evaluated matrix, so a naive
+        "read matrix_world, parent, write it back" sequence writes the stale
+        pre-move matrix over the object and drops it at the parent's origin
+        while still reporting success.
+        """
+        create_mod = load_skill("blender-objects", "create_object")
+        created_pivot = create_mod.create_object(object_type="empty", name="Pivot")
+        assert created_pivot["success"] is True, created_pivot
+
+        camera_mod = load_skill("blender-camera", "create_camera")
+        created_camera = camera_mod.create_camera(name="HeroCam")
+        assert created_camera["success"] is True, created_camera
+
+        move_mod = load_skill("blender-objects", "move_object")
+        moved = move_mod.move_object(name="HeroCam", location=[6.4, 0.0, 2.35])
+        assert moved["success"] is True, moved
+
+        parent_mod = load_skill("blender-objects", "parent_object")
+        parented = parent_mod.parent_object(child_name="HeroCam", parent_name="Pivot")
+        assert parented["success"] is True, parented
+        assert parented["context"]["world_transform_preserved"] is True
+        assert parented["context"]["parent_name"] == "Pivot"
+
+        camera = bpy.data.objects["HeroCam"]
+        assert camera.parent is not None
+        assert camera.parent.name == "Pivot"
+        for actual, expected in zip(camera.matrix_world.translation, (6.4, 0.0, 2.35)):
+            assert abs(actual - expected) <= 1e-6
+
+    def test_parent_object_under_a_transformed_parent_keeps_the_world_position(self):
+        """A non-origin parent must not drag the child into its own space."""
+        create_mod = load_skill("blender-objects", "create_object")
+        assert create_mod.create_object(object_type="empty", name="Rig", location=[2.0, 3.0, 4.0])["success"] is True
+
+        camera_mod = load_skill("blender-camera", "create_camera")
+        assert camera_mod.create_camera(name="RigCam")["success"] is True
+
+        move_mod = load_skill("blender-objects", "move_object")
+        assert move_mod.move_object(name="RigCam", location=[6.4, 0.0, 2.35])["success"] is True
+
+        parent_mod = load_skill("blender-objects", "parent_object")
+        parented = parent_mod.parent_object(child_name="RigCam", parent_name="Rig")
+        assert parented["success"] is True, parented
+
+        camera = bpy.data.objects["RigCam"]
+        for actual, expected in zip(camera.matrix_world.translation, (6.4, 0.0, 2.35)):
+            assert abs(actual - expected) <= 1e-6
+        # The local channels stay untouched; only matrix_parent_inverse absorbs
+        # the parent transform.
+        for actual, expected in zip(camera.location, (6.4, 0.0, 2.35)):
+            assert abs(actual - expected) <= 1e-6
+
+        # Unparenting must preserve the world transform too.
+        unparented = parent_mod.parent_object(child_name="RigCam")
+        assert unparented["success"] is True, unparented
+        assert bpy.data.objects["RigCam"].parent is None
+        for actual, expected in zip(bpy.data.objects["RigCam"].matrix_world.translation, (6.4, 0.0, 2.35)):
+            assert abs(actual - expected) <= 1e-6

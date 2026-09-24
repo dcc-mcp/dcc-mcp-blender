@@ -249,7 +249,7 @@ tools:
       open_world_hint: false
 
   - name: parent_object
-    description: "Parent or unparent an object while preserving its world transform when possible."
+    description: "Parent or unparent an object while preserving its world transform; reports an error when the transform could not be kept."
     source_file: scripts/parent_object.py
     execution: sync
     affinity: main

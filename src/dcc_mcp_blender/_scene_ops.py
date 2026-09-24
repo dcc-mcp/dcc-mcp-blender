@@ -8,6 +8,9 @@ from typing import Any, Iterable, Sequence
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _SELECTION_MODES = {"replace", "add", "remove", "toggle"}
+# Largest per-element drift accepted when checking that a re-parented object
+# kept its world transform.
+_WORLD_TRANSFORM_TOLERANCE = 1e-6
 _ORIGIN_MODES = {
     "geometry": ("ORIGIN_GEOMETRY", "MEDIAN"),
     "bounds": ("ORIGIN_GEOMETRY", "BOUNDS"),
@@ -239,6 +242,77 @@ def rename_object(object_name: str, new_name: str) -> dict:
         return skill_exception(exc, message=f"Failed to rename {object_name}")
 
 
+def _flush_depsgraph(bpy: Any) -> None:
+    """Flush pending transform changes so ``matrix_world`` reads are current.
+
+    Blender caches every object's evaluated matrix (``ob->obmat``) and only
+    refreshes it during a depsgraph evaluation. Reading ``matrix_world`` right
+    after a move/rotate/scale therefore returns the *previous* transform, which
+    used to make :func:`parent_object` write that stale transform back over the
+    object and silently drop it at the parent's origin.
+    """
+    context = getattr(bpy, "context", None)
+    for holder in (getattr(context, "view_layer", None), getattr(context, "scene", None)):
+        update = getattr(holder, "update", None)
+        if callable(update):
+            update()
+            return
+
+
+def _copy_matrix(matrix: Any) -> Any:
+    """Return a snapshot copy of ``matrix``, or ``None`` when unsupported."""
+    copy = getattr(matrix, "copy", None)
+    return copy() if callable(copy) else None
+
+
+def _matrix_delta(left: Any, right: Any) -> float | None:
+    """Return the largest per-element difference between two matrices.
+
+    Returns ``None`` when both values are not 4x4 numeric matrices.
+    """
+    try:
+        rows_left = [list(row) for row in left]
+        rows_right = [list(row) for row in right]
+    except TypeError:
+        return None
+    # Not a square, non-empty matrix (mocks report a length of 0 here).
+    shape = len(rows_left)
+    if shape == 0 or shape != len(rows_right):
+        return None
+    if any(len(row) != shape for row in rows_left + rows_right):
+        return None
+    try:
+        return max(
+            abs(float(value_left) - float(value_right))
+            for row_left, row_right in zip(rows_left, rows_right)
+            for value_left, value_right in zip(row_left, row_right)
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _keep_world_transform(child: Any, parent: Any | None, world_before: Any) -> None:
+    """Re-anchor ``child`` under ``parent`` without moving it in world space.
+
+    Blender evaluates ``child.matrix_world`` as::
+
+        parent.matrix_world @ child.matrix_parent_inverse @ child.matrix_basis
+
+    so solving for ``matrix_parent_inverse`` keeps both the world transform and
+    the local transform channels (location / rotation / scale) the caller set.
+    """
+    if parent is None:
+        child.matrix_world = world_before
+        return
+    try:
+        child.matrix_parent_inverse = parent.matrix_world.inverted() @ world_before @ child.matrix_basis.inverted()
+    except Exception:
+        # Singular matrices (zero scale) or a build without ``matrix_basis``:
+        # fall back to the direct world-matrix assignment. This is not the end
+        # of the story — the caller verifies the outcome and reports a failure.
+        child.matrix_world = world_before
+
+
 def parent_object(child_name: str, parent_name: str | None = None) -> dict:
     """Parent or unparent an object while preserving its world transform."""
     try:
@@ -255,17 +329,32 @@ def parent_object(child_name: str, parent_name: str | None = None) -> dict:
             if parent is child:
                 return skill_error("Invalid parent", "An object cannot be parented to itself.")
 
-        matrix_world = getattr(child, "matrix_world", None)
+        _flush_depsgraph(bpy)
+        world_before = _copy_matrix(getattr(child, "matrix_world", None))
+
         child.parent = parent
-        if matrix_world is not None:
-            try:
-                child.matrix_world = matrix_world
-            except Exception:
-                pass
+        delta = None
+        if world_before is not None:
+            _flush_depsgraph(bpy)
+            _keep_world_transform(child, parent, world_before)
+            _flush_depsgraph(bpy)
+            delta = _matrix_delta(child.matrix_world, world_before)
+        preserved = None if delta is None else delta <= _WORLD_TRANSFORM_TOLERANCE
+        if preserved is False:
+            return skill_error(
+                f"Parent updated for {child.name} but its world transform was not preserved",
+                f"The world transform of '{child.name}' moved by up to {delta:.6g} while parenting.",
+                child_name=child.name,
+                parent_name=getattr(parent, "name", None),
+                world_transform_preserved=False,
+                world_transform_delta=delta,
+                prompt="Re-apply the transform with move_object / rotate_object / scale_object, then verify with get_object_info.",
+            )
         return skill_success(
             f"Parent updated for {child.name}",
             child_name=child.name,
             parent_name=getattr(parent, "name", None),
+            world_transform_preserved=preserved,
             prompt="Use get_bounding_box or get_object_info to verify the resulting transform.",
         )
     except ImportError:
