@@ -15,11 +15,28 @@ GEOMETRY_NODES_PATH = "src/dcc_mcp_blender/skills/blender-geometry-nodes/tools.y
 
 
 class FakeSocket:
+    """Blender 4.x style interface socket; direction lives in ``in_out``."""
+
     def __init__(self, name, socket_type, in_out):
         self.name = name
         self.identifier = name
         self.socket_type = socket_type
         self.in_out = in_out
+
+
+class FakeLegacySocket:
+    """Blender 3.6 style ``NodeSocketInterface``; direction lives in ``is_output``.
+
+    Deliberately has **no** ``in_out`` attribute, matching real Blender 3.6, so a
+    production read of ``getattr(socket, \"in_out\", ...)`` cannot silently satisfy
+    itself off this fake.
+    """
+
+    def __init__(self, name, socket_type, is_output):
+        self.name = name
+        self.identifier = name
+        self.socket_type = socket_type
+        self.is_output = is_output
 
 
 class FakeLinks(list):
@@ -45,11 +62,17 @@ class FakeNodes(list):
         if interface is not None:
             interface.mirror(node)
         else:
-            for collection in (getattr(self._group, "inputs", []), getattr(self._group, "outputs", [])):
+            # Legacy 3.6 collections carry no direction on the socket itself: the
+            # collection it lives in is the direction. Infer it from there instead
+            # of reading ``socket.in_out``, which real 3.6 sockets do not expose.
+            for collection, in_out in (
+                (getattr(self._group, "inputs", []), "INPUT"),
+                (getattr(self._group, "outputs", []), "OUTPUT"),
+            ):
                 for socket in collection:
-                    if node.bl_idname == "NodeGroupInput" and socket.in_out == "INPUT":
+                    if node.bl_idname == "NodeGroupInput" and in_out == "INPUT":
                         node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
-                    elif node.bl_idname == "NodeGroupOutput" and socket.in_out == "OUTPUT":
+                    elif node.bl_idname == "NodeGroupOutput" and in_out == "OUTPUT":
                         node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
         return node
 
@@ -109,7 +132,7 @@ class FakeLegacySockets(list):
                 node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
 
     def new(self, socket_type, name):
-        socket = FakeSocket(name, socket_type, self._in_out)
+        socket = FakeLegacySocket(name, socket_type, self._in_out == "OUTPUT")
         self.append(socket)
         self._mirror(socket)
         return socket
@@ -435,6 +458,23 @@ class TestGeometryNodeGroupTemplates:
         assert group.socket_names("INPUT") == []
         assert group.nodes == [custom]
         assert group.links == []
+
+    def test_legacy_3_6_fake_sockets_carry_is_output_and_no_in_out(self):
+        """Keep the legacy fake faithful to Blender 3.6 ``NodeSocketInterface``.
+
+        Blender 3.6 exposes ``is_output`` and has **no** ``in_out``. If the fake
+        grew an ``in_out``, ``_add_group_socket`` could go back to reading
+        ``getattr(socket, \"in_out\", in_out)`` and this file would still pass,
+        so the legacy dedupe regression would go unnoticed until E2E.
+        """
+        legacy = FakeLegacyNodeGroup("LegacyGroup")
+        legacy.inputs.new("NodeSocketGeometry", "Geometry")
+        legacy.outputs.new("NodeSocketGeometry", "Geometry")
+
+        for socket in (*legacy.inputs, *legacy.outputs):
+            assert not hasattr(socket, "in_out")
+        assert legacy.inputs[0].is_output is False
+        assert legacy.outputs[0].is_output is True
 
     def test_pass_through_works_on_legacy_3_6_style_trees(self):
         bpy = make_mock_bpy()
