@@ -12,6 +12,17 @@ _GEOMETRY_KINDS = {"geometry", "geometry_nodes", "node_group"}
 _MODIFIER_KINDS = {"geometry_modifier", "modifier"}
 _COMPOSITOR_KINDS = {"compositor", "composite"}
 
+# Geometry node group templates. ``default`` and ``passthrough`` are aliases of
+# ``pass_through`` because both names are used by callers in the wild.
+_GROUP_TEMPLATES = {
+    "": "empty",
+    "empty": "empty",
+    "default": "pass_through",
+    "passthrough": "pass_through",
+    "pass_through": "pass_through",
+}
+_PASS_THROUGH_TEMPLATE = "pass_through"
+
 
 def _iter_collection(collection: Any) -> list[Any]:
     try:
@@ -388,23 +399,99 @@ def _add_group_socket(group: Any, name: str, socket_type: str, in_out: str) -> N
             pass
 
 
-def _ensure_group_node(group: Any, node_type: str, names: set[str]) -> None:
+def _find_group_node(group: Any, node_type: str, names: set[str] | None = None) -> Any | None:
     for node in _iter_collection(getattr(group, "nodes", [])):
         if getattr(node, "bl_idname", None) == node_type or getattr(node, "type", None) == node_type:
-            return
-        if getattr(node, "name", None) in names:
-            return
+            return node
+        if names and getattr(node, "name", None) in names:
+            return node
+    return None
+
+
+def _ensure_group_node(group: Any, node_type: str, names: set[str]) -> Any | None:
+    existing = _find_group_node(group, node_type, names)
+    if existing is not None:
+        return existing
     try:
-        group.nodes.new(type=node_type)
+        return group.nodes.new(type=node_type)
     except Exception:
-        pass
+        return None
+
+
+def _node_socket(node: Any, name: str, in_out: str) -> Any | None:
+    """Return a named input/output socket of a node, or None when absent."""
+    sockets = getattr(node, "outputs" if in_out == "OUTPUT" else "inputs", None)
+    if sockets is None:
+        return None
+    getter = getattr(sockets, "get", None)
+    if callable(getter):
+        try:
+            candidate = getter(name)
+        except Exception:
+            candidate = None
+        if candidate is not None:
+            return candidate
+    for socket in _iter_collection(sockets):
+        if getattr(socket, "name", None) == name:
+            return socket
+    return None
+
+
+def _link_group_sockets(group: Any, from_node_type: str, from_socket: str, to_node_type: str, to_socket: str) -> bool:
+    """Link two group node sockets when both endpoints exist and are unlinked."""
+    source = _find_group_node(group, from_node_type)
+    target = _find_group_node(group, to_node_type)
+    if source is None or target is None:
+        return False
+    out_socket = _node_socket(source, from_socket, "OUTPUT")
+    in_socket = _node_socket(target, to_socket, "INPUT")
+    if out_socket is None or in_socket is None:
+        return False
+    links = getattr(group, "links", None)
+    create_link = getattr(links, "new", None)
+    if not callable(create_link):
+        return False
+    for link in _iter_collection(links):
+        if getattr(link, "from_socket", None) is out_socket and getattr(link, "to_socket", None) is in_socket:
+            return True
+    try:
+        create_link(out_socket, in_socket)
+    except Exception:
+        return False
+    return True
+
+
+def _interface_socket_records(group: Any) -> list[dict]:
+    """Describe every interface socket of a node group, including legacy 3.6 trees."""
+    interface = getattr(group, "interface", None)
+    items_tree = getattr(interface, "items_tree", None)
+    if items_tree is not None:
+        items = [
+            (item, getattr(item, "in_out", None)) for item in _iter_collection(items_tree) if hasattr(item, "name")
+        ]
+    else:
+        items = [(socket, "INPUT") for socket in _iter_collection(getattr(group, "inputs", []))]
+        items += [(socket, "OUTPUT") for socket in _iter_collection(getattr(group, "outputs", []))]
+    records = []
+    for socket, in_out in items:
+        records.append(
+            {
+                "name": _socket_name(socket),
+                "identifier": _socket_identifier(socket),
+                "in_out": in_out,
+                "type": getattr(socket, "socket_type", None) or getattr(socket, "type", None),
+            }
+        )
+    return records
 
 
 def _create_passthrough_geometry_group(group: Any) -> None:
+    """Give a group a wired Geometry in -> Geometry out pass-through backbone."""
     _add_group_socket(group, "Geometry", "NodeSocketGeometry", "INPUT")
     _add_group_socket(group, "Geometry", "NodeSocketGeometry", "OUTPUT")
     _ensure_group_node(group, "NodeGroupInput", {"Group Input"})
     _ensure_group_node(group, "NodeGroupOutput", {"Group Output"})
+    _link_group_sockets(group, "NodeGroupInput", "Geometry", "NodeGroupOutput", "Geometry")
 
 
 def list_node_trees(kind: str, owner_name: str | None = None) -> dict:
@@ -868,27 +955,59 @@ def set_principled_inputs(material_name: str, inputs: Mapping[str, Any], node_na
         return skill_exception(exc, message=f"Failed to set Principled inputs on {material_name}")
 
 
-def create_geometry_node_group(name: str, template: str = "empty") -> dict:
-    """Create or return a Geometry Nodes node group."""
+def _resolve_group_template(template: Any) -> str | None:
+    """Map a caller supplied template name onto a canonical template id."""
+    if template is None:
+        return _PASS_THROUGH_TEMPLATE
+    if not isinstance(template, str):
+        return None
+    return _GROUP_TEMPLATES.get(template.strip().lower())
+
+
+def create_geometry_node_group(name: str, template: str = _PASS_THROUGH_TEMPLATE) -> dict:
+    """Create or return a Geometry Nodes node group.
+
+    ``pass_through`` (also reachable as ``default``) gives the group a Geometry
+    input socket, a Geometry output socket and a linked Group Input -> Group
+    Output pair, so the group is usable as a modifier straight away. ``empty``
+    leaves the group bare. A template is only applied to a new group or to an
+    existing group that still has no nodes, so an authored graph is never
+    rewritten by a get-or-create call.
+    """
     try:
         import bpy
 
+        resolved_template = _resolve_group_template(template)
+        if resolved_template is None:
+            return skill_error("Unsupported geometry node template", f"Unsupported template: {template}")
         group = _collection_get(bpy.data.node_groups, name)
         created = False
         if group is None:
             group = bpy.data.node_groups.new(name, "GeometryNodeTree")
             created = True
-        if template == "pass_through":
+        template_applied = created or not _iter_collection(getattr(group, "nodes", []))
+        if template_applied and resolved_template == _PASS_THROUGH_TEMPLATE:
             _create_passthrough_geometry_group(group)
-        elif template not in {"empty", "default", ""}:
-            return skill_error("Unsupported geometry node template", f"Unsupported template: {template}")
+        sockets = _interface_socket_records(group)
+        prompt = (
+            "Use assign_geometry_node_group to attach this group to an object, then extend the graph "
+            "with blender-shader-nodes connect_nodes."
+            if resolved_template == _PASS_THROUGH_TEMPLATE
+            else "Use create_geometry_node_socket with an inspect_geometry_node_interface revision to add "
+            "Geometry input/output sockets before assigning this group."
+        )
         return skill_success(
             f"{'Created' if created else 'Loaded'} Geometry Nodes group {name}",
             group_name=getattr(group, "name", name),
-            template=template,
+            template=resolved_template,
             created=created,
+            template_applied=template_applied,
             node_count=len(_iter_collection(group.nodes)),
-            prompt="Use assign_geometry_node_group to attach this group to an object.",
+            link_count=len(_iter_collection(getattr(group, "links", []))),
+            interface_sockets=sockets,
+            input_count=sum(1 for record in sockets if record["in_out"] == "INPUT"),
+            output_count=sum(1 for record in sockets if record["in_out"] == "OUTPUT"),
+            prompt=prompt,
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")

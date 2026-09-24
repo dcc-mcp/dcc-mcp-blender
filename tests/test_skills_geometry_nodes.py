@@ -14,23 +14,60 @@ GEOMETRY_NODES_DIR = "blender-geometry-nodes"
 GEOMETRY_NODES_PATH = "src/dcc_mcp_blender/skills/blender-geometry-nodes/tools.yaml"
 
 
+class FakeSocket:
+    def __init__(self, name, socket_type, in_out):
+        self.name = name
+        self.identifier = name
+        self.socket_type = socket_type
+        self.in_out = in_out
+
+
+class FakeLinks(list):
+    def new(self, from_socket, to_socket):
+        link = SimpleNamespace(from_socket=from_socket, to_socket=to_socket)
+        self.append(link)
+        return link
+
+
 class FakeNodes(list):
+    """Node collection that mirrors the group interface onto new group nodes."""
+
+    def __init__(self, group):
+        super().__init__()
+        self._group = group
+
     def new(self, type):  # noqa: A002
         node = SimpleNamespace(
             name=type, type=type, bl_idname=type, inputs={}, outputs={}, label="", location=[0.0, 0.0]
         )
         self.append(node)
+        self._group.interface.mirror(node)
         return node
 
 
-class FakeLinks(list):
-    pass
-
-
 class FakeInterface(list):
+    """Minimal NodeTreeInterface; sockets mirror onto the group's group nodes."""
+
+    def __init__(self, group):
+        super().__init__()
+        self._group = group
+
+    @property
+    def items_tree(self):
+        return self
+
+    def mirror(self, node):
+        for socket in self:
+            if socket.in_out == "INPUT" and node.bl_idname == "NodeGroupInput":
+                node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
+            elif socket.in_out == "OUTPUT" and node.bl_idname == "NodeGroupOutput":
+                node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
+
     def new_socket(self, name, in_out, socket_type):
         socket = SimpleNamespace(name=name, identifier=name, in_out=in_out, socket_type=socket_type)
         self.append(socket)
+        for node in self._group.nodes:
+            self.mirror(node)
         return socket
 
 
@@ -39,9 +76,12 @@ class FakeNodeGroup:
         self.name = name
         self.type = "GeometryNodeTree"
         self.bl_idname = "GeometryNodeTree"
-        self.nodes = FakeNodes()
+        self.interface = FakeInterface(self)
+        self.nodes = FakeNodes(self)
         self.links = FakeLinks()
-        self.interface = SimpleNamespace(items_tree=FakeInterface())
+
+    def socket_names(self, in_out):
+        return [socket.name for socket in self.interface if socket.in_out == in_out]
 
 
 class FakeNodeGroups(list):
@@ -251,3 +291,153 @@ class TestGeometryNodeGraphTools:
             group_name="Missing",
         )
         assert assigned["success"] is False
+
+
+class TestGeometryNodeGroupTemplates:
+    """A created group must expose interface sockets agents can wire against."""
+
+    def _create(self, bpy, name, **kwargs):
+        return load_and_call(f"{GEOMETRY_NODES_DIR}/scripts/create_geometry_node_group.py", bpy, name=name, **kwargs)
+
+    def test_default_template_creates_wired_geometry_pass_through(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "ScatterGroup", template="default")
+
+        assert created["success"] is True
+        group = bpy.data.node_groups.get("ScatterGroup")
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert group.socket_names("OUTPUT") == ["Geometry"]
+        assert created["context"]["template"] == "pass_through"
+        assert created["context"]["input_count"] == 1
+        assert created["context"]["output_count"] == 1
+        assert [record["name"] for record in created["context"]["interface_sockets"]] == ["Geometry", "Geometry"]
+
+    def test_pass_through_links_group_input_to_group_output(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        self._create(bpy, "ScatterGroup", template="pass_through")
+
+        group = bpy.data.node_groups.get("ScatterGroup")
+        assert len(group.nodes) == 2
+        assert len(group.links) == 1
+        link = group.links[0]
+        assert link.from_socket.name == "Geometry"
+        assert link.to_socket.name == "Geometry"
+
+    def test_pass_through_is_idempotent(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        self._create(bpy, "ScatterGroup", template="pass_through")
+        second = self._create(bpy, "ScatterGroup", template="pass_through")
+
+        group = bpy.data.node_groups.get("ScatterGroup")
+        assert second["context"]["created"] is False
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert len(group.nodes) == 2
+        assert len(group.links) == 1
+
+    def test_omitted_template_defaults_to_pass_through(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "ScatterGroup")
+
+        group = bpy.data.node_groups.get("ScatterGroup")
+        assert created["context"]["template"] == "pass_through"
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert len(group.links) == 1
+
+    def test_empty_template_leaves_group_bare_but_reported(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "BareGroup", template="empty")
+
+        group = bpy.data.node_groups.get("BareGroup")
+        assert created["success"] is True
+        assert created["context"]["interface_sockets"] == []
+        assert created["context"]["input_count"] == 0
+        assert group.nodes == []
+        assert group.links == []
+
+    def test_empty_group_is_repaired_by_a_later_pass_through_call(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        self._create(bpy, "BareGroup", template="empty")
+        repaired = self._create(bpy, "BareGroup", template="pass_through")
+
+        group = bpy.data.node_groups.get("BareGroup")
+        assert repaired["context"]["template_applied"] is True
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert len(group.links) == 1
+
+    def test_authored_graph_is_not_rewritten_by_get_or_create(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        self._create(bpy, "AuthoredGroup", template="empty")
+        group = bpy.data.node_groups.get("AuthoredGroup")
+        custom = group.nodes.new("GeometryNodeSubdivide")
+
+        loaded = self._create(bpy, "AuthoredGroup", template="pass_through")
+
+        assert loaded["context"]["template_applied"] is False
+        assert group.socket_names("INPUT") == []
+        assert group.nodes == [custom]
+        assert group.links == []
+
+    def test_unknown_template_returns_error(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "ScatterGroup", template="scatter")
+
+        assert created["success"] is False
+        assert bpy.data.node_groups.get("ScatterGroup") is None
+
+
+class TestAddGeometryNodesModifierTemplates:
+    def test_created_group_is_wired_and_reported(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        bpy.data.node_groups = FakeNodeGroups()
+
+        result = load_and_call(
+            "blender-geometry-nodes/scripts/add_geometry_nodes_modifier.py",
+            bpy,
+            object_name="Cube",
+            group_name="Procedural Group",
+        )
+
+        assert result["success"] is True
+        group = bpy.data.node_groups.get("Procedural Group")
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert group.socket_names("OUTPUT") == ["Geometry"]
+        assert len(group.links) == 1
+        assert result["context"]["group_created"] is True
+        assert result["context"]["group_template"] == "pass_through"
+
+    def test_empty_template_still_available(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        bpy.data.node_groups = FakeNodeGroups()
+
+        result = load_and_call(
+            "blender-geometry-nodes/scripts/add_geometry_nodes_modifier.py",
+            bpy,
+            object_name="Cube",
+            group_name="Bare Group",
+            template="empty",
+        )
+
+        group = bpy.data.node_groups.get("Bare Group")
+        assert result["success"] is True
+        assert result["context"]["group_template"] == "empty"
+        assert group.socket_names("INPUT") == []

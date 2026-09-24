@@ -40,6 +40,24 @@ modifiers, setting exposed modifier inputs, and inspecting procedural graph
 state. Use `blender-shader-nodes` for low-level shared node graph operations
 such as `list_nodes`, `connect_nodes`, and `set_node_input`.
 
+## Group templates
+
+`create_geometry_node_group` and `add_geometry_nodes_modifier` take a
+`template` argument:
+
+- `pass_through` (default, also selectable as `default`): the group gets a
+  `Geometry` input socket, a `Geometry` output socket, and a linked Group Input
+  -> Group Output pair, so `NodeGroupInput` really emits `Geometry` and the
+  group can be extended and assigned as a modifier immediately.
+- `empty`: a bare group with no sockets and no nodes. Use `create_geometry_node_socket`
+  to add sockets yourself.
+
+A template is only applied when the group is created, or when an existing group
+still has no nodes; an authored graph is never rewritten by a get-or-create
+call. Both tools report `template`, `template_applied`, `node_count`,
+`link_count` and `interface_sockets` so a caller can verify the interface
+without a separate read.
+
 ## Interface socket workflow (Blender 4.0+)
 
 Use `inspect_geometry_node_interface` to read socket identifiers, directions,

@@ -22,6 +22,14 @@ tools:
         create_node_group:
           type: boolean
           default: true
+        template:
+          type: string
+          enum: [empty, default, pass_through]
+          default: pass_through
+          description: >-
+            Layout applied when the group is created. pass_through (also "default") adds
+            Geometry input/output sockets plus a linked Group Input -> Group Output pair;
+            empty leaves the group bare. An existing graph is never rewritten.
     output_schema: &geometry_nodes_result_schema
       type: object
       additionalProperties: true
@@ -67,7 +75,11 @@ tools:
       open_world_hint: false
 
   - name: create_geometry_node_group
-    description: "Create or return a Geometry Nodes node group."
+    description: >-
+      Create or return a Geometry Nodes node group. The pass_through template (also
+      selectable as "default") gives the group Geometry input/output sockets and a linked
+      Group Input -> Group Output pair; "empty" leaves it bare. Templates only apply to a
+      new group or an existing group without nodes.
     source_file: scripts/create_geometry_node_group.py
     execution: sync
     affinity: main
@@ -83,7 +95,11 @@ tools:
         template:
           type: string
           enum: [empty, default, pass_through]
-          default: empty
+          default: pass_through
+          description: >-
+            Layout applied when the group is created. pass_through (also "default") adds
+            Geometry input/output sockets plus a linked Group Input -> Group Output pair;
+            empty leaves the group bare. An existing graph is never rewritten.
     output_schema: *geometry_nodes_result_schema
     read_only: false
     destructive: false
