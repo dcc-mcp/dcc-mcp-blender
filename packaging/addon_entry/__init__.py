@@ -159,32 +159,122 @@ def _reset_canonical_package() -> None:
     _canonical_package = None
 
 
+# Blender imports every add-on module just to read ``bl_info``, so the public
+# adapter surface is re-exported lazily (PEP 562) instead of eagerly. ``__all__``
+# is served by ``__getattr__`` on purpose: a module-level ``__all__`` global
+# would shadow the lazy hook and hide the adapter surface.
+_ADDON_EXPORTS = (
+    "bl_info",
+    "register",
+    "unregister",
+)
+
+# Public names that start with an underscore. Kept explicit on purpose: the
+# ``__getattr__`` hook below must reject underscore-prefixed names *before*
+# touching ``_public_api``, because ``from . import _capability_manifest`` in a
+# bundled module relies on ``AttributeError`` to fall back to the real submodule
+# loader. Consulting the public surface first would recurse into it.
+# ``test_addon_entry_dunder_exports_match_the_library_surface`` guards drift.
+_DUNDER_EXPORTS = frozenset({"__version__"})
+
+
 def _addon_module(name: str):
     """Import a bundled module through the active add-on package namespace."""
     package = _resolve_canonical_package()
     return importlib.import_module(f"{package}.{name}")
 
 
-def _install_runtime_import_aliases() -> None:
+def _public_api_module():
+    """Return the bundled public-surface module in this add-on namespace."""
+    # Blender 5.x boots an isolated Python that ignores PYTHONPATH, so injected
+    # dependencies are invisible from inside the host. Repair it before the
+    # public surface imports core; on other hosts this is a no-op.
+    _addon_module("_isolated_path").repair_sys_path()
+    module = _addon_module("_public_api")
+    # Importing the ``__version__`` submodule leaves the *module* bound as the
+    # package attribute. The wheel channel rebinds it to the version string via
+    # ``import *``; do the same here so both channels answer identically.
+    for name in _DUNDER_EXPORTS:
+        value = getattr(module, name, None)
+        if value is not None:
+            globals()[name] = value
+    return module
+
+
+def _install_runtime_import_aliases(*, strict: bool = True) -> None:
     """Expose public skill imports without mutating Blender's ``sys.path``."""
     global _runtime_import_aliases  # noqa: PLW0603
     package = __package__ or ""
-    if not package.startswith("bl_ext.") or _runtime_import_aliases is not None:
+    if not package.startswith("bl_ext."):
         return
     if _resolve_canonical_package() != package:
         # The resolved distribution drives the runtime, so the public name already
         # resolves to it. Bridging would shadow it with this extension copy.
+        # A bridge installed earlier (the best-effort import-time one, before
+        # the package environment was on ``sys.path``) must go too, or the
+        # extension copy keeps answering ``import dcc_mcp_blender``.
+        _remove_runtime_import_aliases()
         return
     installer = _addon_module("_extension_imports").install_extension_import_aliases
-    _runtime_import_aliases = installer(package)
+    aliases = installer(package, strict=strict)
+    if aliases is not None and getattr(aliases, "installed", False):
+        _runtime_import_aliases = aliases
 
 
 def _remove_runtime_import_aliases() -> None:
+    """Fully withdraw the public import bridge (only on a failed/aborted enable).
+
+    An ordinary ``unregister()`` calls :func:`_detach_runtime_import_aliases`
+    instead: Blender disables add-ons on ``wm.read_factory_settings``, and
+    headless pipeline scripts import ``dcc_mcp_blender`` right after that.
+    """
     global _runtime_import_aliases  # noqa: PLW0603
     aliases = _runtime_import_aliases
     _runtime_import_aliases = None
     if aliases is not None:
         aliases.uninstall()
+
+
+def _detach_runtime_import_aliases() -> None:
+    """Drop stale public facades while keeping the import contract resolvable."""
+    global _runtime_import_aliases  # noqa: PLW0603
+    aliases = _runtime_import_aliases
+    if aliases is not None:
+        aliases.detach()
+
+
+def __getattr__(name: str):
+    """Expose the wheel channel's top-level surface from the add-on entrypoint.
+
+    The Blender extension package root *is* ``dcc_mcp_blender``, so this module
+    is what ``import dcc_mcp_blender`` resolves to in that channel. Without this
+    hook, ``dcc_mcp_blender.BlenderHost`` and friends exist only in the wheel
+    channel and skill scripts break on one of the two distributions.
+    """
+    if name == "__all__":
+        public_api = _public_api_module()
+        return list(_ADDON_EXPORTS) + [n for n in public_api.__all__ if n not in _ADDON_EXPORTS]
+    # Fail fast for submodule and private lookups. ``from . import <submodule>``
+    # and every ``_<private>`` name must raise AttributeError without importing
+    # anything, or the import machinery never reaches the submodule loader and
+    # ``_public_api`` recurses into itself.
+    if name.startswith("_") and name not in _DUNDER_EXPORTS:
+        raise AttributeError(name)
+    if name in _ADDON_EXPORTS:
+        raise AttributeError(name)
+    public_api = _public_api_module()
+    if name in public_api.__all__:
+        return getattr(public_api, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> List[str]:
+    names = set(globals()) | set(_ADDON_EXPORTS) | {"__all__"}
+    try:
+        names |= set(_public_api_module().__all__)
+    except Exception:  # noqa: BLE001 - Blender must never fail listing a module
+        pass
+    return sorted(names)
 
 
 def _bind_ui_control_to_host_process() -> None:
@@ -735,7 +825,20 @@ def unregister() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"[DCC MCP Blender] Failed to stop server: {exc}")
     finally:
-        _remove_runtime_import_aliases()
+        # Keep the public import bridge installed: Blender disables add-ons on
+        # ``wm.read_factory_settings``, and batch scripts import
+        # ``dcc_mcp_blender`` immediately afterwards.
+        _detach_runtime_import_aliases()
 
+
+# Deliberately no import-time install of the public import bridge. Blender
+# imports every add-on module just to read ``bl_info``, long before a package
+# environment is on ``sys.path``: resolving the canonical package here would
+# cache a premature decision (pinning the runtime to this extension copy and so
+# defeating the handover to a newer resolved distribution) and would echo a
+# provenance warning against whatever stale copy happens to be importable at
+# scan time. ``register()`` installs the bridge once the host is real, and
+# ``unregister()`` detaches rather than uninstalls it, which is what keeps
+# ``import dcc_mcp_blender`` working after ``wm.read_factory_settings``.
 
 __addon_version__ = "0.2.10"  # x-release-please-version
