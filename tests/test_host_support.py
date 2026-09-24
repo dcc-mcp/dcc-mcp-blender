@@ -22,6 +22,50 @@ def _flags(**overrides):
     return SimpleNamespace(**base)
 
 
+def test_user_site_flag_does_not_mean_pythonpath_is_suppressed(monkeypatch):
+    """-s / PYTHONNOUSERSITE disables the user site; PYTHONPATH still works.
+
+    Treating no_user_site as injection suppression made the preflight blame --
+    and mis-remediate with --python-use-system-env -- hosts whose package paths
+    are fully visible.
+    """
+    monkeypatch.setattr(sys, "flags", _flags(no_user_site=1))
+
+    assert host_support.pythonpath_suppressed() is False
+    assert host_support.user_site_suppressed() is True
+    assert host_support.environment_injection_suppressed() is False
+
+
+def test_isolated_flags_suppress_pythonpath_and_imply_user_site(monkeypatch):
+    monkeypatch.setattr(sys, "flags", _flags(isolated=1, ignore_environment=1))
+
+    assert host_support.pythonpath_suppressed() is True
+    assert host_support.environment_injection_suppressed() is True
+
+
+def test_diagnose_host_reports_both_injection_signals(monkeypatch):
+    monkeypatch.setattr(sys, "flags", _flags(no_user_site=1))
+
+    report = host_support.diagnose_host(("dcc_mcp_core",))
+
+    assert report["pythonpath_suppressed"] is False
+    assert report["user_site_suppressed"] is True
+    assert report["environment_injection_suppressed"] is False
+
+
+def test_user_site_only_failure_suggests_the_user_site_fix(monkeypatch):
+    """A -s host gets the -s fix, not --python-use-system-env."""
+    monkeypatch.setattr(sys, "flags", _flags(no_user_site=1))
+    monkeypatch.setattr(host_support, "missing_distributions", lambda *args, **kwargs: ["dcc_mcp_core"])
+
+    with pytest.raises(host_support.HostSupportError) as excinfo:
+        host_support.require_supported_host()
+
+    message = str(excinfo.value)
+    assert "PYTHONNOUSERSITE" in message
+    assert "--python-use-system-env" not in message
+
+
 def test_missing_distributions_reports_invisible_modules(monkeypatch):
     assert host_support.missing_distributions(("dcc_mcp_core",)) == []
     assert host_support.missing_distributions(("_dcc_mcp_not_installed_xyz",)) == ["_dcc_mcp_not_installed_xyz"]
@@ -130,11 +174,56 @@ def test_main_exits_zero_for_a_supported_host(monkeypatch, capsys):
     monkeypatch.setattr(sys, "flags", _flags())
     monkeypatch.setattr(host_support, "missing_distributions", lambda *args, **kwargs: [])
 
-    assert host_support.main(["--require", "dcc_mcp_core"]) == 0
+    assert host_support.main([]) == 0
 
     output = capsys.readouterr().out
     assert "dcc-mcp-blender host support: supported" in output
     assert "declared window: >=3.7" in output
+
+
+def test_main_require_extends_the_default_set_instead_of_replacing_it(monkeypatch, capsys):
+    """--require must never drop dcc_mcp_blender / dcc_mcp_core from the check.
+
+    Replacing the defaults lets an invisible adapter report 'supported' -- the
+    exact silent failure the preflight exists to catch.
+    """
+    seen = []
+
+    def _record(required=(), *_args, **_kwargs):
+        seen.append(tuple(required))
+        return []
+
+    monkeypatch.setattr(sys, "flags", _flags())
+    monkeypatch.setattr(host_support, "missing_distributions", _record)
+
+    assert host_support.main(["--require", "json"]) == 0
+
+    assert seen == [("dcc_mcp_blender", "dcc_mcp_core", "json")]
+
+
+def test_main_requires_adapter_even_when_another_distribution_is_requested(monkeypatch, capsys):
+    """A host missing only the adapter must still fail the standalone preflight."""
+
+    def _missing(required=(), *_args, **_kwargs):
+        return [name for name in required if name == "dcc_mcp_blender"]
+
+    monkeypatch.setattr(sys, "flags", _flags())
+    monkeypatch.setattr(host_support, "missing_distributions", _missing)
+
+    assert host_support.main(["--require", "json"]) == 1
+    assert "missing distributions: dcc_mcp_blender" in capsys.readouterr().out
+
+
+def test_main_ignores_host_arguments_passed_by_blender(monkeypatch, capsys):
+    """'blender --python <script> -- --json' leaks Blender's own argv into the script."""
+    monkeypatch.setattr(sys, "flags", _flags())
+    monkeypatch.setattr(host_support, "missing_distributions", lambda *args, **kwargs: [])
+
+    exit_code = host_support.main(["--background", "--factory-startup", "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["supported"] is True
 
 
 def test_module_is_stdlib_only():

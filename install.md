@@ -49,9 +49,15 @@ user-site entries never reach `sys.path` and `import dcc_mcp_blender` fails with
 declared boundary, the detected mode, and the matching fix instead:
 
 ```bash
-<blender-python> <site-packages>/dcc_mcp_blender/_host_support.py
-<blender-python> <site-packages>/dcc_mcp_blender/_host_support.py --json
+blender --background --python <site-packages>/dcc_mcp_blender/_host_support.py -- --json
 ```
+
+Run it **inside the host** (`blender --python`), not with a bare interpreter: only
+the host interpreter reproduces the isolation flags that hide `PYTHONPATH`, so a
+bare `<blender-python>` run reports `isolated=0` and can print `supported` for a
+host that cannot import the adapter. Script arguments go after `--`; Blender's own
+arguments are ignored. The standalone run always checks both `dcc_mcp_blender` and
+`dcc_mcp_core`; `--require MODULE` adds to that set, it never replaces it.
 
 It imports no adapter modules, exits `0` when the host is supported and `1` when
 it is not, and names the missing distributions plus the fix that matches the

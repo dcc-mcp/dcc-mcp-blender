@@ -41,18 +41,28 @@ HOST_PYTHON_MAX_TESTED = (3, 13)
 REQUIRED_DISTRIBUTIONS = ("dcc_mcp_core",)
 
 # The preflight must also be runnable by a host that cannot import the adapter at
-# all ("blender --background --python <...>/_host_support.py"), so it checks the
-# adapter itself as well when it runs as a script.
+# all, so it runs inside the host interpreter itself:
+#
+#     blender --background --python <site-packages>/dcc_mcp_blender/_host_support.py -- --json
+#
+# The trailing arguments after '--' belong to the script; Blender's own arguments
+# are ignored (see main()). Running it this way is what reproduces the host's real
+# isolation flags -- invoking a bare interpreter instead would report isolated=0 and
+# can therefore print 'supported' for a host that cannot import the adapter.
 STANDALONE_REQUIRED_DISTRIBUTIONS = ("dcc_mcp_blender", "dcc_mcp_core")
 
 _REMEDIATION_ISOLATED = (
-    "the interpreter started with environment injection disabled "
-    "(PYTHONPATH and the user site cannot reach sys.path) -- start Blender with "
+    "the interpreter ignored PYTHONPATH (environment injection disabled) -- start Blender with "
     "--python-use-system-env, or install the Extension ZIP that bundles the wheel"
 )
 _REMEDIATION_VISIBLE = (
     "the host cannot see it -- install it into this interpreter "
     "(for Blender: '<blender python> -m pip install --user dcc-mcp-core')"
+)
+_REMEDIATION_USER_SITE = (
+    "the interpreter runs with the user site disabled (-s / PYTHONNOUSERSITE) -- dependencies "
+    "installed with 'pip install --user' are invisible; install them into this interpreter's "
+    "site-packages, or drop -s / PYTHONNOUSERSITE"
 )
 
 
@@ -66,16 +76,36 @@ def host_python_version() -> Tuple[int, int, int]:
 
 
 def environment_injection_suppressed() -> bool:
-    """Return True when the host ignores ``PYTHONPATH`` / user-site injection.
+    """Return True when the host ignores ``PYTHONPATH``.
 
-    Blender 5.x reports ``isolated=1``, ``ignore_environment=1`` and
-    ``no_user_site=1``; any of them keeps package-environment paths out of
-    ``sys.path``.
+    Only ``isolated`` and ``ignore_environment`` decide ``PYTHONPATH`` handling.
+    ``no_user_site`` (``-s`` / ``PYTHONNOUSERSITE``) is deliberately excluded: it
+    disables the *user* site directory while ``PYTHONPATH`` keeps working, so
+    treating it as suppressed would blame -- and mis-remediate -- hosts whose
+    package-environment paths are in fact fully visible.
+    """
+    return pythonpath_suppressed()
+
+
+def pythonpath_suppressed() -> bool:
+    """Return True when the interpreter ignored ``PYTHONPATH`` at start-up.
+
+    Blender 5.x reports ``isolated=1`` and ``ignore_environment=1``. Both keep
+    package-environment paths out of ``sys.path``; neither says anything about
+    the user site directory.
     """
     flags = sys.flags
-    return bool(
-        getattr(flags, "ignore_environment", 0) or getattr(flags, "isolated", 0) or getattr(flags, "no_user_site", 0)
-    )
+    return bool(getattr(flags, "ignore_environment", 0) or getattr(flags, "isolated", 0))
+
+
+def user_site_suppressed() -> bool:
+    """Return True when the user site directory is disabled.
+
+    Set by ``-s`` / ``PYTHONNOUSERSITE`` and, as a side effect, by an isolated
+    interpreter. Independent of ``PYTHONPATH``: a ``-s`` host still honours
+    ``PYTHONPATH`` normally.
+    """
+    return bool(getattr(sys.flags, "no_user_site", 0))
 
 
 def missing_distributions(required: Sequence[str] = REQUIRED_DISTRIBUTIONS) -> List[str]:
@@ -109,10 +139,25 @@ def diagnose_host(required: Sequence[str] = REQUIRED_DISTRIBUTIONS) -> Dict[str,
         "python_below_min": below_min,
         "python_beyond_tested": beyond_tested,
         "environment_injection_suppressed": environment_injection_suppressed(),
+        "pythonpath_suppressed": pythonpath_suppressed(),
+        "user_site_suppressed": user_site_suppressed(),
         "required_distributions": list(required),
         "missing_distributions": missing,
         "supported": not below_min and not missing,
     }
+
+
+def _remediation_for(report: Dict[str, object]) -> str:
+    """Pick the remediation that matches the detected interpreter mode.
+
+    ``PYTHONPATH`` suppression and user-site suppression are separate causes with
+    separate fixes; only the former is answered by ``--python-use-system-env``.
+    """
+    if report.get("pythonpath_suppressed"):
+        return _REMEDIATION_ISOLATED
+    if report.get("user_site_suppressed"):
+        return _REMEDIATION_USER_SITE
+    return _REMEDIATION_VISIBLE
 
 
 def format_host_support_report(report: Dict[str, object]) -> str:
@@ -128,7 +173,7 @@ def format_host_support_report(report: Dict[str, object]) -> str:
     ]
     missing = report["missing_distributions"] or []
     if missing:
-        remediation = _REMEDIATION_ISOLATED if report["environment_injection_suppressed"] else _REMEDIATION_VISIBLE
+        remediation = _remediation_for(report)
         lines.append("missing distributions: {names} -- {fix}".format(names=", ".join(missing), fix=remediation))
     if report["python_below_min"]:
         lines.append("host python is below the declared minimum of {min}".format(min=report["python_min"]))
@@ -189,9 +234,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         metavar="MODULE",
         help="add a required distribution (repeatable)",
     )
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    # Blender passes its own arguments (--background, --factory-startup, ...) in
+    # sys.argv when the preflight runs through 'blender --python'; unknown
+    # arguments are ignored so those hosts are diagnosed instead of aborting with
+    # an argparse usage error before any check has run.
+    args, _unknown = parser.parse_known_args(list(argv) if argv is not None else None)
 
-    required = tuple(args.required) if args.required else STANDALONE_REQUIRED_DISTRIBUTIONS
+    # --require extends the default set, it never replaces it: dropping
+    # dcc_mcp_blender / dcc_mcp_core would let a host with an invisible adapter
+    # report 'supported' -- the exact silent failure this preflight exists to
+    # catch. (argparse help says 'add a required distribution'.)
+    required = STANDALONE_REQUIRED_DISTRIBUTIONS + tuple(args.required or ())
     report = diagnose_host(required)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -214,7 +267,9 @@ __all__ = [
     "host_python_version",
     "main",
     "missing_distributions",
+    "pythonpath_suppressed",
     "require_supported_host",
+    "user_site_suppressed",
 ]
 
 
