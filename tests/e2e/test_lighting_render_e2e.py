@@ -156,6 +156,56 @@ class TestLightingSkillsE2E:
         assert result["success"] is False
         assert "link" in result["message"].lower()
 
+    def _output_surface(self):
+        """Return the world's ``OUTPUT_WORLD.Surface`` input socket."""
+        node_tree = bpy.context.scene.world.node_tree
+        output = next(node for node in node_tree.nodes if node.type == "OUTPUT_WORLD")
+        return node_tree, output.inputs["Surface"]
+
+    def test_world_background_writes_the_node_that_drives_the_output(self):
+        """With two Background nodes, only the one driving the output is written."""
+        mod = load_skill("blender-lighting", "set_world_background")
+        assert mod.set_world_background(color=[0.1, 0.1, 0.1], strength=1.0)["success"] is True
+
+        node_tree, surface = self._output_surface()
+        orphan = self._background_node()
+
+        # Keep the original background linked (to a spare output) so a plain
+        # link-state check still looks fine, then feed the surface from a second
+        # background node: only that second node drives the render.
+        spare_output = node_tree.nodes.new("ShaderNodeOutputWorld")
+        for link in list(surface.links):
+            node_tree.links.remove(link)
+        node_tree.links.new(orphan.outputs[0], spare_output.inputs["Surface"])
+        driving = node_tree.nodes.new("ShaderNodeBackground")
+        node_tree.links.new(driving.outputs[0], surface)
+
+        result = mod.set_world_background(color=[0.3, 0.6, 0.9])
+
+        assert result["success"] is True
+        driving_color = driving.inputs["Color"].default_value
+        assert abs(driving_color[0] - 0.3) < 1e-4, f"driving node not written: {tuple(driving_color)}"
+        assert abs(driving_color[1] - 0.6) < 1e-4
+        assert abs(driving_color[2] - 0.9) < 1e-4
+        # The node that renders nothing must be left alone.
+        orphan_color = orphan.inputs["Color"].default_value
+        assert abs(orphan_color[0] - 0.1) < 1e-4, f"unrelated node was written: {tuple(orphan_color)}"
+
+    def test_world_background_fails_when_no_node_drives_the_output(self):
+        """Two Background nodes, neither wired to the output: still a failure."""
+        mod = load_skill("blender-lighting", "set_world_background")
+        assert mod.set_world_background(color=[0.1, 0.1, 0.1], strength=1.0)["success"] is True
+
+        node_tree, surface = self._output_surface()
+        for link in list(surface.links):
+            node_tree.links.remove(link)
+        node_tree.nodes.new("ShaderNodeBackground")
+
+        result = mod.set_world_background(color=[0.5, 0.1, 0.1])
+
+        assert result["success"] is False
+        assert "output" in result["message"].lower()
+
     def test_world_background_color_reapplied_on_second_call(self):
         """Regression for PIP-3545: color used to be dropped after the 1st call."""
         mod = load_skill("blender-lighting", "set_world_background")

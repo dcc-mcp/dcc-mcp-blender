@@ -97,6 +97,78 @@ def _find_node(nodes: Any, node_type: str) -> Any:
     return None
 
 
+def _socket_by_name(sockets: Any, name: str) -> Any:
+    """Return the named socket, or None when there is no such socket.
+
+    Blender collections expose ``.get`` while plain mappings only support
+    ``[]``; both are handled, and any lookup failure simply means "absent".
+    """
+    if sockets is None:
+        return None
+    getter = getattr(sockets, "get", None)
+    if callable(getter):
+        try:
+            socket = getter(name)
+        except Exception:
+            socket = None
+        if socket is not None:
+            return socket
+    try:
+        return sockets[name]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _surface_source_node(nodes: Any) -> Any:
+    """Return the node linked into ``ShaderNodeOutputWorld.Surface``, or None.
+
+    Node order says nothing about what the renderer reads: with more than one
+    Background node the first match can be an orphan while the surface is fed
+    by another one, so the link is followed back from the world output.
+
+    ``None`` means the link could not be traced (no output node, no Surface
+    socket, no link, or a socket that does not expose ``links``), and callers
+    fall back to the first matching node.
+
+    The source node is resolved back through ``nodes`` by name instead of being
+    returned as-is: Blender hands out a fresh wrapper object on every attribute
+    access, so the node a link names is not identity-equal to the one the tree
+    iterates. Node names are unique within a tree, which makes the lookup safe.
+    """
+    output = _find_node(nodes, "OUTPUT_WORLD")
+    if output is None:
+        return None
+    surface = _socket_by_name(getattr(output, "inputs", None), "Surface")
+    if surface is None:
+        return None
+    links = getattr(surface, "links", None)
+    if not links:
+        return None
+    try:
+        link = links[0]
+    except (IndexError, KeyError, TypeError):
+        return None
+    source_name = getattr(getattr(link, "from_node", None), "name", None)
+    if not isinstance(source_name, str):
+        return None
+    for node in nodes:
+        if getattr(node, "name", None) == source_name:
+            return node
+    return None
+
+
+def _select_background_node(nodes: Any) -> Any:
+    """Return the Background node the renderer actually reads.
+
+    Prefers the node driving ``ShaderNodeOutputWorld.Surface`` and falls back
+    to the first Background node when that link cannot be traced.
+    """
+    source = _surface_source_node(nodes)
+    if source is not None and getattr(source, "type", None) == "BACKGROUND":
+        return source
+    return _find_node(nodes, "BACKGROUND")
+
+
 def _ensure_background_node(world: Any) -> Any:
     """Return the world's ``ShaderNodeBackground``, creating it when missing.
 
@@ -108,7 +180,7 @@ def _ensure_background_node(world: Any) -> Any:
     node_tree = world.node_tree
     nodes = node_tree.nodes
 
-    background = _find_node(nodes, "BACKGROUND")
+    background = _select_background_node(nodes)
     if background is not None:
         return background
 
