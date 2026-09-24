@@ -65,7 +65,12 @@ packages = ["src/dcc_mcp_blender"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+# "src" must be on sys.path: this is a src-layout repo, so tests have to import
+# the working copy under src/ rather than a stale non-editable dcc_mcp_blender
+# left in site-packages. Without it a bare `pytest tests/` run silently
+# exercises an already-released package and reports false failures that CI
+# (which always runs `pip install -e .`) never sees.
+pythonpath = ["src", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
