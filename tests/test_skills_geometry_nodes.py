@@ -15,6 +15,11 @@ GEOMETRY_NODES_DIR = "blender-geometry-nodes"
 GEOMETRY_NODES_PATH = "src/dcc_mcp_blender/skills/blender-geometry-nodes/tools.yaml"
 
 
+def _socket_type_of(socket):
+    """Read a socket type through the same fallback production uses."""
+    return getattr(socket, "socket_type", None) or getattr(socket, "type", None)
+
+
 class FakeSocket:
     """Blender 4.x style interface socket; direction lives in ``in_out``."""
 
@@ -45,6 +50,13 @@ class FakeLinks(list):
         link = SimpleNamespace(from_socket=from_socket, to_socket=to_socket)
         self.append(link)
         return link
+
+
+class FakeBrokenLinks(FakeLinks):
+    """Links collection that refuses to create links, like incompatible Blender sockets."""
+
+    def new(self, from_socket, to_socket):
+        raise TypeError(f"Cannot link {from_socket.socket_type} to {to_socket.socket_type}")
 
 
 class FakeNodes(list):
@@ -89,19 +101,29 @@ class FakeInterface(list):
     def items_tree(self):
         return self
 
+    def sockets(self):
+        """Only real sockets carry ``in_out``; Blender 4.x panels are layout items."""
+        return [item for item in self if getattr(item, "item_type", "SOCKET") == "SOCKET"]
+
     def mirror(self, node):
-        for socket in self:
+        for socket in self.sockets():
             if socket.in_out == "INPUT" and node.bl_idname == "NodeGroupInput":
-                node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
+                node.outputs[socket.name] = FakeSocket(socket.name, _socket_type_of(socket), "OUTPUT")
             elif socket.in_out == "OUTPUT" and node.bl_idname == "NodeGroupOutput":
-                node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
+                node.inputs[socket.name] = FakeSocket(socket.name, _socket_type_of(socket), "INPUT")
 
     def new_socket(self, name, in_out, socket_type):
-        socket = SimpleNamespace(name=name, identifier=name, in_out=in_out, socket_type=socket_type)
+        socket = SimpleNamespace(name=name, identifier=name, in_out=in_out, socket_type=socket_type, item_type="SOCKET")
         self.append(socket)
         for node in self._group.nodes:
             self.mirror(node)
         return socket
+
+    def new_panel(self, name):
+        """Append a Blender 4.x ``NodeTreeInterfacePanel``: named, but not a socket."""
+        panel = SimpleNamespace(name=name, item_type="PANEL")
+        self.append(panel)
+        return panel
 
 
 class FakeNodeGroup:
@@ -114,7 +136,7 @@ class FakeNodeGroup:
         self.links = FakeLinks()
 
     def socket_names(self, in_out):
-        return [socket.name for socket in self.interface if socket.in_out == in_out]
+        return [socket.name for socket in self.interface.sockets() if socket.in_out == in_out]
 
 
 class FakeLegacySockets(list):
@@ -126,11 +148,12 @@ class FakeLegacySockets(list):
         self._in_out = in_out
 
     def _mirror(self, socket):
+        socket_type = _socket_type_of(socket)
         for node in self._group.nodes:
             if self._in_out == "INPUT" and node.bl_idname == "NodeGroupInput":
-                node.outputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "OUTPUT")
+                node.outputs[socket.name] = FakeSocket(socket.name, socket_type, "OUTPUT")
             elif self._in_out == "OUTPUT" and node.bl_idname == "NodeGroupOutput":
-                node.inputs[socket.name] = FakeSocket(socket.name, socket.socket_type, "INPUT")
+                node.inputs[socket.name] = FakeSocket(socket.name, socket_type, "INPUT")
 
     def new(self, socket_type, name):
         socket = FakeLegacySocket(name, socket_type, self._in_out == "OUTPUT")
@@ -667,3 +690,218 @@ class TestGeometryNodesReturnContract:
         assert first["context"]["group_created"] is True
         assert second["success"] is True
         assert second["context"]["group_created"] is False
+
+
+class TestGeometryNodeGroupTemplateReporting:
+    """``template_applied`` must describe the wiring, not just the intent."""
+
+    def _create(self, bpy, name, **kwargs):
+        return load_and_call(f"{GEOMETRY_NODES_DIR}/scripts/create_geometry_node_group.py", bpy, name=name, **kwargs)
+
+    def _broken_group(self, links):
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("BrokenGroup")
+        group.links = links
+        groups.append(group)
+        return groups, group
+
+    def test_unlinkable_sockets_report_template_not_applied(self):
+        bpy = make_mock_bpy()
+        groups, group = self._broken_group(FakeBrokenLinks())
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "BrokenGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert created["context"]["template_applied"] is False
+        assert created["context"]["link_count"] == 0
+        assert created["context"]["input_count"] == 1
+        assert group.socket_names("INPUT") == ["Geometry"]
+
+    def test_missing_link_api_reports_template_not_applied(self):
+        bpy = make_mock_bpy()
+        groups, _ = self._broken_group([])
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "BrokenGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert created["context"]["template_applied"] is False
+        assert created["context"]["link_count"] == 0
+
+    def test_wired_group_still_reports_template_applied(self):
+        bpy = make_mock_bpy()
+        bpy.data.node_groups = FakeNodeGroups()
+
+        created = self._create(bpy, "WiredGroup", template="pass_through")
+
+        assert created["context"]["template_applied"] is True
+        assert created["context"]["link_count"] == 1
+
+
+class TestInterfacePanelsAreNotSockets:
+    """Blender 4.x ``items_tree`` mixes panels with sockets; only sockets are reported."""
+
+    def _create(self, bpy, name, **kwargs):
+        return load_and_call(f"{GEOMETRY_NODES_DIR}/scripts/create_geometry_node_group.py", bpy, name=name, **kwargs)
+
+    def test_panel_with_item_type_is_excluded_from_interface_sockets(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("PanelGroup")
+        groups.append(group)
+        bpy.data.node_groups = groups
+        group.interface.new_panel("Panel")
+
+        created = self._create(bpy, "PanelGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert created["context"]["interface_sockets"] == [
+            {"name": "Geometry", "identifier": "Geometry", "in_out": "INPUT", "type": "NodeSocketGeometry"},
+            {"name": "Geometry", "identifier": "Geometry", "in_out": "OUTPUT", "type": "NodeSocketGeometry"},
+        ]
+        assert created["context"]["input_count"] == 1
+        assert created["context"]["output_count"] == 1
+        assert created["context"]["link_count"] == 1
+
+    def test_panel_without_item_type_is_excluded_from_interface_sockets(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("BarePanelGroup")
+        groups.append(group)
+        # A panel that predates ``item_type``: it has a name but neither ``in_out``
+        # nor ``socket_type``, so it must not be mistaken for a socket.
+        group.interface.append(SimpleNamespace(name="Panel"))
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "BarePanelGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert [record["name"] for record in created["context"]["interface_sockets"]] == ["Geometry", "Geometry"]
+        assert [record["type"] for record in created["context"]["interface_sockets"]] == [
+            "NodeSocketGeometry",
+            "NodeSocketGeometry",
+        ]
+
+    def test_panel_is_excluded_from_evaluated_modifier_inputs(self):
+        bpy = make_mock_bpy()
+        obj = _make_mesh_obj()
+        bpy.data.objects.get.return_value = obj
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("PanelGroup")
+        groups.append(group)
+        bpy.data.node_groups = groups
+
+        self._create(bpy, "PanelGroup", template="pass_through")
+        load_and_call(
+            f"{GEOMETRY_NODES_DIR}/scripts/assign_geometry_node_group.py",
+            bpy,
+            object_name="Cube",
+            group_name="PanelGroup",
+        )
+        group.interface.new_panel("Panel")
+
+        info = load_and_call(
+            f"{GEOMETRY_NODES_DIR}/scripts/evaluate_geometry_nodes_info.py",
+            bpy,
+            object_name="Cube",
+            modifier_name="Geometry Nodes",
+        )
+
+        assert info["success"] is True
+        assert [record["name"] for record in info["context"]["inputs"]] == ["Geometry", "Geometry"]
+        assert all(record["type"] == "NodeSocketGeometry" for record in info["context"]["inputs"])
+
+
+class TestGroupSocketDedupeIsTypeAware:
+    """A same-name socket of another type is never silently reused."""
+
+    def _create(self, bpy, name, **kwargs):
+        return load_and_call(f"{GEOMETRY_NODES_DIR}/scripts/create_geometry_node_group.py", bpy, name=name, **kwargs)
+
+    def test_clashing_socket_type_adds_a_numbered_geometry_socket(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("ClashGroup")
+        groups.append(group)
+        bpy.data.node_groups = groups
+        group.interface.items_tree.new_socket("Geometry", "INPUT", "NodeSocketFloat")
+
+        created = self._create(bpy, "ClashGroup", template="pass_through")
+
+        assert created["success"] is True
+        geometry_inputs = [
+            socket
+            for socket in group.interface.sockets()
+            if socket.in_out == "INPUT" and socket.socket_type == "NodeSocketGeometry"
+        ]
+        assert len(geometry_inputs) == 1
+        assert geometry_inputs[0].name == "Geometry.001"
+        # The caller's Float socket is left exactly as it was.
+        assert [socket.name for socket in group.interface.sockets() if socket.socket_type == "NodeSocketFloat"] == [
+            "Geometry"
+        ]
+
+    def test_clashing_socket_type_still_wires_geometry_to_geometry(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("ClashGroup")
+        groups.append(group)
+        bpy.data.node_groups = groups
+        group.interface.items_tree.new_socket("Geometry", "INPUT", "NodeSocketFloat")
+
+        self._create(bpy, "ClashGroup", template="pass_through")
+
+        assert len(group.links) == 1
+        assert group.links[0].from_socket.socket_type == "NodeSocketGeometry"
+        assert group.links[0].to_socket.socket_type == "NodeSocketGeometry"
+
+    def test_matching_socket_type_is_still_reused(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        group = FakeNodeGroup("TypedGroup")
+        groups.append(group)
+        bpy.data.node_groups = groups
+        group.interface.items_tree.new_socket("Geometry", "INPUT", "NodeSocketGeometry")
+
+        self._create(bpy, "TypedGroup", template="pass_through")
+
+        assert group.socket_names("INPUT") == ["Geometry"]
+        assert group.socket_names("OUTPUT") == ["Geometry"]
+
+    def test_legacy_short_socket_type_is_not_treated_as_a_clash(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        legacy = FakeLegacyNodeGroup("LegacyTypedGroup")
+        # Blender 3.6 reports short type codes ("GEOMETRY") where 4.x reports
+        # "NodeSocketGeometry"; that naming difference is not a type change.
+        legacy.inputs.append(FakeLegacySocket("Geometry", "GEOMETRY", is_output=False))
+        groups.append(legacy)
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "LegacyTypedGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert [socket.name for socket in legacy.inputs] == ["Geometry"]
+        assert [_socket_type_of(socket) for socket in legacy.inputs] == ["GEOMETRY"]
+        assert len(legacy.links) == 1
+
+    def test_legacy_clashing_short_type_adds_a_numbered_geometry_socket(self):
+        bpy = make_mock_bpy()
+        groups = FakeNodeGroups()
+        legacy = FakeLegacyNodeGroup("LegacyClashGroup")
+        # "VALUE" is a Float on 3.6, so reusing it as the pass-through Geometry
+        # input would silently wire the backbone to the wrong socket type.
+        legacy.inputs.append(FakeLegacySocket("Geometry", "VALUE", is_output=False))
+        groups.append(legacy)
+        bpy.data.node_groups = groups
+
+        created = self._create(bpy, "LegacyClashGroup", template="pass_through")
+
+        assert created["success"] is True
+        assert created["context"]["template_applied"] is True
+        assert [socket.name for socket in legacy.inputs] == ["Geometry", "Geometry.001"]
+        assert [_socket_type_of(socket) for socket in legacy.inputs] == ["VALUE", "NodeSocketGeometry"]
+        assert len(legacy.links) == 1
+        assert legacy.links[0].from_socket.name == "Geometry.001"
+        assert legacy.links[0].from_socket.socket_type == "NodeSocketGeometry"
