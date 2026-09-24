@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.10](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.9...v0.2.10) (2026-09-24)
+
+
+### Features
+
+* enforce arbitrary-execution opt-outs and compare Blender MCP options ([e7d20ca](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e7d20ca5ed7f0851c8e0eb429a28718cfd3680e4))
+
+
+### Bug Fixes
+
+* **geometry-nodes:** create geometry node groups with a wired pass-through interface ([#243](https://github.com/dcc-mcp/dcc-mcp-blender/issues/243)) ([5e90ca3](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5e90ca32f9fc642767e7a4bb52472cdcbb633c4c))
+* **geometry-nodes:** report pass-through wiring truthfully ([19d4a06](https://github.com/dcc-mcp/dcc-mcp-blender/commit/19d4a0671b445624ebf493e1db7f69fcbfe58872))
+* **lighting:** write the world background node that drives the output ([#245](https://github.com/dcc-mcp/dcc-mcp-blender/issues/245)) ([b3c3e22](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b3c3e22726ec956cd0d5e6a495e00390a21c4cef))
+* **lighting:** write world background color to the shader node socket ([#242](https://github.com/dcc-mcp/dcc-mcp-blender/issues/242)) ([7b4036b](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7b4036b74fec5bce8f3e72315b5ed9d7002d3878))
+
+
+### Documentation
+
+* **geometry-nodes:** document the real add_geometry_nodes_modifier return contract ([#244](https://github.com/dcc-mcp/dcc-mcp-blender/issues/244)) ([5a28e29](https://github.com/dcc-mcp/dcc-mcp-blender/commit/5a28e29a0f605fa7a81c05fa8e0e75d7521f9aa0))
+
 ## [0.2.9](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.8...v0.2.9) (2026-09-23)
 
 
