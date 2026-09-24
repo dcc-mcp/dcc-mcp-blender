@@ -325,11 +325,28 @@ def _node_group_type(group: Any) -> str | None:
     return getattr(group, "bl_idname", None) or getattr(group, "type", None)
 
 
+def _is_interface_socket(item: Any) -> bool:
+    """Return True when an interface item is a socket rather than a panel.
+
+    Blender 4.x ``items_tree`` mixes ``NodeTreeInterfacePanel`` entries with sockets.
+    A panel carries a ``name`` but neither ``in_out`` nor ``socket_type``, so the
+    old ``hasattr(item, "name")`` filter leaked ``{"type": None}`` records into
+    ``interface_sockets``.
+    """
+    if not hasattr(item, "name"):
+        return False
+    item_type = getattr(item, "item_type", None)
+    if item_type is not None:
+        return item_type == "SOCKET"
+    return hasattr(item, "in_out") and hasattr(item, "socket_type")
+
+
 def _interface_sockets(group: Any) -> list[Any]:
+    """Return the interface sockets of a group, ignoring Blender 4.x panels."""
     interface = getattr(group, "interface", None)
     items_tree = getattr(interface, "items_tree", None)
     if items_tree is not None:
-        return [item for item in _iter_collection(items_tree) if hasattr(item, "name")]
+        return [item for item in _iter_collection(items_tree) if _is_interface_socket(item)]
     inputs = _iter_collection(getattr(group, "inputs", []))
     outputs = _iter_collection(getattr(group, "outputs", []))
     return inputs + outputs
@@ -373,30 +390,98 @@ def _modifier_input_identifier(group: Any, input_name: str) -> str:
     return input_name
 
 
-def _add_group_socket(group: Any, name: str, socket_type: str, in_out: str) -> None:
+_LEGACY_SOCKET_TYPES = {
+    "GEOMETRY": "NodeSocketGeometry",
+    "VALUE": "NodeSocketFloat",
+    "INT": "NodeSocketInt",
+    "BOOLEAN": "NodeSocketBool",
+    "VECTOR": "NodeSocketVector",
+    "RGBA": "NodeSocketColor",
+    "STRING": "NodeSocketString",
+    "OBJECT": "NodeSocketObject",
+    "COLLECTION": "NodeSocketCollection",
+    "TEXTURE": "NodeSocketTexture",
+    "MATERIAL": "NodeSocketMaterial",
+    "IMAGE": "NodeSocketImage",
+}
+
+
+def _canonical_socket_type(socket_type: str) -> str:
+    """Map a Blender 3.6 short type code onto its 4.x socket identifier.
+
+    Legacy trees report "GEOMETRY" where 4.x reports "NodeSocketGeometry". Codes
+    outside the table are returned unchanged and then fall back to "no clash".
+    """
+    return _LEGACY_SOCKET_TYPES.get(socket_type, socket_type)
+
+
+def _socket_type_clashes(actual: Any, requested: str) -> bool:
+    """Return True when an existing socket type is known and differs from the request.
+
+    Both sides are normalised first, so a legacy 3.6 short code is compared on the
+    same vocabulary as a 4.x identifier: "GEOMETRY" does not clash with
+    "NodeSocketGeometry", but "VALUE" does clash, which is a real type change.
+    """
+    if not isinstance(actual, str) or not actual:
+        return False
+    actual = _canonical_socket_type(actual)
+    requested = _canonical_socket_type(requested)
+    return actual.startswith("NodeSocket") and requested.startswith("NodeSocket") and actual != requested
+
+
+def _free_socket_name(group: Any, name: str, in_out: str) -> str:
+    """Return a socket name still unused in one direction.
+
+    Blender 4.x tolerates duplicate socket names, but an agent that wires a graph
+    by name would then reach the wrong socket, so mirror Blender's own ``.001``
+    numbering instead of reusing a clashing socket.
+    """
+    used = {record["name"] for record in _interface_socket_records(group) if record["in_out"] == in_out}
+    if name not in used:
+        return name
+    for index in range(1, 1000):
+        candidate = "{}.{:03d}".format(name, index)
+        if candidate not in used:
+            return candidate
+    return name
+
+
+def _add_group_socket(group: Any, name: str, socket_type: str, in_out: str) -> str | None:
+    """Ensure a socket of the requested type and direction exists on a group.
+
+    Returns the name of the socket that satisfies the request, or None when no
+    socket could be created. A same-name socket of a *different* type is never
+    reused: it stays untouched and a numbered sibling is added instead, so a
+    pass-through backbone can never be wired to the wrong socket type.
+    """
     for record in _interface_socket_records(group):
         if record["name"] == name and record["in_out"] == in_out:
-            return
+            if not _socket_type_clashes(record["type"], socket_type):
+                return name
+            name = _free_socket_name(group, name, in_out)
+            break
     interface = getattr(group, "interface", None)
     if interface is not None and callable(getattr(interface, "new_socket", None)):
         try:
             interface.new_socket(name=name, in_out=in_out, socket_type=socket_type)
-            return
+            return name
         except Exception:
             pass
     items_tree = getattr(interface, "items_tree", None)
     if items_tree is not None and callable(getattr(items_tree, "new_socket", None)):
         try:
             items_tree.new_socket(name=name, in_out=in_out, socket_type=socket_type)
-            return
+            return name
         except Exception:
             pass
     collection = getattr(group, "inputs" if in_out == "INPUT" else "outputs", None)
     if collection is not None and callable(getattr(collection, "new", None)):
         try:
             collection.new(socket_type, name)
+            return name
         except Exception:
             pass
+    return None
 
 
 def _find_group_node(group: Any, node_type: str, names: set[str] | None = None) -> Any | None:
@@ -466,9 +551,7 @@ def _interface_socket_records(group: Any) -> list[dict]:
     interface = getattr(group, "interface", None)
     items_tree = getattr(interface, "items_tree", None)
     if items_tree is not None:
-        items = [
-            (item, getattr(item, "in_out", None)) for item in _iter_collection(items_tree) if hasattr(item, "name")
-        ]
+        items = [(socket, getattr(socket, "in_out", None)) for socket in _interface_sockets(group)]
     else:
         items = [(socket, "INPUT") for socket in _iter_collection(getattr(group, "inputs", []))]
         items += [(socket, "OUTPUT") for socket in _iter_collection(getattr(group, "outputs", []))]
@@ -485,13 +568,19 @@ def _interface_socket_records(group: Any) -> list[dict]:
     return records
 
 
-def _create_passthrough_geometry_group(group: Any) -> None:
-    """Give a group a wired Geometry in -> Geometry out pass-through backbone."""
-    _add_group_socket(group, "Geometry", "NodeSocketGeometry", "INPUT")
-    _add_group_socket(group, "Geometry", "NodeSocketGeometry", "OUTPUT")
+def _create_passthrough_geometry_group(group: Any) -> bool:
+    """Give a group a wired Geometry in -> Geometry out pass-through backbone.
+
+    Returns True only when the backbone is actually linked, so a caller can report
+    a half-built template instead of a success that never happened.
+    """
+    input_name = _add_group_socket(group, "Geometry", "NodeSocketGeometry", "INPUT")
+    output_name = _add_group_socket(group, "Geometry", "NodeSocketGeometry", "OUTPUT")
+    if input_name is None or output_name is None:
+        return False
     _ensure_group_node(group, "NodeGroupInput", {"Group Input"})
     _ensure_group_node(group, "NodeGroupOutput", {"Group Output"})
-    _link_group_sockets(group, "NodeGroupInput", "Geometry", "NodeGroupOutput", "Geometry")
+    return _link_group_sockets(group, "NodeGroupInput", input_name, "NodeGroupOutput", output_name)
 
 
 def list_node_trees(kind: str, owner_name: str | None = None) -> dict:
@@ -987,7 +1076,7 @@ def create_geometry_node_group(name: str, template: str = _PASS_THROUGH_TEMPLATE
             created = True
         template_applied = created or not _iter_collection(getattr(group, "nodes", []))
         if template_applied and resolved_template == _PASS_THROUGH_TEMPLATE:
-            _create_passthrough_geometry_group(group)
+            template_applied = _create_passthrough_geometry_group(group)
         sockets = _interface_socket_records(group)
         prompt = (
             "Use assign_geometry_node_group to attach this group to an object, then extend the graph "
