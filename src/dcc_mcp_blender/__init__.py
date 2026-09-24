@@ -1,22 +1,32 @@
 """dcc-mcp-blender — MCP Streamable HTTP server embedded in Blender."""
 
-# The compatibility gate must run before imports that bind core integrations.
+# The host gate and the compatibility gate must both run before imports that
+# bind core integrations.
 # ruff: noqa: E402
 
 from __future__ import annotations
 
+from dcc_mcp_blender.__version__ import __version__
 from dcc_mcp_blender._core_compat import require_compatible_core
+from dcc_mcp_blender._host_support import require_supported_host
 from dcc_mcp_blender._isolated_path import repair_sys_path
 
 # Blender 5.x starts its embedded interpreter with an isolated configuration that
 # ignores PYTHONPATH, so dependencies injected by the launcher are invisible from
 # inside the host. Restore them before the compatibility gate imports core; on
 # hosts that already honoured PYTHONPATH this is a no-op.
+#
+# Order matters: the repair runs first so that hosts it can rescue are judged
+# after the repair, not before it. Running the host gate first would turn every
+# Blender 5.x host into a hard HostSupportError even when the repair would have
+# made the dependencies visible.
 repair_sys_path()
 
+# A host whose interpreter cannot see dcc-mcp-core fails here with a named
+# boundary error instead of a ModuleNotFoundError raised from a deeper import.
+require_supported_host(adapter_version=__version__)
 require_compatible_core()
 
-from dcc_mcp_blender.__version__ import __version__
 from dcc_mcp_blender._capability_manifest import (
     BlenderCapabilityManifestBuilder,
     CapabilityRecord,
