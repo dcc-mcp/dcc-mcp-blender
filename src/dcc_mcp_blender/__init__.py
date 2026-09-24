@@ -6,6 +6,13 @@
 from __future__ import annotations
 
 from dcc_mcp_blender._core_compat import require_compatible_core
+from dcc_mcp_blender._isolated_path import repair_sys_path
+
+# Blender 5.x starts its embedded interpreter with an isolated configuration that
+# ignores PYTHONPATH, so dependencies injected by the launcher are invisible from
+# inside the host. Restore them before the compatibility gate imports core; on
+# hosts that already honoured PYTHONPATH this is a no-op.
+repair_sys_path()
 
 require_compatible_core()
 
