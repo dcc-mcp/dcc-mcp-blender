@@ -33,7 +33,7 @@ tools:
     idempotent: true
 
   - name: set_light_linking
-    description: "Restrict which objects a light illuminates using light linking (Blender 4.1+): a receiver collection and an optional blocker collection."
+    description: "Restrict which objects a light illuminates using light linking: a receiver collection and an optional blocker collection."
     source_file: scripts/set_light_linking.py
     execution: sync
     affinity: main

@@ -213,7 +213,7 @@ def loads_public_report(value):
 
 DCC_TYPE = "blender"
 COMMAND = "dcc-mcp-blender"
-MIN_BLENDER_VERSION = (3, 6)
+MIN_BLENDER_VERSION = (4, 5)
 MIN_CORE_VERSION = "0.20.0"
 STARTUP_SCRIPT_NAME = "dcc_mcp_blender_startup.py"
 DEFAULT_RECEIPT_PATH = Path.home() / ".dcc-mcp" / "receipts" / "blender.json"
@@ -317,7 +317,7 @@ def _resolve_host_version(host_path, environ):
             INSTALL_EXIT_PREFLIGHT,
             "host",
             "unsupported_blender_version",
-            "Blender %s is unsupported; Blender 3.6 or newer is required." % version,
+            "Blender %s is unsupported; Blender 4.5 or newer is required." % version,
         )
     return version
 

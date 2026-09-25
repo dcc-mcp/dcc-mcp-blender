@@ -10,8 +10,8 @@ fake ``bpy``), this test drives Blender's real add-on manager end to end:
 
 This is the "can Blender enable the add-on?" guard and exercises the same
 ``register()`` path Blender runs on production auto-load. The legacy ``bl_info``
-install path enables on every matrix version (3.6 LTS .. 4.4); the 4.2+
-extension manifest is verified separately by the packaging tests.
+install path enables on every matrix version; the extension manifest is
+verified separately by the packaging tests.
 
 Run::
 
@@ -64,19 +64,12 @@ def _stage_addon() -> Path:
     # Copy the whole directory so we get bl_info from __init__.py
     for item in ADDON_ENTRY.parent.iterdir():
         if item.is_file():
-            # In Blender 4.2+, a 'blender_manifest.toml' in the legacy 'addons' folder
-            # can cause the add-on to be ignored or treated as a malformed extension.
+            # A 'blender_manifest.toml' in the legacy 'addons' folder can cause
+            # the add-on to be ignored or treated as a malformed extension.
             # We want to test enablement via the legacy path for this E2E test.
             if item.name == "blender_manifest.toml":
                 continue
             shutil.copy2(item, dest / item.name)
-
-    # Patch bl_info in the staged copy to ensure compatibility with the whole
-    # E2E matrix (3.6 - 4.4). Production uses (4, 2, 0) as it targets extensions.
-    init_py = dest / "__init__.py"
-    content = init_py.read_text(encoding="utf-8")
-    content = content.replace('"blender": (4, 2, 0)', '"blender": (3, 6, 0)')
-    init_py.write_text(content, encoding="utf-8")
 
     return dest
 
@@ -107,8 +100,8 @@ def test_blender_enables_packaged_addon():
 
     dest = _stage_addon()
     # Force the staged addon's parent into sys.path to ensure it's importable.
-    # In some Blender versions (like 4.2+ headless), the scripts/addons folder
-    # might not be in sys.path by default even if it's in script_paths.
+    # In headless Blender the scripts/addons folder might not be in sys.path
+    # by default even if it's in script_paths.
     staged_parent = str(dest.parent)
     if staged_parent not in sys.path:
         sys.path.append(staged_parent)

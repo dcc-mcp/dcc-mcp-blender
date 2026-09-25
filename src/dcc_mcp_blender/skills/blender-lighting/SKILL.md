@@ -47,10 +47,9 @@ per-object control:
 
 It is version dependent and does not silently no-op:
 
-- **Light linking needs Blender 4.1+.** Blender 4.1 added it on the object as
-  `Object.light_linking`, not on the light data block. Pre-4.1 objects have no
-  such property, so the tool refuses with that reason instead of writing to a
-  property that does not exist.
+- **Light linking lives on the object**, as `Object.light_linking`, not on the
+  light data block. Objects that expose no such property are refused with that
+  reason instead of writing to a property that does not exist.
 - Both collections are resolved before either is assigned, so a missing
   collection cannot leave the light half-linked.
 - It affects Cycles and EEVEE Next and does not change the light's energy.

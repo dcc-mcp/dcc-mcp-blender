@@ -25,7 +25,7 @@ name = "Sample Extension"
 tagline = "Example"
 maintainer = "Example"
 type = "add-on"
-blender_version_min = "4.2.0"
+blender_version_min = "4.5.0"
 license = ["SPDX:GPL-3.0-or-later"]
 """
     with zipfile.ZipFile(path, "w") as archive:
@@ -77,7 +77,7 @@ def test_installs_extension_with_blender_operator(tmp_path: Path) -> None:
         name="User Extensions",
     )
     bpy = SimpleNamespace(
-        app=SimpleNamespace(version=(4, 2, 0)),
+        app=SimpleNamespace(version=(4, 5, 0)),
         context=SimpleNamespace(preferences=SimpleNamespace(extensions=SimpleNamespace(repos=[repo]))),
         ops=SimpleNamespace(
             extensions=SimpleNamespace(package_install_files=install_operator),
@@ -112,7 +112,7 @@ def test_installs_legacy_addon_with_preferences_operator(tmp_path: Path) -> None
     install_operator = MagicMock(return_value={"FINISHED"})
     enable_operator = MagicMock(return_value={"FINISHED"})
     bpy = SimpleNamespace(
-        app=SimpleNamespace(version=(4, 2, 0)),
+        app=SimpleNamespace(version=(4, 5, 0)),
         ops=SimpleNamespace(
             preferences=SimpleNamespace(
                 addon_install=install_operator,

@@ -72,7 +72,7 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
     blender.write_bytes(b"")
     user_scripts = tmp_path / "user-scripts"
     receipt = tmp_path / "receipts" / "blender.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(user_scripts))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt))
 
@@ -95,7 +95,7 @@ def test_install_dry_run_emits_a_complete_non_mutating_plan(tmp_path, monkeypatc
     assert report["dcc_type"] == "blender"
     assert report["install_state"] == "fresh"
     assert report["host"]["path"] == str(blender.resolve())
-    assert report["host"]["version"] == "4.2.0"
+    assert report["host"]["version"] == "4.5.13"
     assert report["python"]["path"] == str(Path(sys.executable).resolve())
     assert [step["id"] for step in report["steps"]] == [
         "preflight",
@@ -114,7 +114,7 @@ def test_install_requires_an_explicit_target_interpreter(tmp_path, monkeypatch, 
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.delenv("DCC_MCP_INSTALL_PYTHON", raising=False)
 
     exit_code = install.main(["install", "--json", "--dry-run", "--dcc-path", str(blender)])
@@ -132,7 +132,7 @@ def test_environment_selected_interpreter_reports_its_real_source(tmp_path, monk
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_INSTALL_PYTHON", sys.executable)
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
@@ -154,7 +154,7 @@ def test_receipt_round_trip_is_convergent_and_uninstall_is_idempotent(tmp_path, 
     user_scripts = tmp_path / "user-scripts"
     receipt_path = tmp_path / "receipts" / "blender.json"
     registry = tmp_path / "registry"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(user_scripts))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(registry))
@@ -207,7 +207,7 @@ def test_install_preserves_unreceipted_marker_spoof(tmp_path, monkeypatch, capsy
     spoof = '# Auto-start dcc-mcp-blender\nraise RuntimeError("operator owned")\n'
     startup_path.write_text(spoof, encoding="utf-8")
     receipt_path = tmp_path / "receipt.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
 
@@ -238,7 +238,7 @@ def test_install_repairs_only_exact_generated_unreceipted_startup(tmp_path, monk
     blender.write_bytes(b"")
     startup_path = tmp_path / "scripts" / "startup" / install.STARTUP_SCRIPT_NAME
     receipt_path = tmp_path / "receipt.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -262,7 +262,7 @@ def test_upgrade_requires_a_receipt_and_reuses_the_install_transaction(tmp_path,
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -298,7 +298,7 @@ def test_verify_refuses_interpreter_drift_from_the_receipt(tmp_path, monkeypatch
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
     receipt_path = tmp_path / "receipt.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -344,7 +344,7 @@ def test_public_reports_satisfy_the_shared_install_sop_schema(tmp_path, monkeypa
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     common = [
@@ -487,7 +487,7 @@ def test_public_report_validation_uses_cores_native_validator(tmp_path, monkeypa
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
 
@@ -512,7 +512,7 @@ def test_public_report_validation_still_rejects_invalid_reports(tmp_path, monkey
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
 
@@ -542,7 +542,7 @@ def test_structural_fallback_rejects_non_integer_schema_version(tmp_path, monkey
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     monkeypatch.setattr(install, "_native_report_validator", lambda: None)
@@ -601,7 +601,7 @@ def test_missing_receipted_startup_is_reported_as_partial(tmp_path, monkeypatch,
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
     user_scripts = tmp_path / "scripts"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(user_scripts))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -634,7 +634,7 @@ def test_malformed_receipt_status_is_typed_partial_not_internal_failure(tmp_path
     blender.write_bytes(b"")
     receipt_path = tmp_path / "receipt.json"
     receipt_path.write_text("[]", encoding="utf-8")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
 
@@ -665,7 +665,7 @@ def test_verify_rejects_malformed_receipt_ownership_as_a_typed_failure(tmp_path,
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
     receipt_path = tmp_path / "receipt.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -695,7 +695,7 @@ def test_typed_host_ping_is_required_for_direct_usability(tmp_path, monkeypatch,
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     monkeypatch.setattr(
@@ -736,7 +736,7 @@ def test_uninstall_dry_run_describes_receipt_owned_removal(tmp_path, monkeypatch
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     common = [
@@ -766,7 +766,7 @@ def test_receipt_commit_failure_rolls_back_the_previous_install(tmp_path, monkey
     blender.write_bytes(b"")
     startup_path = tmp_path / "scripts" / "startup" / install.STARTUP_SCRIPT_NAME
     receipt_path = tmp_path / "receipt.json"
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(receipt_path))
     monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
@@ -806,7 +806,7 @@ def test_windows_lock_is_a_restart_boundary_not_a_clean_install_failure(tmp_path
 
     blender = tmp_path / "blender"
     blender.write_bytes(b"")
-    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.2.0")
+    monkeypatch.setenv("DCC_MCP_BLENDER_VERSION", "4.5.13")
     monkeypatch.setenv("DCC_MCP_BLENDER_USER_SCRIPTS", str(tmp_path / "scripts"))
     monkeypatch.setenv("DCC_MCP_BLENDER_RECEIPT", str(tmp_path / "receipt.json"))
     common = [

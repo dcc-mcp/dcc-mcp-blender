@@ -98,16 +98,11 @@ class TestNodeGraphE2E:
         assert created["context"]["output_count"] >= 1
 
         group = bpy.data.node_groups["E2E Geometry Graph"]
-        if bpy.app.version >= (4, 0, 0):
-            assert [socket.name for socket in group.interface.items_tree if socket.in_out == "INPUT"] == ["Geometry"]
-        else:
-            assert [socket.name for socket in group.inputs] == ["Geometry"]
+        assert [socket.name for socket in group.interface.items_tree if socket.in_out == "INPUT"] == ["Geometry"]
         assert [
             link for link in group.links if link.from_socket.name == "Geometry" and link.to_socket.name == "Geometry"
         ], "pass_through must wire Group Input Geometry into Group Output Geometry"
-        scale_identifier = None
-        if bpy.app.version >= (4, 0, 0):
-            scale_identifier = _add_float_group_input(group, "Scale")
+        scale_identifier = _add_float_group_input(group, "Scale")
 
         assign_group = load_skill("blender-geometry-nodes", "assign_geometry_node_group")
         assigned = assign_group.main(
@@ -118,11 +113,6 @@ class TestNodeGraphE2E:
         assert assigned["success"] is True
 
         evaluate = load_skill("blender-geometry-nodes", "evaluate_geometry_nodes_info")
-        if scale_identifier is None:
-            info = evaluate.main(object_name=cube_name, modifier_name="E2E Geometry Nodes")
-            assert info["success"] is True
-            assert info["context"]["node_count"] >= 2
-            pytest.skip("Blender 3.6 uses legacy Geometry Nodes sockets; full graph edit coverage runs on 4.x")
 
         ref = {"kind": "geometry", "group_name": "E2E Geometry Graph"}
         connect = load_skill("blender-shader-nodes", "connect_nodes")

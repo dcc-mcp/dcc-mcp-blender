@@ -7,7 +7,7 @@ This script:
 3. Copies the ``dcc-mcp-core`` **wheel** into ``wheels/`` and records it in
    ``blender_manifest.toml`` under ``wheels = [...]`` so Blender installs it into
    the extension's isolated ``site-packages`` (no ``sys.path`` hacks, no loose
-   ``dcc_mcp_core/`` tree — required for Blender 4.2+ extensions policy).
+   ``dcc_mcp_core/`` tree — required by Blender's extensions policy).
 4. Bundles the adapter modules, skills, and required distribution licenses at
    the add-on package root.
 5. Produces ``dcc_mcp_blender_addon_{platform}_v{version}.zip`` — install via
@@ -322,7 +322,7 @@ def assemble(platform: str, output_dir: pathlib.Path) -> pathlib.Path:
         shutil.copy2(wheel, staged_wheel)
         print(f"  Bundled wheel: {staged_wheel.relative_to(addon_dir)}")
 
-        # 3) Stage add-on root: ``__init__.py`` + ``blender_manifest.toml`` (4.2+ extensions)
+        # 3) Stage add-on root: ``__init__.py`` + ``blender_manifest.toml``
         _stage_addon_entry(addon_dir, version=version)
         _inject_wheels_into_manifest(addon_dir / "blender_manifest.toml", [wheel.name])
         _inject_platforms_into_manifest(addon_dir / "blender_manifest.toml", _manifest_platforms_for_wheel(wheel.name))

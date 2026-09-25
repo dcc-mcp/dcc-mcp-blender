@@ -263,8 +263,6 @@ def install_extension_package(
 
     selected_repo = None
     if plan["package_kind"] == "extension":
-        if blender_version < (4, 2, 0):
-            raise ExtensionPackageError("Blender extensions require Blender 4.2 or newer")
         selected_repo = _select_repository(bpy, repository)
         result = bpy.ops.extensions.package_install_files(
             "EXEC_DEFAULT",

@@ -90,13 +90,13 @@ read the group with `inspect_geometry_node_interface` for socket identifiers
 and directions, or `evaluate_geometry_nodes_info` for modifier inputs and their
 values.
 
-## Interface socket workflow (Blender 4.0+)
+## Interface socket workflow
 
 Use `inspect_geometry_node_interface` to read socket identifiers, directions,
 basic defaults, the group-user count and an interface revision. The query
 rejects interfaces over 256 items or text fields over 1024 UTF-8 bytes; it does
-not return a partial revision.
-Blender 3.6 reports `interface_api_unavailable` for these new tools.
+not return a partial revision. Node groups saved before the interface API
+existed report `interface_api_unavailable` for these tools.
 
 Pass the exact revision to `create_geometry_node_socket`,
 `update_geometry_node_socket`, or `remove_geometry_node_socket`. Updates and

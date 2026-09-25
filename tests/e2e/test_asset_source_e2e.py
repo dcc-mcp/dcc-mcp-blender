@@ -17,8 +17,8 @@ def test_registered_local_library_is_discoverable(tmp_path):
     fixture = tmp_path / "registered_asset_probe.obj"
     fixture.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", encoding="utf-8")
     before = [(library.name, library.path) for library in libraries]
-    # Blender 3.6 exposes a read-only RNA collection; the registration operator
-    # is the common API across legacy and current releases. Never save prefs.
+    # The registration operator is the common API across supported releases.
+    # Never save prefs.
     assert bpy.ops.preferences.asset_library_add(directory=str(tmp_path)) == {"FINISHED"}
     library = next(item for item in libraries if Path(item.path).resolve() == tmp_path.resolve())
     library.name = "RegisteredDiscoveryProbe"

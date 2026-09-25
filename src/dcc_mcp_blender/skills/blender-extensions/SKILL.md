@@ -15,7 +15,7 @@ metadata:
     preconditions:
       - type: software
         name: blender
-        version: ">=3.6"
+        version: ">=4.5"
     side-effects:
       modifies: true
       imports: true
@@ -30,6 +30,6 @@ metadata:
 Use after a provider skill has downloaded a Blender `.zip` or legacy `.py`
 add-on package. Plan first, then install into an enabled user repository.
 
-Blender 4.2+ packages with `blender_manifest.toml` use Blender Extensions.
+Blender 4.5+ packages with `blender_manifest.toml` use Blender Extensions.
 Legacy add-ons remain supported through Blender's compatibility operator.
 Remote marketplace discovery and license acceptance stay in provider skills.

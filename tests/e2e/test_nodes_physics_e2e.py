@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="bpy not available - run inside Blender Python interpreter")
@@ -13,26 +11,6 @@ pytestmark = pytest.mark.e2e
 from tests.e2e.conftest import load_skill  # noqa: E402
 
 
-def _crashes_after_mantaflow_domain() -> bool:
-    """True when Blender itself segfaults once a Mantaflow domain exists.
-
-    Blender 4.2.x on macOS crashes in the primitive-add operator after a FLUID
-    domain modifier has been created in the same process. The skill under test
-    is fine -- every fluid assertion passes before the crash -- so the fluid
-    cases are skipped rather than reported as a product failure. Removing fluid
-    modifiers before a scene reset does not avoid it; the damage is already
-    done to the process once the domain exists.
-    """
-    return sys.platform == "darwin" and tuple(bpy.app.version[:2]) == (4, 2)
-
-
-_MANTAFLOW_CRASH_REASON = (
-    "Blender 4.2.x on macOS segfaults after a Mantaflow domain modifier exists; "
-    "the fluid skill itself passes (verified on 3.6.5-5.2.1 across linux, macOS and "
-    "Windows). Skipped to isolate a Blender crash, not a product defect."
-)
-
-
 def _new_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -40,10 +18,9 @@ def _new_scene():
 def _new_scene_without_fluid():
     """Reset the scene and drop any fluid modifier before resetting again.
 
-    Blender 4.2.0 on macOS segfaults in ``read_factory_settings`` while a
-    Mantaflow domain modifier is still around. Removing fluid modifiers first
-    keeps one crashing test from taking down the whole interpreter, which
-    would otherwise hide every result collected after it.
+    Removing fluid modifiers first keeps one unstable test from taking down
+    the whole interpreter, which would otherwise hide every result collected
+    after it.
     """
     for obj in list(bpy.data.objects):
         for modifier in list(getattr(obj, "modifiers", [])):
@@ -178,7 +155,6 @@ class TestPhysicsE2E:
         assert clear_result["context"]["dry_run"] is True
 
 
-@pytest.mark.skipif(_crashes_after_mantaflow_domain(), reason=_MANTAFLOW_CRASH_REASON)
 class TestFluidE2E:
     """Real-Blender assertions for the Mantaflow fluid paths.
 

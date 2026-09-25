@@ -168,22 +168,17 @@ class TestLightingDetailE2E:
         return obj
 
     def test_light_linking_assigns_a_receiver(self):
-        """Light linking must actually link, on the object, on 4.1+.
+        """Light linking must actually link, on the object.
 
-        The version branch is the only allowed escape: below 4.1 the tool has to
-        refuse, and from 4.1 on it has to work. Using hasattr on the light data
-        block as the escape made the tool's own predicate the test's predicate,
-        so a tool that could never work passed on every lane.
+        The assertion is pinned to the object's own light_linking state rather
+        than to a capability probe. Using hasattr on the light data block as
+        the predicate made the tool's own predicate the test's predicate, so a
+        tool that could never work passed on every lane.
         """
         obj = self._spot()
         collection = bpy.data.collections.new("Chars")
 
         result = _lighting("set_light_linking").set_light_linking(light_name=obj.name, receiver_collection="Chars")
-        if bpy.app.version < (4, 1, 0):
-            assert result["success"] is False, result.get("context")
-            assert "unavailable" in result["message"].lower()
-            return
-
         assert result["success"] is True, result.get("error")
         # Read it back off the object: light linking is Object.light_linking,
         # not a property of the light data block.
@@ -201,7 +196,6 @@ class TestLightingDetailE2E:
             light_name=obj.name, receiver_collection="NoSuchCollection"
         )
         assert result["success"] is False, result.get("context")
-        if bpy.app.version >= (4, 1, 0):
-            assert "collection not found" in result["message"].lower()
-            # The failure must be whole: nothing may be assigned on the way to it.
-            assert obj.light_linking.receiver_collection is None
+        assert "collection not found" in result["message"].lower()
+        # The failure must be whole: nothing may be assigned on the way to it.
+        assert obj.light_linking.receiver_collection is None

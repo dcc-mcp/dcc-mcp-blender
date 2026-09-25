@@ -150,7 +150,7 @@ def resolve_blender_python(explicit: Optional[str]) -> Path:
 
     raise SystemExit(
         "Could not find Blender's bundled Python. Re-run with --blender-python "
-        '(e.g. "C:\\Program Files\\Blender Foundation\\Blender 4.2\\4.2\\python\\bin\\python.exe"), '
+        '(e.g. "C:\\Program Files\\Blender Foundation\\Blender 4.5\\4.5\\python\\bin\\python.exe"), '
         "or set BLENDER_PYTHON to the full path."
     )
 

@@ -16,10 +16,10 @@ RUN_DOCKER_E2E = SCRIPTS_DIR / "run_docker_blender_e2e.sh"
 START_MCP_SERVER = SCRIPTS_DIR / "start_mcp_server.py"
 
 
-def test_current_lts_matrix_uses_official_verified_archives_on_all_platforms():
+def test_supported_matrix_uses_official_verified_archives_on_all_platforms():
     jobs = yaml.safe_load(E2E_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     entries = jobs["e2e"]["strategy"]["matrix"]["include"]
-    for version, python in (("5.2.1", "3.13"), ("4.5.13", "3.11")):
+    for version, python in (("4.5.13", "3.11"), ("5.2.1", "3.13")):
         rows = [row for row in entries if row["blender-version"] == version]
         assert {row["os"] for row in rows} == {"windows", "macos", "linux"}
         for row in rows:
@@ -142,10 +142,8 @@ def test_linux_e2e_runs_in_real_blender_docker_images():
 
     images = re.findall(r'blender-image: "(linuxserver/blender:[^"]+)"', text)
     assert images == [
-        "linuxserver/blender:4.4.3",
-        "linuxserver/blender:4.3.2",
-        "linuxserver/blender:4.2.0",
-        "linuxserver/blender:3.6.5",
+        "linuxserver/blender:5.2.1",
+        "linuxserver/blender:5.1.2",
     ]
 
 

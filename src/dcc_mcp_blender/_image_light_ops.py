@@ -471,7 +471,7 @@ def set_light_linking(
         if linking is None:
             return skill_error(
                 "Light linking unavailable on this Blender version",
-                f"{light_name} exposes no light_linking property. Light linking was added in Blender 4.1.",
+                f"{light_name} exposes no light_linking property; this build does not support light linking.",
             )
 
         # Resolve every collection before writing any of them. Assigning the

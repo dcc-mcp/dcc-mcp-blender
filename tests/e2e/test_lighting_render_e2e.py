@@ -255,7 +255,7 @@ class TestRenderSkillsE2E:
 
     def test_set_render_engine_eevee(self):
         mod = load_skill("blender-render", "set_render_settings")
-        # Blender 4.2+ uses BLENDER_EEVEE_NEXT; try both
+        # EEVEE Next is the engine id on supported releases; try both names.
         for engine in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
             result = mod.set_render_settings(engine=engine)
             if result["success"]:

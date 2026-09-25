@@ -45,7 +45,7 @@ actually mean when they say "Blender MCP".
 | Maintainer | Third-party, single maintainer (`ahujasid`) | `dcc-mcp` organization |
 | Made by Blender? | **No** — README disclaims it explicitly | No (third-party, same as any adapter) |
 | License | MIT | MIT |
-| Minimum Blender | 3.0 or newer | 4.2+ for the extension ZIP; CI targets 5.2.1 LTS (Python 3.13) and 4.5.13 LTS (Python 3.11), with legacy coverage for 3.6.5 / 4.2.0 / 4.3.2 / 4.4.3 |
+| Minimum Blender | 3.0 or newer | 4.5+ for both the startup-hook path and the extension ZIP; CI targets 4.5.13 LTS (Python 3.11) and 5.2.1 (Python 3.13) |
 | Architecture | Blender add-on opens a **socket server**; a **separate** MCP process speaks stdio to the client and relays over TCP (default port `9876`) | MCP server runs **embedded** inside Blender's Python interpreter — no external process |
 | Transport | stdio (client to server), TCP socket (server to Blender) | Streamable HTTP, `POST /mcp` (endpoint returned by `BlenderMcpServer.mcp_url`) |
 | MCP protocol | Implements MCP; version matrix not published in the README | `2025-03-26` and `2025-06-18` (see [protocol compatibility](protocol-compatibility.md)) |

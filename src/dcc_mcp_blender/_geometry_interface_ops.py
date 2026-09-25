@@ -46,7 +46,7 @@ def _resolve(group_name, *, writable=False):
         return None, _failure("geometry_group_not_found", "Choose an existing GeometryNodeTree.")
     if getattr(group, "interface", None) is None:
         return None, _failure(
-            "interface_api_unavailable", "This interface editing surface requires Blender 4.0 or newer."
+            "interface_api_unavailable", "This node group exposes no interface API; it was saved by an older release."
         )
     if writable and (group.library is not None or group.override_library is not None):
         return None, _failure("local_group_required", "Linked and library-override node groups are read-only here.")

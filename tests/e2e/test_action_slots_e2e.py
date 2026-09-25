@@ -11,8 +11,6 @@ from tests.e2e.conftest import load_skill  # noqa: E402
 
 
 def test_shared_action_query_and_delete_preserve_other_object_slot():
-    if bpy.app.version < (4, 4, 0):
-        pytest.skip("Action Slots were introduced in Blender 4.4")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     first = bpy.data.objects.new("SlotOwnerA", None)
     second = bpy.data.objects.new("SlotOwnerB", None)

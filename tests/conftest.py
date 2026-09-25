@@ -95,8 +95,8 @@ def make_mock_bpy(
     mock_bpy = MagicMock()
 
     # bpy.app defaults
-    mock_bpy.app.version = (4, 0, 0)
-    mock_bpy.app.version_string = "4.0.0"
+    mock_bpy.app.version = (4, 5, 0)
+    mock_bpy.app.version_string = "4.5.0"
     mock_bpy.app.binary_path = "/usr/bin/blender"
     mock_bpy.app.background = True
     mock_bpy.app.build_date = b"2024-01-01"

@@ -1,6 +1,6 @@
 # blender-link-win.ps1
 # Create symlinks from source tree into Blender's addons directory for live development
-# Usage: just blender-link-win  or  powershell -File tools/blender-link-win.ps1 -BlenderVersion 4.2
+# Usage: just blender-link-win  or  powershell -File tools/blender-link-win.ps1 -BlenderVersion 4.5
 
 param(
     [string]$BlenderVersion = $env:BLENDER_VERSION,
@@ -10,7 +10,7 @@ param(
 
 # Default Blender version
 if ([string]::IsNullOrEmpty($BlenderVersion)) {
-    $BlenderVersion = "4.2"
+    $BlenderVersion = "4.5"
 }
 
 # Detect Blender addons directory
