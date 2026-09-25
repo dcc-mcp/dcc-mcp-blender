@@ -1,155 +1,19 @@
-"""dcc-mcp-blender — MCP Streamable HTTP server embedded in Blender."""
+"""dcc-mcp-blender — MCP Streamable HTTP server embedded in Blender.
 
-# The host gate and the compatibility gate must both run before imports that
-# bind core integrations.
-# ruff: noqa: E402
+The public surface lives in :mod:`dcc_mcp_blender._public_api` so that the
+wheel channel and the Blender 4.2+ extension channel (where the add-on package
+root *is* ``dcc_mcp_blender`` and its ``__init__.py`` is the Blender add-on
+entrypoint) expose exactly the same top-level names.
+
+The import gates this module used to run inline -- ``repair_sys_path()``, then
+``require_supported_host(adapter_version=__version__)``, then
+``require_compatible_core()``, and the advisory provenance check -- now run in
+that shared module. Keeping them there is what stops the extension channel from
+shipping a surface that skipped them: a gate added here alone would silently
+vanish from the add-on build.
+"""
 
 from __future__ import annotations
 
-from dcc_mcp_blender.__version__ import __version__
-from dcc_mcp_blender._core_compat import require_compatible_core
-from dcc_mcp_blender._host_support import require_supported_host
-from dcc_mcp_blender._isolated_path import repair_sys_path
-
-# Blender 5.x starts its embedded interpreter with an isolated configuration that
-# ignores PYTHONPATH, so dependencies injected by the launcher are invisible from
-# inside the host. Restore them before the compatibility gate imports core; on
-# hosts that already honoured PYTHONPATH this is a no-op.
-#
-# Order matters: the repair runs first so that hosts it can rescue are judged
-# after the repair, not before it. Running the host gate first would turn every
-# Blender 5.x host into a hard HostSupportError even when the repair would have
-# made the dependencies visible.
-repair_sys_path()
-
-# A host whose interpreter cannot see dcc-mcp-core fails here with a named
-# boundary error instead of a ModuleNotFoundError raised from a deeper import.
-require_supported_host(adapter_version=__version__)
-require_compatible_core()
-
-from dcc_mcp_blender._capability_manifest import (
-    BlenderCapabilityManifestBuilder,
-    CapabilityRecord,
-    build_manifest_payload,
-    register_capability_mcp_tool,
-)
-from dcc_mcp_blender._project_tools import (
-    ENV_PROJECT_TOOLS,
-    BlenderSceneResolver,
-    ProjectToolsIntegration,
-)
-from dcc_mcp_blender._project_tools import (
-    attach_to_server as attach_project_tools,
-)
-from dcc_mcp_blender._provenance import (
-    PackageProvenanceError,
-    ProvenanceReport,
-    check_provenance,
-    collect_report,
-    require_expected_origin,
-)
-from dcc_mcp_blender._readiness import (
-    ENV_READINESS_TIMEOUT_SECS,
-    ReadinessBinder,
-    install_readiness,
-    resolve_readiness_timeout_secs,
-)
-from dcc_mcp_blender._resources import (
-    DEFAULT_SCENE_HANDLERS,
-    DEFAULT_SCENE_THROTTLE_SECS,
-    ENV_RESOURCES,
-    SCHEME_BLENDER_DATA,
-    BlenderResourceBinder,
-    install_resources,
-)
-from dcc_mcp_blender._semantic_index import (
-    ENV_SEMANTIC_EMBEDDER,
-    ENV_SEMANTIC_INDEX,
-    BlenderSemanticIndex,
-    build_semantic_index,
-)
-from dcc_mcp_blender.api import skill_entry, skill_error, skill_exception, skill_success
-from dcc_mcp_blender.capabilities import blender_capabilities, blender_capabilities_dict
-from dcc_mcp_blender.context_snapshot import (
-    BlenderContextSnapshotProvider,
-    collect_gateway_metadata,
-    make_snapshot_provider,
-)
-from dcc_mcp_blender.host import BlenderHost, BlenderTimerPump, BlenderUiDispatcher
-from dcc_mcp_blender.server import (
-    DEFAULT_PORT,
-    SERVER_NAME,
-    BlenderMcpServer,
-    BlenderServerOptions,
-    get_server,
-    start_server,
-    stop_server,
-)
-
-# Report a runtime that the host resolved from a stale user-level copy before
-# any capability is served. This stays advisory on purpose: the package
-# ``__init__`` is the import path of the CLI (``dcc_mcp_blender.install:main``)
-# and of the ``dcc_mcp.adapters`` entry point, and raising here would break the
-# very commands an operator needs to repair the host -- before the add-on entry
-# or the startup hook can print their far clearer diagnosis. A package manager
-# that resolves each dcc-mcp package separately can also leave core outside a
-# root declared for the adapter alone, which is legitimate, not a violation.
-# The gate that fails closed lives in the add-on entry and the startup hook.
-IMPORT_PROVENANCE_REPORT = check_provenance(raise_on_violation=False)
-
-__all__ = [
-    "__version__",
-    "IMPORT_PROVENANCE_REPORT",
-    "PackageProvenanceError",
-    "ProvenanceReport",
-    "check_provenance",
-    "collect_report",
-    "require_expected_origin",
-    "skill_entry",
-    "skill_error",
-    "skill_exception",
-    "skill_success",
-    "blender_capabilities",
-    "blender_capabilities_dict",
-    "BlenderHost",
-    "BlenderTimerPump",
-    "BlenderUiDispatcher",
-    "BlenderMcpServer",
-    "BlenderServerOptions",
-    "DEFAULT_PORT",
-    "SERVER_NAME",
-    "get_server",
-    "start_server",
-    "stop_server",
-    # Capability manifest
-    "CapabilityRecord",
-    "BlenderCapabilityManifestBuilder",
-    "build_manifest_payload",
-    "register_capability_mcp_tool",
-    # Context snapshot
-    "BlenderContextSnapshotProvider",
-    "collect_gateway_metadata",
-    "make_snapshot_provider",
-    # Project-state persistence
-    "ENV_PROJECT_TOOLS",
-    "BlenderSceneResolver",
-    "ProjectToolsIntegration",
-    "attach_project_tools",
-    # Resource publishing
-    "ENV_RESOURCES",
-    "DEFAULT_SCENE_HANDLERS",
-    "DEFAULT_SCENE_THROTTLE_SECS",
-    "SCHEME_BLENDER_DATA",
-    "BlenderResourceBinder",
-    "install_resources",
-    # Runtime readiness
-    "ENV_READINESS_TIMEOUT_SECS",
-    "ReadinessBinder",
-    "install_readiness",
-    "resolve_readiness_timeout_secs",
-    # Semantic skill recall (opt-in)
-    "ENV_SEMANTIC_INDEX",
-    "ENV_SEMANTIC_EMBEDDER",
-    "BlenderSemanticIndex",
-    "build_semantic_index",
-]
+from ._public_api import *  # noqa: F401,F403
+from ._public_api import __all__  # noqa: F401

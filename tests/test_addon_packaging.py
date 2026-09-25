@@ -215,6 +215,9 @@ def test_assembled_addon_zip_uses_flat_importable_package_layout(tmp_path, monke
     assert "server.py" in names
     assert "host.py" in names
     assert "_extension_imports.py" in names
+    # The add-on entry replaces the library ``__init__.py``, so the public
+    # surface it re-exports must ship as a sibling module at the package root.
+    assert "_public_api.py" in names
     assert "skills/blender-scene/SKILL.md" in names
     assert "COPYING" in names
     assert "LICENSE-MIT" in names
