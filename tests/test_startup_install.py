@@ -155,3 +155,175 @@ def test_startup_bridge_captures_and_reraises_bootstrap_failures(monkeypatch, tm
     assert captured[0][0] == "blender"
     assert captured[0][1]["phase"] == "startup"
     assert captured[0][2].args == ("startup exploded",)
+
+
+def _render_startup(tmp_path, monkeypatch):
+    """Render the lifecycle-owned startup script and load it as a module."""
+    from dcc_mcp_blender import install as lifecycle
+
+    site_packages = tmp_path / "site-packages"
+    context = SimpleNamespace(
+        site_packages=site_packages,
+        bootstrap_log_dir=tmp_path / "bootstrap-logs",
+    )
+    script = tmp_path / "dcc_mcp_blender_startup.py"
+    script.write_text(lifecycle._render_startup_script(context), encoding="utf-8")
+    return _load_startup_module(script, monkeypatch)
+
+
+def _installed_module(tmp_path, name, version):
+    """Build a module that reports an origin inside the installed site-packages."""
+    origin = tmp_path / "site-packages" / name / "__init__.py"
+    origin.parent.mkdir(parents=True, exist_ok=True)
+    origin.write_text("", encoding="utf-8")
+    module = ModuleType(name)
+    module.__file__ = str(origin)
+    module.__version__ = version
+    return module
+
+
+def _stale_module(root, name, version):
+    """Build a module that reports an origin inside a user-level extension copy."""
+    origin = root / "extensions" / "bl_ext" / "user_default" / name / "__init__.py"
+    origin.parent.mkdir(parents=True, exist_ok=True)
+    origin.write_text("", encoding="utf-8")
+    module = ModuleType(name)
+    module.__file__ = str(origin)
+    module.__version__ = version
+    return module
+
+
+def test_startup_script_rejects_a_stale_user_level_adapter(monkeypatch, tmp_path):
+    """A user-level copy must never answer for the installed package silently."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _stale_module(tmp_path, "dcc_mcp_blender", "0.2.1"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        startup._assert_expected_origin()
+
+    message = str(raised.value)
+    assert "dcc_mcp_blender 0.2.1" in message
+    assert "bl_ext" in message
+
+
+def test_startup_script_accepts_the_installed_origin(monkeypatch, tmp_path):
+    """The healthy case must stay silent."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+
+    assert startup._assert_expected_origin() is None
+
+
+def test_startup_script_prefers_a_declared_root_over_the_installed_one(monkeypatch, tmp_path):
+    """A per-session resolve must not be judged against the install-time root.
+
+    The root is baked in when this script is written, but a package manager that
+    resolves the runtime per start-up declares a different one. Honouring the
+    declaration keeps a legitimate resolve from being rejected as foreign.
+    """
+    startup = _render_startup(tmp_path, monkeypatch)
+    resolve_root = tmp_path / "resolve" / "site-packages"
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(resolve_root, "dcc_mcp_blender", "0.2.4"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(resolve_root, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv("DCC_MCP_BLENDER_PACKAGE_ROOT", str(resolve_root))
+
+    assert startup._assert_expected_origin() is None
+
+
+def test_startup_script_accepts_a_root_spelled_as_the_package_dir(monkeypatch, tmp_path):
+    """Both spellings of a root must be accepted, not just the sys.path entry."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv(
+        "DCC_MCP_BLENDER_PACKAGE_ROOT",
+        str(tmp_path / "site-packages" / "dcc_mcp_blender"),
+    )
+
+    assert startup._assert_expected_origin() is None
+
+
+def test_startup_script_rejects_the_installed_root_when_another_is_declared(monkeypatch, tmp_path):
+    """Declaring a different root makes the installed copy foreign, and fatal."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv("DCC_MCP_BLENDER_PACKAGE_ROOT", str(tmp_path / "resolve" / "site-packages"))
+
+    with pytest.raises(RuntimeError) as raised:
+        startup._assert_expected_origin()
+
+    assert "dcc_mcp_blender 0.2.10" in str(raised.value)
+
+
+def test_startup_script_treats_a_foreign_core_as_advisory(monkeypatch, tmp_path, capsys):
+    """A Core from another interpreter directory is legitimate: version gates it."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    foreign = ModuleType("dcc_mcp_core")
+    foreign.__file__ = str(tmp_path / "other-interpreter" / "site-packages" / "dcc_mcp_core" / "__init__.py")
+    foreign.__version__ = "0.20.28"
+    monkeypatch.setitem(sys.modules, "dcc_mcp_core", foreign)
+
+    assert startup._assert_expected_origin() is None
+    assert "NOTE" in capsys.readouterr().out
+
+
+def test_startup_script_violation_can_be_downgraded(monkeypatch, tmp_path, capsys):
+    """Operators who accept the risk need a documented non-fatal switch."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _stale_module(tmp_path, "dcc_mcp_blender", "0.2.1"),
+    )
+    monkeypatch.setenv("DCC_MCP_BLENDER_STRICT_ORIGIN", "0")
+
+    assert startup._assert_expected_origin() is None
+    assert "WARNING" in capsys.readouterr().out

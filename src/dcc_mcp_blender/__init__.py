@@ -41,6 +41,13 @@ from dcc_mcp_blender._project_tools import (
 from dcc_mcp_blender._project_tools import (
     attach_to_server as attach_project_tools,
 )
+from dcc_mcp_blender._provenance import (
+    PackageProvenanceError,
+    ProvenanceReport,
+    check_provenance,
+    collect_report,
+    require_expected_origin,
+)
 from dcc_mcp_blender._readiness import (
     ENV_READINESS_TIMEOUT_SECS,
     ReadinessBinder,
@@ -79,8 +86,25 @@ from dcc_mcp_blender.server import (
     stop_server,
 )
 
+# Report a runtime that the host resolved from a stale user-level copy before
+# any capability is served. This stays advisory on purpose: the package
+# ``__init__`` is the import path of the CLI (``dcc_mcp_blender.install:main``)
+# and of the ``dcc_mcp.adapters`` entry point, and raising here would break the
+# very commands an operator needs to repair the host -- before the add-on entry
+# or the startup hook can print their far clearer diagnosis. A package manager
+# that resolves each dcc-mcp package separately can also leave core outside a
+# root declared for the adapter alone, which is legitimate, not a violation.
+# The gate that fails closed lives in the add-on entry and the startup hook.
+IMPORT_PROVENANCE_REPORT = check_provenance(raise_on_violation=False)
+
 __all__ = [
     "__version__",
+    "IMPORT_PROVENANCE_REPORT",
+    "PackageProvenanceError",
+    "ProvenanceReport",
+    "check_provenance",
+    "collect_report",
+    "require_expected_origin",
     "skill_entry",
     "skill_error",
     "skill_exception",

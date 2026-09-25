@@ -674,12 +674,109 @@ def _render_startup_script(ctx):
 
 from __future__ import annotations
 
+import os
 import site
+import sys
 
 site.addsitedir(%s)
 
+# The site-packages directory this script installed into. It is only the
+# default: a package manager that resolves the runtime per session declares the
+# authoritative root through the environment, and that declaration wins.
+_INSTALLED_PACKAGE_ROOT = %s
+_ENV_EXPECTED_ROOTS = ("DCC_MCP_BLENDER_PACKAGE_ROOT", "DCC_MCP_PACKAGE_ROOT")
+_USER_LEVEL_MARKERS = ("bl_ext", "user_default", "extensions", "addons")
 _server = None
 _owns_server = False
+
+
+def _is_user_level(path):
+    parts = [part for part in os.path.normcase(path).replace(chr(92), "/").split("/") if part]
+    for marker in _USER_LEVEL_MARKERS:
+        if marker in parts:
+            return True
+    return False
+
+
+def _expected_roots():
+    """Return the roots the runtime must resolve from, declared root first."""
+    roots = []
+    for name in _ENV_EXPECTED_ROOTS:
+        for entry in os.environ.get(name, "").split(os.pathsep):
+            entry = entry.strip()
+            if entry and entry not in roots:
+                roots.append(entry)
+    return roots or [_INSTALLED_PACKAGE_ROOT]
+
+
+def _within(path, root):
+    """Return True when ``path`` sits inside ``root``."""
+    try:
+        candidate = os.path.normcase(os.path.realpath(path))
+        container = os.path.normcase(os.path.realpath(root))
+        return os.path.commonpath([candidate, container]) == container
+    except (OSError, ValueError):
+        # Unreadable path, or two different Windows drives.
+        return False
+
+
+def _origin_problems():
+    """Return (fatal, advisory) origins that sit outside the expected roots."""
+    expected_roots = _expected_roots()
+    fatal = []
+    advisory = []
+    for name in ("dcc_mcp_blender", "dcc_mcp_core"):
+        module = sys.modules.get(name)
+        origin = getattr(module, "__file__", "") or ""
+        if not origin:
+            continue
+        # A root is accepted either as the sys.path entry that holds the package
+        # (.../site-packages) or as the package directory itself, so a
+        # declaration written either way is honoured rather than failing a
+        # host that is already healthy.
+        package_dir = os.path.dirname(os.path.abspath(origin))
+        candidates = [origin, package_dir, os.path.dirname(package_dir)]
+        if any(_within(candidate, root) for candidate in candidates for root in expected_roots):
+            continue
+        detail = name + " " + str(getattr(module, "__version__", "unknown")) + " from " + origin
+        # The adapter decides which runtime the host serves, so a foreign adapter
+        # is always fatal. A foreign Core is only fatal when it is a stale
+        # user-level copy: a Core installed into another interpreter directory of
+        # the same Blender version is legitimate and is gated by min_core_version.
+        if name == "dcc_mcp_blender" or _is_user_level(origin):
+            fatal.append(detail)
+        else:
+            advisory.append(detail)
+    return fatal, advisory
+
+
+def _assert_expected_origin():
+    """Reject a stale user-level copy that shadowed the expected package.
+
+    Blender loads user-level extension copies (bl_ext.<repository>.dcc_mcp_blender)
+    before this startup script runs, so "import dcc_mcp_blender" can return a copy
+    this lifecycle never wrote: an older adapter that starts, serves and records an
+    old version without raising anything. Compare the resolved origin against the
+    root the session declares (DCC_MCP_BLENDER_PACKAGE_ROOT, else
+    DCC_MCP_PACKAGE_ROOT, else the site-packages directory this script installed
+    into) before trusting it. A session that resolves the runtime per start-up
+    declares a root that differs from the installed one, so the declaration wins.
+    """
+    fatal, advisory = _origin_problems()
+    expected = os.pathsep.join(_expected_roots())
+    if not fatal:
+        if advisory:
+            print("[DCC MCP Blender] NOTE: " + "; ".join(advisory) + " (expected root " + expected + ")")
+        return
+    message = (
+        "dcc-mcp-blender resolved outside " + expected + ": " + ", ".join(fatal)
+        + ". A stale user-level copy is shadowing the expected package; remove that copy "
+        "(or the matching Blender user extension) and restart Blender."
+    )
+    if os.environ.get("DCC_MCP_BLENDER_STRICT_ORIGIN", "1").strip().lower() in ("0", "false", "no", "off"):
+        print("[DCC MCP Blender] WARNING: " + message)
+        return
+    raise RuntimeError(message)
 
 
 def register():
@@ -698,6 +795,8 @@ def register():
         log_dir=%s,
     ):
         from dcc_mcp_blender import get_server, start_server
+
+        _assert_expected_origin()
 
         existing = get_server()
         if existing is not None and getattr(existing, "is_running", False):
@@ -724,7 +823,7 @@ def unregister():
     finally:
         _server = None
         _owns_server = False
-''' % (site_packages, adapter_version, min_core_version, log_dir)
+''' % (site_packages, site_packages, adapter_version, min_core_version, log_dir)
 
 
 def _write_text(path, content):

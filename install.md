@@ -188,6 +188,62 @@ For the Extension ZIP path, remove **DCC MCP Blender** through Blender's
 Extensions preferences. The startup-hook lifecycle never deletes extension or
 scene data it does not own.
 
+## Stale user-level copies shadow the installed package
+
+Blender loads user-level extension copies (`bl_ext.<repository>.dcc_mcp_blender`)
+**before** any package environment or startup hook runs. A copy left behind by an
+earlier install therefore keeps answering `import dcc_mcp_blender` even when a
+package manager resolved a different copy for that session. That stale copy
+satisfies its own, older compatibility gate, starts an MCP server, and reports an
+old version **without raising anything** — every capability captured from that host
+then silently describes the wrong runtime.
+
+The lifecycle defends against this in two places:
+
+1. The generated startup hook compares the origin of `dcc_mcp_blender` and
+   `dcc_mcp_core` against the expected package root, and fails closed when the
+   adapter came from somewhere else.
+2. The add-on entry runs the same check plus the `min_core_version` gate in
+   `register()`, before any operator class is registered, and it hands the runtime
+   over to a resolved distribution that is at least as new as the bundled copy.
+
+Declare the authoritative package root for a session to make the check strict:
+
+```bash
+# one root, or several separated by the platform path separator
+export DCC_MCP_BLENDER_PACKAGE_ROOT="/studio/resolve/site-packages"
+```
+
+A declared root replaces the site-packages directory the startup hook was
+installed with, so a package manager that resolves the runtime per session (rez,
+for example) is never judged against a stale install-time directory. Write it as
+the directory that **holds** the package — the `sys.path` entry, such as
+`/studio/resolve/site-packages` — or as the package directory itself
+(`/studio/resolve/site-packages/dcc_mcp_blender`); both are accepted.
+
+Set `DCC_MCP_BLENDER_STRICT_ORIGIN=0` to downgrade a violation from an error to a
+warning on a machine you cannot clean yet. Never leave it set in a farm
+environment: it is the switch that turns a visible failure back into a silent one.
+
+To find and remove a stale copy:
+
+```bash
+dcc-mcp-blender status --dcc-path "<absolute-blender-path>" --python "<absolute-blender-python>" --json
+```
+
+Inside the host, compare what the interpreter really imported:
+
+```python
+import dcc_mcp_blender, dcc_mcp_core
+print(dcc_mcp_blender.__version__, dcc_mcp_blender.__file__)
+print(dcc_mcp_core.__version__, dcc_mcp_core.__file__)
+```
+
+Both paths must sit inside the directory the resolve supplied. If either points at
+a Blender user extension or add-ons directory, remove that copy (Blender
+`Edit > Preferences > Extensions`, or delete the matching
+`bl_ext.<repository>.dcc_mcp_blender` directory) and restart Blender.
+
 ## Troubleshooting
 
 | Result | Diagnosis | Action |
@@ -201,6 +257,7 @@ scene data it does not own.
 | Exit `30` | Transaction or rollback failed | Preserve the JSON result and previous receipt; resolve the reported filesystem failure. |
 | Exit `40`, `target_import_failed` | Adapter/Core is absent from target Python | Install both packages into the exact `--python` interpreter. |
 | Exit `40`, `bootstrap_error_captured` | Blender startup raised before MCP readiness | Inspect the receipt's `bootstrap_error_dir` and Blender console; fix the original error. |
+| Startup error, `resolved outside <site-packages>` | A stale user-level copy shadowed the installed package | Remove that copy (see [Stale user-level copies](#stale-user-level-copies-shadow-the-installed-package)) and restart Blender. |
 | Exit `40`, `no_live_blender_instance` | Installed but Blender is closed or not registered | Execute the returned launch command, wait for startup, then rerun verify. |
 | Exit `50` | Windows reports a loaded/locked adapter artifact | Save work, close only the reported Blender instance, then repeat the command. |
 
