@@ -102,7 +102,7 @@ tools:
     destructive: false
     idempotent: false
   - name: start_render_job
-    description: "Save the current .blend and start an isolated background animation render, reusing the scene's render.image_settings.file_format unless output_format is given; optionally render only missing frames."
+    description: "Save the current .blend and start an isolated background animation render, reusing the scene's render.image_settings.file_format unless output_format is given and the scene's saved Cycles device unless device is given; optionally render only missing frames."
     source_file: scripts/start_render_job.py
     execution: sync
     affinity: main
@@ -137,9 +137,10 @@ tools:
           default: true
           description: "Skip existing files with a valid signature for the selected output format and render only missing frames."
         device:
-          type: string
-          enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
-          default: OPTIX
+          type: [string, "null"]
+          enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU, null]
+          default: null
+          description: "Cycles device override for the worker. Omit (default null) to render with the Cycles device saved in the .blend file, which is CPU for a new scene; passing a value overrides the artist's scene setting. OPTIX needs an NVIDIA GPU and is Windows/Linux only, so it fails on macOS and on any host without an NVIDIA GPU."
         save_before_render:
           type: boolean
           default: true

@@ -61,6 +61,25 @@ rejected. Each PNG is decoded by Blender, dimension checked, and hashed;
 status reads verify the entire file hash. Failed images retain individual
 errors and do not make the batch successful.
 
+## Render device for background jobs
+
+`start_render_job` has no device of its own: `device` defaults to `null`, so no
+`--cycles-device` flag reaches the worker and the job renders with the Cycles
+device saved in the `.blend` file (`scene.cycles.device`), which is CPU for a
+new scene. Leave it unset unless the caller explicitly asks for a specific
+device — it is the only portable choice, because a forced value overrides the
+artist's scene.
+
+Pass one of `OPTIX`, `CUDA`, `HIP`, `ONEAPI`, `METAL`, `CPU` only to override.
+`OPTIX` needs an NVIDIA GPU and is supported on Windows and Linux only, so it
+always fails on macOS and on any host without an NVIDIA GPU.
+
+When a job fails, `get_render_job` reports the worker's log tails as
+`stderr_tail` and `stdout_tail` (Blender puts the device error on stdout on
+some platforms and on stderr on others). If the requested device is the cause,
+it also sets `failure_hint`, which names `device` and suggests retrying with
+`device="CPU"`.
+
 ## Output configuration
 
 Typed tools for the settings that decide what ends up on disk. Reach for them

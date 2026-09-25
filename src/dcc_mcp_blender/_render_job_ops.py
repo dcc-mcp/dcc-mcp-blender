@@ -28,6 +28,16 @@ _OUTPUT_FORMATS = {
 # multi-layer container, and anything else has to fail loudly rather than fall
 # back to EXR.
 _SCENE_OUTPUT_FORMATS = ("OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG")
+# Cycles device names a worker accepts through ``-- --cycles-device``. Kept as
+# the single source of truth for the hint a device failure returns so it cannot
+# drift away from the enum published by the skill contract.
+_DEVICES = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL", "CPU")
+# Blender's error when ``--cycles-device`` names a device the host cannot
+# provide, matched case-insensitively against a worker's log tail: OPTIX on
+# macOS (Windows/Linux only) or on any host without an NVIDIA GPU.
+_CYCLES_DEVICE_ERROR = "found no cycles device of the specified type"
+# Characters of each worker log kept for failure attribution.
+_LOG_TAIL_LIMIT = 1500
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
@@ -150,16 +160,52 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
         return False
 
 
+def _log_tail(job: Dict[str, Any], key: str) -> str:
+    """Return the tail of one worker log file, or "" when it cannot be read.
+
+    A failed job used to report only ``status: failed``, leaving the caller to
+    open the log paths itself. Carrying the tails here is what lets an agent
+    tell a device failure from a bad output path without a second round trip.
+    """
+    try:
+        return Path(job[key]).read_text(errors="replace")[-_LOG_TAIL_LIMIT:]
+    except (KeyError, OSError, TypeError, ValueError):
+        return ""
+
+
+def _device_failure_hint(log_tail: str) -> str:
+    """Attribute an unresolvable Cycles device to the ``device`` argument.
+
+    Returns "" unless the tail carries Blender's "Found no Cycles device of the
+    specified type". In that case the failure is caused by the device the job
+    was asked to use, so the hint names ``device`` and suggests ``CPU``; the
+    caller can then retry instead of reporting an anonymous failure.
+    """
+    if _CYCLES_DEVICE_ERROR not in log_tail.lower():
+        return ""
+    return (
+        "Blender found no Cycles device of the type this job requested. Retry start_render_job with "
+        'device="CPU", or with a device this host actually provides ({}). '
+        "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(", ".join(_DEVICES))
+    )
+
+
 def _build_blender_command(
     *,
     blender_path: str,
     scene_path: str,
     output_pattern: str,
     frames: List[int],
-    device: str,
+    device: str = None,
     factory_startup: bool,
     output_format: str = "OPEN_EXR_MULTILAYER",
 ) -> List[str]:
+    """Build the ``blender --background`` command for an owned render job.
+
+    ``device=None`` omits ``-- --cycles-device`` entirely so the worker falls
+    back to the Cycles device stored in the .blend file. Passing a device is an
+    explicit override and stays the only way to override an artist's scene.
+    """
     format_name = str(output_format).strip().upper()
     _output_format_spec(format_name)
     command = [blender_path, "--background"]
@@ -189,7 +235,7 @@ def start_render_job(
     end_frame: int,
     step: int = 1,
     resume_missing: bool = True,
-    device: str = "OPTIX",
+    device: str = None,
     save_before_render: bool = True,
     factory_startup: bool = False,
     output_format: str = None,
@@ -199,6 +245,13 @@ def start_render_job(
     ``output_format`` defaults to the live scene's
     ``render.image_settings.file_format`` so ``set_render_settings`` controls
     the frames a job writes instead of every job silently emitting EXR.
+
+    ``device`` defaults to ``None``: no ``--cycles-device`` is appended and the
+    worker uses the Cycles device saved in the .blend (CPU for a new scene).
+    Forcing a device here overrides the artist's scene, and ``OPTIX`` in
+    particular fails with "Found no Cycles device of the specified type" on
+    macOS and on every host without an NVIDIA GPU. Pass one of ``OPTIX``,
+    ``CUDA``, ``HIP``, ``ONEAPI``, ``METAL``, ``CPU`` only to override.
     """
     try:
         import bpy  # Lazy import: requires Blender's embedded Python.
@@ -278,9 +331,21 @@ def get_render_job(job_id: str, job_directory: str = None) -> dict:
             return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
         job = dict(job_id=job_id, kind="multiview", job_directory=job_directory)
     try:
-        return skill_success("Render job status", **_job_context(job))
+        context = _job_context(job)
     except (OSError, ValueError, KeyError) as exc:
         return skill_error("Render receipt unavailable", str(exc))
+    if context["status"] != "failed":
+        return skill_success("Render job status", **context)
+    # A failed job is a successful status read, but the message has to say why:
+    # the device hint turns "failed" into a retry an agent can act on, and the
+    # stderr tail covers every other worker error.
+    return skill_success(
+        context.get("failure_hint")
+        or "Render job failed; see stderr_tail and stdout_tail for the worker's last output.",
+        **context,
+        prompt=context.get("failure_hint")
+        or "Read stderr_tail and stdout_tail, fix the reported cause, then resubmit the job.",
+    )
 
 
 def cancel_render_job(job_id: str, job_directory: str = None) -> dict:
@@ -349,7 +414,7 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     written_set = set(written)
     missing = [frame for frame in job["frames"] if frame not in written_set]
     expected_count = len(job["frames"])
-    return {
+    context = {
         "job_id": job["job_id"],
         "status": job["status"],
         "pid": None if process is None else process.pid,
@@ -362,6 +427,20 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
         "stdout_path": job["stdout_path"],
         "stderr_path": job["stderr_path"],
     }
+    if job["status"] == "failed":
+        # A failed job whose cause stays inside its log files is an anonymous
+        # failure: surface both tails, and name ``device`` when either says the
+        # requested Cycles device does not exist on this host. Both are read
+        # because Blender reports the device error on stdout on some platforms
+        # and on stderr on others.
+        stderr_tail = _log_tail(job, "stderr_path")
+        stdout_tail = _log_tail(job, "stdout_path")
+        context["stderr_tail"] = stderr_tail
+        context["stdout_tail"] = stdout_tail
+        hint = _device_failure_hint(stderr_tail) or _device_failure_hint(stdout_tail)
+        if hint:
+            context["failure_hint"] = hint
+    return context
 
 
 def _terminate_process_tree(process: Any) -> None:
