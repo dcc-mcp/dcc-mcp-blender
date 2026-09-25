@@ -19,8 +19,15 @@ _OPENEXR_MAGIC = b"\x76\x2f\x31\x01"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _OUTPUT_FORMATS = {
     "OPEN_EXR_MULTILAYER": (".exr", _OPENEXR_MAGIC),
+    "OPEN_EXR": (".exr", _OPENEXR_MAGIC),
     "PNG": (".png", _PNG_MAGIC),
 }
+# Scene ``render.image_settings.file_format`` values that a background worker
+# can reproduce. Kept identical to ``_OUTPUT_FORMATS`` on purpose: a scene set
+# to plain ``OPEN_EXR`` must stay single-layer instead of silently becoming a
+# multi-layer container, and anything else has to fail loudly rather than fall
+# back to EXR.
+_SCENE_OUTPUT_FORMATS = ("OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG")
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
@@ -43,12 +50,46 @@ def _launch_worker(command, directory, stdout_path, stderr_path):
         return subprocess.Popen(command, stdout=stdout, stderr=stderr, **popen_kwargs)
 
 
-def _output_format_spec(output_format: str) -> Tuple[str, bytes]:
+def _normalize_output_format(output_format: str) -> str:
+    """Return the canonical name of a supported background render format."""
     name = str(output_format).strip().upper()
-    try:
-        return _OUTPUT_FORMATS[name]
-    except KeyError as exc:
-        raise ValueError("output_format must be one of: OPEN_EXR_MULTILAYER, PNG") from exc
+    if name not in _OUTPUT_FORMATS:
+        raise ValueError("output_format must be one of: {}".format(", ".join(sorted(_OUTPUT_FORMATS))))
+    return name
+
+
+def _output_format_spec(output_format: str) -> Tuple[str, bytes]:
+    return _OUTPUT_FORMATS[_normalize_output_format(output_format)]
+
+
+def _scene_file_format() -> str:
+    """Read ``render.image_settings.file_format`` from the live scene."""
+    import bpy  # Lazy import: requires Blender's embedded Python.
+
+    settings = bpy.context.scene.render.image_settings
+    return str(getattr(settings, "file_format", "")).strip().upper()
+
+
+def _resolve_output_format(output_format: str = None, scene_format: str = None) -> str:
+    """Pick the background render format for a job.
+
+    An explicit ``output_format`` always wins. Otherwise the live scene's
+    ``render.image_settings.file_format`` is reused, which is what
+    ``set_render_settings(file_format=...)`` writes. Scene formats outside
+    ``_SCENE_OUTPUT_FORMATS`` raise instead of falling back to EXR, so a
+    mis-set scene is reported before a whole frame range is rendered.
+    """
+    if output_format is not None and str(output_format).strip():
+        return _normalize_output_format(output_format)
+    name = _scene_file_format() if scene_format is None else str(scene_format).strip().upper()
+    if name not in _SCENE_OUTPUT_FORMATS:
+        raise ValueError(
+            "Scene render format {!r} is not supported by background render jobs. "
+            "Set output_format explicitly or change render.image_settings.file_format to one of: {}".format(
+                name, ", ".join(_SCENE_OUTPUT_FORMATS)
+            )
+        )
+    return name
 
 
 def _expected_output_path(
@@ -151,19 +192,32 @@ def start_render_job(
     device: str = "OPTIX",
     save_before_render: bool = True,
     factory_startup: bool = False,
-    output_format: str = "OPEN_EXR_MULTILAYER",
+    output_format: str = None,
 ) -> dict:
-    """Save the current scene and submit an isolated animation render."""
+    """Save the current scene and submit an isolated animation render.
+
+    ``output_format`` defaults to the live scene's
+    ``render.image_settings.file_format`` so ``set_render_settings`` controls
+    the frames a job writes instead of every job silently emitting EXR.
+    """
     try:
         import bpy  # Lazy import: requires Blender's embedded Python.
 
+        try:
+            resolved_format = _resolve_output_format(output_format)
+        except ValueError as exc:
+            return skill_error(
+                "Unsupported render output format",
+                str(exc),
+                prompt="Call set_render_settings or set_render_output with a supported file_format, then retry.",
+            )
         frames = _select_frames(
             output_pattern,
             start_frame,
             end_frame,
             step,
             resume_missing=resume_missing,
-            output_format=output_format,
+            output_format=resolved_format,
         )
         scene_path = str(getattr(bpy.data, "filepath", ""))
         if not scene_path:
@@ -171,7 +225,7 @@ def start_render_job(
         if save_before_render:
             bpy.ops.wm.save_as_mainfile(filepath=scene_path)
 
-        output_dir = _expected_output_path(output_pattern, start_frame, output_format=output_format).parent
+        output_dir = _expected_output_path(output_pattern, start_frame, output_format=resolved_format).parent
         output_dir.mkdir(parents=True, exist_ok=True)
         job_id = uuid.uuid4().hex
         stdout_path = output_dir / (".dcc-mcp-render-{}.out.log".format(job_id))
@@ -185,7 +239,7 @@ def start_render_job(
                 frames=frames,
                 device=device,
                 factory_startup=factory_startup,
-                output_format=output_format,
+                output_format=resolved_format,
             )
             process = _launch_worker(command, output_dir, stdout_path, stderr_path)
 
@@ -195,7 +249,7 @@ def start_render_job(
             "status": "running" if process is not None else "completed",
             "frames": frames,
             "output_pattern": output_pattern,
-            "output_format": str(output_format).strip().upper(),
+            "output_format": resolved_format,
             "scene_path": scene_path,
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
@@ -204,7 +258,9 @@ def start_render_job(
         with _LOCK:
             _JOBS[job_id] = job
         return skill_success(
-            "Background render job submitted" if frames else "All requested frames already exist",
+            "Background render job submitted ({})".format(resolved_format)
+            if frames
+            else "All requested frames already exist ({})".format(resolved_format),
             **_job_context(job),
             prompt="Use get_render_job to monitor progress and cancel_render_job to stop the owned worker.",
         )

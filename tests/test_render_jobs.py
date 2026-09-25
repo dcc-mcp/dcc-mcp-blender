@@ -16,6 +16,18 @@ def _write_valid_png(path):
     path.write_bytes(b"\x89PNG\r\n\x1a\npayload")
 
 
+def _fake_bpy(filepath, file_format="PNG"):
+    """Minimal bpy stand-in exposing the scene render format the job reads."""
+    return SimpleNamespace(
+        app=SimpleNamespace(binary_path="blender"),
+        data=SimpleNamespace(filepath=str(filepath)),
+        context=SimpleNamespace(
+            scene=SimpleNamespace(render=SimpleNamespace(image_settings=SimpleNamespace(file_format=file_format)))
+        ),
+        ops=SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=lambda filepath: [])),
+    )
+
+
 def test_build_command_uses_multilayer_exr_and_exact_frames(tmp_path):
     command = jobs._build_blender_command(
         blender_path="blender",
@@ -91,11 +103,8 @@ def test_start_get_cancel_background_render_job(monkeypatch, tmp_path):
     blend.write_bytes(b"blend")
     pattern = str(tmp_path / "beauty_####")
     saved = []
-    fake_bpy = SimpleNamespace(
-        app=SimpleNamespace(binary_path="blender"),
-        data=SimpleNamespace(filepath=str(blend)),
-        ops=SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=lambda filepath: saved.append(filepath))),
-    )
+    fake_bpy = _fake_bpy(blend, file_format="OPEN_EXR_MULTILAYER")
+    fake_bpy.ops.wm.save_as_mainfile = lambda filepath: saved.append(filepath)
     monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
 
     created = []
@@ -122,6 +131,7 @@ def test_start_get_cancel_background_render_job(monkeypatch, tmp_path):
         device="OPTIX",
     )
     assert started["success"] is True
+    assert started["context"]["output_format"] == "OPEN_EXR_MULTILAYER"
     job_id = started["context"]["job_id"]
     assert started["context"]["expected_frame_count"] == 3
     assert saved == [str(blend)]
@@ -137,6 +147,94 @@ def test_start_get_cancel_background_render_job(monkeypatch, tmp_path):
     repeated = jobs.cancel_render_job(job_id)
     assert repeated["context"]["status"] == "cancelled"
     assert terminated == [4321]
+
+
+def test_start_render_job_reuses_scene_png_format(monkeypatch, tmp_path):
+    blend = tmp_path / "scene.blend"
+    blend.write_bytes(b"blend")
+    pattern = str(tmp_path / "beauty_####")
+    monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format="PNG"))
+
+    created = []
+
+    class FakeProcess:
+        pid = 7
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda command, **kwargs: created.append(command) or FakeProcess())
+    jobs._JOBS.clear()
+
+    started = jobs.start_render_job(output_pattern=pattern, start_frame=1, end_frame=2, device="CPU")
+
+    assert started["success"] is True
+    assert started["context"]["output_format"] == "PNG"
+    assert created[0][created[0].index("--render-format") + 1] == "PNG"
+    assert jobs._expected_output_path(pattern, 1, output_format="PNG") == tmp_path / "beauty_0001.png"
+
+    status = jobs.get_render_job(started["context"]["job_id"])
+    assert status["context"]["output_format"] == "PNG"
+
+
+def test_start_render_job_keeps_explicit_format_over_scene(monkeypatch, tmp_path):
+    blend = tmp_path / "scene.blend"
+    blend.write_bytes(b"blend")
+    monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format="PNG"))
+
+    created = []
+
+    class FakeProcess:
+        pid = 7
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda command, **kwargs: created.append(command) or FakeProcess())
+    jobs._JOBS.clear()
+
+    started = jobs.start_render_job(
+        output_pattern=str(tmp_path / "beauty_####"),
+        start_frame=1,
+        end_frame=1,
+        output_format="OPEN_EXR_MULTILAYER",
+    )
+
+    assert started["context"]["output_format"] == "OPEN_EXR_MULTILAYER"
+    assert created[0][created[0].index("--render-format") + 1] == "OPEN_EXR_MULTILAYER"
+
+
+def test_start_render_job_rejects_unsupported_scene_format(monkeypatch, tmp_path):
+    blend = tmp_path / "scene.blend"
+    blend.write_bytes(b"blend")
+    monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format="JPEG"))
+    jobs._JOBS.clear()
+
+    started = jobs.start_render_job(
+        output_pattern=str(tmp_path / "beauty_####"),
+        start_frame=1,
+        end_frame=48,
+    )
+
+    assert started["success"] is False
+    assert "JPEG" in started["error"]
+    assert "OPEN_EXR_MULTILAYER" in started["error"]
+
+
+def test_resolve_output_format_maps_scene_values():
+    assert jobs._resolve_output_format("png", scene_format="OPEN_EXR_MULTILAYER") == "PNG"
+    assert jobs._resolve_output_format(None, scene_format="OPEN_EXR") == "OPEN_EXR"
+    assert jobs._resolve_output_format("", scene_format="png") == "PNG"
+    with pytest.raises(ValueError, match="not supported"):
+        jobs._resolve_output_format(None, scene_format="TIFF")
+    with pytest.raises(ValueError, match="not supported"):
+        jobs._resolve_output_format(None, scene_format="")
+
+
+def test_scene_open_exr_stays_single_layer(tmp_path):
+    pattern = str(tmp_path / "beauty_####")
+    assert jobs._expected_output_path(pattern, 1, output_format="OPEN_EXR") == tmp_path / "beauty_0001.exr"
+    assert jobs._resolve_output_format(None, scene_format="OPEN_EXR") == "OPEN_EXR"
 
 
 def test_rejects_output_pattern_without_frame_placeholder(tmp_path):
