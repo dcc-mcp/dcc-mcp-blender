@@ -102,7 +102,8 @@ class ProvenanceReport:
         for module in self.shadowed:
             lines.append(f"  {module.name} {module.version or 'unknown'} came from {module.origin or 'unknown'}")
         lines.append(
-            f"Remove the stale copy, or export {ENV_EXPECTED_ROOT}=<resolved package root> before starting Blender."
+            f"Remove the stale copy, or export {ENV_EXPECTED_ROOT}=<the sys.path entry that holds the package> "
+            f"before starting Blender."
         )
         lines.append(f"Set {ENV_STRICT}=0 to downgrade this error to a warning.")
         return "\n".join(lines)
@@ -175,6 +176,19 @@ def is_within_any(path: str, roots: Sequence[str]) -> bool:
     return any(is_within(path, root) for root in roots)
 
 
+def matches_roots(provenance: ModuleProvenance, roots: Sequence[str]) -> bool:
+    """Return ``True`` when a package resolved inside one of ``roots``.
+
+    Both spellings of a root are accepted: the ``sys.path`` entry that holds the
+    package (``.../site-packages``) and the package directory itself
+    (``.../site-packages/dcc_mcp_blender``). A root only has to contain the
+    package, not be its parent, so a declaration copied from either form is
+    honoured instead of failing a healthy host.
+    """
+    candidates = [path for path in (provenance.origin, provenance.root) if path]
+    return any(is_within_any(path, roots) for path in candidates)
+
+
 def _module_root(module: Any) -> str:
     """Return the directory a module was imported from."""
     search_path = getattr(module, "__path__", None)
@@ -234,6 +248,18 @@ def _search_path(
     return entries
 
 
+def sys_path_entry(copy_dir: str) -> str:
+    """Return the ``sys.path`` entry a package copy is declared with.
+
+    :func:`sys_path_copies` reports the package directory itself, but
+    :data:`ENV_EXPECTED_ROOT` is compared against a directory that *contains*
+    the package: declaring ``<entry>/dcc_mcp_blender`` as the root would put
+    every import one level below it and fail a host that is already healthy.
+    """
+    parent = os.path.dirname(os.path.abspath(str(copy_dir)))
+    return parent or str(copy_dir)
+
+
 def sys_path_copies(
     name: str,
     sys_path: Optional[Sequence[str]] = None,
@@ -282,7 +308,7 @@ def _advisory_warnings(
             f"{module.name} {module.version or 'unknown'} was imported from the user-level copy at "
             f"{module.root}, which the host loads ahead of the distribution at {copies[0]}. "
             f"Evidence produced by this host describes the user-level copy. Remove it, or export "
-            f"{ENV_EXPECTED_ROOT}={copies[0]} to fail closed on this conflict."
+            f"{ENV_EXPECTED_ROOT}={sys_path_entry(copies[0])} to fail closed on this conflict."
         )
     return tuple(warnings)
 
@@ -303,7 +329,7 @@ def collect_report(
         provenance = describe_module(name)
         if provenance is None:
             continue
-        modules.append(replace(provenance, expected=is_within_any(provenance.root, roots) if roots else None))
+        modules.append(replace(provenance, expected=matches_roots(provenance, roots) if roots else None))
     return ProvenanceReport(
         expected_root=root,
         strict=_env_flag(ENV_STRICT, True, env) if strict is None else bool(strict),
@@ -377,10 +403,19 @@ def require_expected_origin(
 
 
 def version_tuple(version: str) -> Tuple[int, int, int]:
-    """Parse a ``major.minor.patch`` prefix into a comparable tuple."""
+    """Parse a ``major.minor.patch`` prefix into a comparable tuple.
+
+    Only the leading digits of each segment count, so a pre-release or local
+    suffix can never rank above the release it belongs to: ``1.0.0-rc1`` is
+    ``(1, 0, 0)``, not ``(1, 0, 1)``.
+    """
     parts: List[int] = []
     for chunk in str(version).split(".")[:3]:
-        digits = "".join(character for character in chunk if character.isdigit())
+        digits = ""
+        for character in chunk:
+            if not character.isdigit():
+                break
+            digits += character
         parts.append(int(digits) if digits else 0)
     while len(parts) < 3:
         parts.append(0)
@@ -403,8 +438,10 @@ __all__ = [
     "is_user_level",
     "is_within",
     "is_within_any",
+    "matches_roots",
     "require_expected_origin",
     "resolve_expected_root",
     "sys_path_copies",
+    "sys_path_entry",
     "version_tuple",
 ]

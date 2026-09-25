@@ -111,21 +111,40 @@ def public_package_origin(
     Resolving through :data:`sys.meta_path` as it stands would report the
     extension's own facade: the bridge sits at the front of the chain so skill
     scripts keep working, and ``find_spec`` short-circuits on
-    :data:`sys.modules` before it ever looks at ``sys.path``. Searching the path
-    finders directly answers the question that actually matters for provenance
-    -- is a real distribution of the package importable, and where does it live?
+    :data:`sys.modules` before it ever looks at ``sys.path``. Every other finder
+    is consulted in order, so a caller can inject its own chain through
+    ``meta_path``; alias bridges in that chain are skipped because they only
+    ever report the extension namespace.
 
     Returns ``None`` when only the extension namespace provides the package.
     """
-    del meta_path
-    try:
-        spec = PathFinder.find_spec(public_package)
-    except (ImportError, ValueError) as exc:
-        logger.debug("path-based lookup of %s failed: %s", public_package, exc)
-        spec = None
+    # An injected chain is authoritative: a caller that passes one is asking
+    # what *that* chain resolves, so the default path finder is not consulted.
+    finders = list(sys.meta_path if meta_path is None else meta_path)
+    if meta_path is None and PathFinder not in finders:
+        finders.append(PathFinder)
+    for finder in finders:
+        if isinstance(finder, ExtensionImportAliases):
+            continue
+        find_spec = getattr(finder, "find_spec", None)
+        if find_spec is None:
+            continue
+        try:
+            spec = find_spec(public_package, None)
+        except (ImportError, ValueError, AttributeError, TypeError) as exc:
+            logger.debug("finder %r could not resolve %s: %s", finder, public_package, exc)
+            continue
+        origin = _spec_origin(spec)
+        if origin:
+            return origin
+    return None
+
+
+def _spec_origin(spec: Optional[importlib.machinery.ModuleSpec]) -> Optional[str]:
+    """Return the file or directory a resolved spec points at."""
     if spec is None:
         return None
-    if spec.origin:
+    if spec.origin and str(spec.origin) not in ("built-in", "frozen"):
         return str(spec.origin)
     locations = [str(entry) for entry in (spec.submodule_search_locations or ())]
     return locations[0] if locations else None

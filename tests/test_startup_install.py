@@ -232,6 +232,72 @@ def test_startup_script_accepts_the_installed_origin(monkeypatch, tmp_path):
     assert startup._assert_expected_origin() is None
 
 
+def test_startup_script_prefers_a_declared_root_over_the_installed_one(monkeypatch, tmp_path):
+    """A per-session resolve must not be judged against the install-time root.
+
+    The root is baked in when this script is written, but a package manager that
+    resolves the runtime per start-up declares a different one. Honouring the
+    declaration keeps a legitimate resolve from being rejected as foreign.
+    """
+    startup = _render_startup(tmp_path, monkeypatch)
+    resolve_root = tmp_path / "resolve" / "site-packages"
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(resolve_root, "dcc_mcp_blender", "0.2.4"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(resolve_root, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv("DCC_MCP_BLENDER_PACKAGE_ROOT", str(resolve_root))
+
+    assert startup._assert_expected_origin() is None
+
+
+def test_startup_script_accepts_a_root_spelled_as_the_package_dir(monkeypatch, tmp_path):
+    """Both spellings of a root must be accepted, not just the sys.path entry."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv(
+        "DCC_MCP_BLENDER_PACKAGE_ROOT",
+        str(tmp_path / "site-packages" / "dcc_mcp_blender"),
+    )
+
+    assert startup._assert_expected_origin() is None
+
+
+def test_startup_script_rejects_the_installed_root_when_another_is_declared(monkeypatch, tmp_path):
+    """Declaring a different root makes the installed copy foreign, and fatal."""
+    startup = _render_startup(tmp_path, monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_blender",
+        _installed_module(tmp_path, "dcc_mcp_blender", "0.2.10"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_core",
+        _installed_module(tmp_path, "dcc_mcp_core", "0.20.28"),
+    )
+    monkeypatch.setenv("DCC_MCP_BLENDER_PACKAGE_ROOT", str(tmp_path / "resolve" / "site-packages"))
+
+    with pytest.raises(RuntimeError) as raised:
+        startup._assert_expected_origin()
+
+    assert "dcc_mcp_blender 0.2.10" in str(raised.value)
+
+
 def test_startup_script_treats_a_foreign_core_as_advisory(monkeypatch, tmp_path, capsys):
     """A Core from another interpreter directory is legitimate: version gates it."""
     startup = _render_startup(tmp_path, monkeypatch)

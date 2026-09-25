@@ -32,6 +32,13 @@ def _fake_module(name, origin, version="0.0.1"):
     return module
 
 
+def _provenance_env_root():
+    """Name of the variable that declares the authoritative package root."""
+    from dcc_mcp_blender import _provenance
+
+    return _provenance.ENV_EXPECTED_ROOT
+
+
 def _write_distribution(root, name="dcc_mcp_blender", version="0.2.4"):
     """Create an importable package directory and return its ``__init__.py``."""
     package = root / name
@@ -183,6 +190,63 @@ def test_a_clean_resolve_produces_no_warning(tmp_path):
     assert report.warnings == ()
 
 
+def test_the_advised_root_is_accepted_by_the_gate_that_printed_it(monkeypatch, tmp_path):
+    """The remediation printed in the warning must not break a healthy host.
+
+    The warning names a ``sys.path`` entry. Printing the package directory
+    instead would be off by one level: feeding that value back through
+    :data:`ENV_EXPECTED_ROOT` makes every import sit *below* the declared root,
+    so the gate rejects a host that was already correct -- and keeps printing
+    the same advice.
+    """
+    from dcc_mcp_blender import _provenance
+
+    _write_distribution(tmp_path, version="0.2.4")
+    stale = _fake_module("dcc_mcp_blender", os.path.join(USER_LEVEL_ROOT, "dcc_mcp_blender", "__init__.py"), "0.2.1")
+    monkeypatch.setitem(sys.modules, "dcc_mcp_blender", stale)
+
+    report = _provenance.check_provenance(
+        names=("dcc_mcp_blender",),
+        sys_path=[str(tmp_path)],
+        environ={},
+        log=False,
+    )
+    assert len(report.warnings) == 1
+    marker = _provenance.ENV_EXPECTED_ROOT + "="
+    assert marker in report.warnings[0]
+    advised = report.warnings[0].split(marker, 1)[1].split(" ", 1)[0].strip()
+
+    # The advice names the sys.path entry, never the package directory itself.
+    assert os.path.basename(advised) != "dcc_mcp_blender"
+    assert os.path.realpath(advised) == os.path.realpath(str(tmp_path))
+
+    # Following the advice must clear the very conflict it was printed for.
+    healthy = _fake_module("dcc_mcp_blender", _write_distribution(tmp_path, version="0.2.4"), "0.2.4")
+    monkeypatch.setitem(sys.modules, "dcc_mcp_blender", healthy)
+    enforced = _provenance.require_expected_origin(names=("dcc_mcp_blender",), expected_root=advised)
+    assert enforced.ok
+    assert enforced.shadowed == ()
+
+
+def test_a_declared_root_spelled_as_the_package_directory_is_accepted(monkeypatch, tmp_path):
+    """A root copied from either spelling must be honoured, not rejected."""
+    from dcc_mcp_blender import _provenance
+
+    origin = _write_distribution(tmp_path, version="0.2.4")
+    module = _fake_module("dcc_mcp_blender", origin, "0.2.4")
+    monkeypatch.setitem(sys.modules, "dcc_mcp_blender", module)
+
+    package_dir = _provenance.require_expected_origin(
+        names=("dcc_mcp_blender",),
+        expected_root=str(tmp_path / "dcc_mcp_blender"),
+    )
+    sys_path_entry = _provenance.require_expected_origin(names=("dcc_mcp_blender",), expected_root=str(tmp_path))
+
+    assert package_dir.ok
+    assert sys_path_entry.ok
+    assert _provenance.sys_path_entry(str(tmp_path / "dcc_mcp_blender")) == os.path.abspath(str(tmp_path))
+
+
 def test_user_level_markers_are_matched_on_path_segments():
     from dcc_mcp_blender import _provenance
 
@@ -197,6 +261,23 @@ def test_version_tuple_orders_release_versions():
     assert _provenance.version_tuple("0.20.5") > _provenance.version_tuple("0.19.59")
     assert _provenance.version_tuple("0.2.4") >= _provenance.version_tuple("0.2.4")
     assert _provenance.version_tuple("0.20") == (0, 20, 0)
+
+
+def test_version_tuple_never_ranks_a_pre_release_above_its_release():
+    """A pre-release or local suffix must not outrank the release it precedes.
+
+    Keeping the digits of the suffix turned ``1.0.0-rc1`` into ``(1, 0, 1)``,
+    which made a release candidate look newer than the release -- and, in the
+    hand-over decision, made an older resolve win over the newer extension.
+    """
+    from dcc_mcp_blender import _provenance
+
+    assert _provenance.version_tuple("1.0.0-rc1") == (1, 0, 0)
+    assert _provenance.version_tuple("1.0.0rc1") == (1, 0, 0)
+    assert _provenance.version_tuple("0.2.9-rc1") == (0, 2, 9)
+    assert _provenance.version_tuple("0.2.10+build5") == (0, 2, 10)
+    assert not _provenance.version_tuple("1.0.0-rc1") > _provenance.version_tuple("1.0.0")
+    assert _provenance.version_tuple("0.2.9-rc1") < _provenance.version_tuple("0.2.10")
 
 
 # --------------------------------------------------------------------------- #
@@ -263,6 +344,26 @@ def test_bridge_origin_lookup_ignores_the_extension_bridge(monkeypatch, tmp_path
         monkeypatch.delitem(sys.modules, "dcc_mcp_blender", raising=False)
 
 
+def test_public_package_origin_uses_the_injected_meta_path(monkeypatch, tmp_path):
+    """The ``meta_path`` argument must be honoured, not silently discarded."""
+    from importlib.machinery import PathFinder
+
+    from dcc_mcp_blender import _extension_imports
+
+    _write_distribution(tmp_path, name="probe_injected", version="0.2.4")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for name in tuple(sys.modules):
+        if name == "probe_injected" or name.startswith("probe_injected."):
+            monkeypatch.delitem(sys.modules, name)
+
+    # An injected chain is authoritative: without the path finder it sees
+    # nothing, and with it the package resolves to the copy on sys.path.
+    assert _extension_imports.public_package_origin("probe_injected", meta_path=[]) is None
+    origin = _extension_imports.public_package_origin("probe_injected", meta_path=[PathFinder])
+    assert origin is not None
+    assert os.path.realpath(origin) == os.path.realpath(str(tmp_path / "probe_injected" / "__init__.py"))
+
+
 def test_canonical_package_hands_over_to_a_newer_resolve(monkeypatch, tmp_path, capsys):
     """The reported case: a stale 0.2.1 extension copy, a resolved 0.2.4 package."""
     extension_name = "bl_ext.user_default.dcc_mcp_blender_handover"
@@ -320,6 +421,40 @@ def test_canonical_package_ignores_the_extension_own_source_tree(monkeypatch):
     assert module._resolve_canonical_package() == extension_name
 
 
+def test_a_violated_declared_root_does_not_break_the_package_import():
+    """Import must report the conflict, never raise: the CLI is the repair path.
+
+    ``dcc-mcp-blender install`` / ``upgrade`` and the ``dcc_mcp.adapters`` entry
+    point both import this package. Raising from the package body would kill the
+    commands an operator needs to fix the host, and would fire *before* the
+    add-on entry and the startup hook can print their clearer diagnosis. It also
+    fires on every import when only the adapter root is declared and a package
+    manager resolves core elsewhere, which is documented as expected usage.
+    """
+    import subprocess
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).strip(os.pathsep)
+    env[_provenance_env_root()] = os.path.join("resolve", "site-packages")
+
+    script = (
+        "import dcc_mcp_blender\n"
+        "import dcc_mcp_blender.install as install\n"
+        "report = dcc_mcp_blender.IMPORT_PROVENANCE_REPORT\n"
+        "assert callable(install.main), 'the CLI entry point must stay importable'\n"
+        "assert report is not None and not report.ok, 'the conflict must still be reported'\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_register_runs_the_core_version_self_check(monkeypatch):
     """``register()`` must refuse to load on a core below the adapter contract."""
     extension_name = "bl_ext.user_default.dcc_mcp_blender_gate"
@@ -341,6 +476,64 @@ def test_register_runs_the_core_version_self_check(monkeypatch):
 
     with pytest.raises(RuntimeError, match="preloaded 0.19.59"):
         module.register()
+
+
+def test_canonical_package_ignores_a_pre_release_suffix_when_comparing(monkeypatch, tmp_path):
+    """A resolved ``0.2.9-rc1`` must not outrank the ``0.2.10`` copy on disk."""
+    extension_name = "bl_ext.user_default.dcc_mcp_blender_pre_release"
+    module = _load_addon_entry(monkeypatch, extension_name)
+    _write_distribution(tmp_path, version="0.2.9-rc1")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    current = tmp_path / "current-extension"
+    _write_distribution(current, version="0.2.10")
+    monkeypatch.setattr(module, "_own_package_dir", lambda: str(current / "dcc_mcp_blender"))
+
+    assert module._resolve_canonical_package() == extension_name
+
+
+def test_register_gates_the_copy_that_will_actually_serve(monkeypatch, tmp_path):
+    """When the extension keeps control, the declared root must cover *it*.
+
+    The public ``dcc_mcp_blender`` name is only bridged onto the extension
+    later, so gating that name here would inspect whatever distribution sits on
+    ``sys.path`` -- or skip the check entirely when there is none -- and let the
+    extension copy serve from outside a declared root unexamined.
+    """
+    from dcc_mcp_blender import _provenance
+
+    extension_name = "bl_ext.user_default.dcc_mcp_blender_keeps_control"
+    module = _load_addon_entry(monkeypatch, extension_name)
+    _write_distribution(tmp_path, version="0.2.4")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    newer = tmp_path / "newer-extension"
+    _write_distribution(newer, version="0.2.10")
+    monkeypatch.setattr(module, "_own_package_dir", lambda: str(newer / "dcc_mcp_blender"))
+    monkeypatch.setenv(_provenance.ENV_EXPECTED_ROOT, str(tmp_path / "resolve"))
+
+    assert module._resolve_canonical_package() == extension_name
+
+    seen = {}
+    original_addon_module = module._addon_module
+
+    def addon_module(name):
+        if name == "_core_compat":
+            return SimpleNamespace(require_compatible_core=lambda: None)
+        if name == "_provenance":
+
+            def require_expected_origin(**kwargs):
+                seen.update(kwargs)
+                raise _provenance.PackageProvenanceError("gated")
+
+            return SimpleNamespace(require_expected_origin=require_expected_origin)
+        return original_addon_module(name)
+
+    monkeypatch.setattr(module, "_addon_module", addon_module)
+
+    with pytest.raises(_provenance.PackageProvenanceError):
+        module.register()
+
+    assert seen["names"] == (extension_name, "dcc_mcp_core")
 
 
 def test_register_rejects_a_runtime_outside_the_declared_root(monkeypatch, tmp_path):

@@ -201,8 +201,8 @@ then silently describes the wrong runtime.
 The lifecycle defends against this in two places:
 
 1. The generated startup hook compares the origin of `dcc_mcp_blender` and
-   `dcc_mcp_core` against the site-packages directory it installed into, and
-   fails closed when the adapter came from somewhere else.
+   `dcc_mcp_core` against the expected package root, and fails closed when the
+   adapter came from somewhere else.
 2. The add-on entry runs the same check plus the `min_core_version` gate in
    `register()`, before any operator class is registered, and it hands the runtime
    over to a resolved distribution that is at least as new as the bundled copy.
@@ -213,6 +213,13 @@ Declare the authoritative package root for a session to make the check strict:
 # one root, or several separated by the platform path separator
 export DCC_MCP_BLENDER_PACKAGE_ROOT="/studio/resolve/site-packages"
 ```
+
+A declared root replaces the site-packages directory the startup hook was
+installed with, so a package manager that resolves the runtime per session (rez,
+for example) is never judged against a stale install-time directory. Write it as
+the directory that **holds** the package — the `sys.path` entry, such as
+`/studio/resolve/site-packages` — or as the package directory itself
+(`/studio/resolve/site-packages/dcc_mcp_blender`); both are accepted.
 
 Set `DCC_MCP_BLENDER_STRICT_ORIGIN=0` to downgrade a violation from an error to a
 warning on a machine you cannot clean yet. Never leave it set in a farm

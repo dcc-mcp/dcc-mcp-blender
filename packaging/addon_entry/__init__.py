@@ -61,9 +61,18 @@ def _own_package_dir() -> str:
 
 
 def _version_tuple(version: str) -> Tuple[int, int, int]:
+    """Parse a ``major.minor.patch`` prefix; only the leading digits count.
+
+    A pre-release or local suffix must never rank above the release it belongs
+    to, so ``1.0.0-rc1`` is ``(1, 0, 0)`` rather than ``(1, 0, 1)``.
+    """
     parts: List[int] = []
     for chunk in str(version).split(".")[:3]:
-        digits = "".join(character for character in chunk if character.isdigit())
+        digits = ""
+        for character in chunk:
+            if not character.isdigit():
+                break
+            digits += character
         parts.append(int(digits) if digits else 0)
     while len(parts) < 3:
         parts.append(0)
@@ -658,7 +667,17 @@ def register() -> None:
     # load, because the first one produces plausible but wrong evidence.
     _restore_isolated_pythonpath()
     _addon_module("_core_compat").require_compatible_core()
-    _addon_module("_provenance").require_expected_origin(echo=True)
+    # Gate the package that will actually serve, not the public name: when the
+    # extension keeps control (its copy is newer than the resolve) the runtime
+    # runs from ``bl_ext.<repository>.dcc_mcp_blender``, and the public name is
+    # only bridged onto it later, in ``_start_server_with_host()``. Checking
+    # ``dcc_mcp_blender`` here would inspect the distribution on ``sys.path`` --
+    # or skip the check entirely when there is none -- and let the extension
+    # copy serve from outside a declared root without ever being examined.
+    _addon_module("_provenance").require_expected_origin(
+        names=(_resolve_canonical_package(), "dcc_mcp_core"),
+        echo=True,
+    )
 
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
