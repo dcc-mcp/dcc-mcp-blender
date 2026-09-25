@@ -80,7 +80,7 @@ class FakeTransformObject:
         self.data = None
         self.parent = None
         self.matrix_parent_inverse = FakeMatrix.identity()
-        self.location = [0.0, 0.0, 0.0]
+        self.world_assignments = 0
         self._basis = basis or FakeMatrix.identity()
         self._cached_world = FakeMatrix.identity()
 
@@ -88,6 +88,19 @@ class FakeTransformObject:
     @property
     def matrix_basis(self) -> FakeMatrix:
         return self._basis.copy()
+
+    @property
+    def location(self) -> list:
+        """Local translation channel: the translation column of the basis."""
+        return [self._basis.rows[0][3], self._basis.rows[1][3], self._basis.rows[2][3]]
+
+    @location.setter
+    def location(self, value) -> None:
+        x, y, z = (float(component) for component in value)
+        # Mirrors Blender: assigning the channel rewrites the basis in place and
+        # leaves the rotation/scale part of the basis untouched.
+        for row, component in zip(range(3), (x, y, z)):
+            self._basis.rows[row][3] = component
 
     def _compute_world(self) -> FakeMatrix:
         if self.parent is None:
@@ -109,12 +122,28 @@ class FakeTransformObject:
     def matrix_world(self, value: FakeMatrix) -> None:
         # Mirrors BKE_object_apply_mat4(): solve matrix_basis for the parent
         # chain, keeping matrix_parent_inverse untouched.
+        self.world_assignments += 1
         local = value.copy()
         if self.parent is not None:
             local = self.parent.matrix_world.inverted() @ local
             local = self.matrix_parent_inverse.inverted() @ local
         self._basis = local
         self.location = [local.rows[0][3], local.rows[1][3], local.rows[2][3]]
+
+
+class SingularMatrix(FakeMatrix):
+    """Matrix that cannot be inverted — models a zero-scale ``matrix_basis``."""
+
+    def inverted(self) -> "FakeMatrix":
+        raise ValueError("matrix does not have an inverse")
+
+
+class ZeroScaleObject(FakeTransformObject):
+    """Object whose ``matrix_basis`` has no inverse, like a zero-scale object."""
+
+    @property
+    def matrix_basis(self) -> SingularMatrix:
+        return SingularMatrix(self._basis.rows)
 
 
 class FakeViewLayer:
@@ -146,6 +175,10 @@ def _call_parent(bpy, child_name: str, parent_name=None) -> dict:
     if parent_name is not None:
         kwargs["parent_name"] = parent_name
     return load_and_call("blender-objects/scripts/parent_object.py", bpy, **kwargs)
+
+
+def _call_move(bpy, object_name: str, location) -> dict:
+    return load_and_call("blender-objects/scripts/move_object.py", bpy, name=object_name, location=location)
 
 
 class TestParentObjectPreservesWorldTransform:
@@ -190,6 +223,10 @@ class TestParentObjectPreservesWorldTransform:
         assert result["context"]["world_transform_preserved"] is True
         child.flush()
         assert _world_translation(child) == expected_world
+        # Two depsgraph evaluations: one before capturing the world transform,
+        # one before verifying it. The parenting itself needs no evaluation
+        # because matrix_basis is recomputed from the local channels on read.
+        assert bpy.context.view_layer.update_calls == 2
         # matrix_parent_inverse compensates for the parent, while the local
         # transform channels stay exactly as the caller left them.
         assert [row[3] for row in child.matrix_parent_inverse][:3] == [-2.0, -3.0, -4.0]
@@ -202,11 +239,36 @@ class TestParentObjectPreservesWorldTransform:
         bpy = _bpy_for_transform_objects([pivot, camera])
 
         assert _call_parent(bpy, "HeroCam", "Pivot")["success"] is True
-        camera.matrix_world = FakeMatrix.translation(1.0, 2.0, 3.0)
+
+        moved = _call_move(bpy, "HeroCam", [1.0, 2.0, 3.0])
+        assert moved["success"] is True, moved
+        assert moved["context"]["location"] == [1.0, 2.0, 3.0]
 
         # Parent sits at the origin, so local and world translations match.
         camera.flush()
         assert _world_translation(camera) == [1.0, 2.0, 3.0]
+        assert camera.location == [1.0, 2.0, 3.0]
+
+    def test_move_after_parenting_keeps_targeting_world_coordinates(self):
+        """parent_object cancels the parent, so move_object targets world space.
+
+        matrix_parent_inverse is solved as ``P⁻¹ @ W @ B⁻¹``; for a child that
+        was unparented when it was parented that collapses to ``P⁻¹``, so the
+        local translation channel keeps reading back as the world position.
+        """
+        pivot = FakeTransformObject("Pivot", basis=FakeMatrix.translation(2.0, 3.0, 4.0))
+        camera = FakeTransformObject("HeroCam", "CAMERA")
+        bpy = _bpy_for_transform_objects([pivot, camera])
+        camera.flush()
+
+        assert _call_parent(bpy, "HeroCam", "Pivot")["success"] is True
+        assert _call_move(bpy, "HeroCam", [1.0, 2.0, 3.0])["success"] is True
+
+        camera.flush()
+        # World coordinates, not the parent-space offset (3.0, 5.0, 7.0) that a
+        # bake-into-basis (parentinv = I) implementation would produce.
+        assert _world_translation(camera) == [1.0, 2.0, 3.0]
+        assert camera.location == [1.0, 2.0, 3.0]
 
     def test_unparent_keeps_the_world_transform(self):
         pivot = FakeTransformObject("Pivot", basis=FakeMatrix.translation(5.0, 0.0, 0.0))
@@ -249,6 +311,48 @@ class TestParentObjectPreservesWorldTransform:
         assert result["context"]["world_transform_preserved"] is False
         assert result["context"]["world_transform_delta"] > 1e-6
         assert result["context"]["child_name"] == "HeroCam"
+
+    def test_reparenting_directly_to_another_parent_keeps_the_world_transform(self):
+        """Switching A -> B without unparenting first must not drop the child."""
+        first_parent = FakeTransformObject("RigA", basis=FakeMatrix.translation(2.0, 3.0, 4.0))
+        second_parent = FakeTransformObject("RigB", basis=FakeMatrix.translation(-1.0, 0.5, 10.0))
+        child = FakeTransformObject("HeroCam", "CAMERA", basis=FakeMatrix.translation(6.4, 0.0, 2.35))
+        bpy = _bpy_for_transform_objects([first_parent, second_parent, child])
+        first_parent.flush()
+        second_parent.flush()
+        child.flush()
+        expected_world = [6.4, 0.0, 2.35]
+
+        assert _call_parent(bpy, "HeroCam", "RigA")["success"] is True
+        result = _call_parent(bpy, "HeroCam", "RigB")
+
+        assert result["success"] is True, result
+        assert result["context"]["world_transform_preserved"] is True
+        assert result["context"]["parent_name"] == "RigB"
+        assert child.parent is second_parent
+        child.flush()
+        assert _world_translation(child) == expected_world
+        # The inverse of the new parent replaced the inverse of the old one.
+        assert [row[3] for row in child.matrix_parent_inverse][:3] == [1.0, -0.5, -10.0]
+
+    def test_zero_scale_basis_falls_back_to_assigning_the_world_matrix(self):
+        """An un-invertible basis takes the fallback, which still preserves world."""
+        parent = FakeTransformObject("Pivot", basis=FakeMatrix.translation(2.0, 3.0, 4.0))
+        child = ZeroScaleObject("HeroCam", "CAMERA", basis=FakeMatrix.translation(6.4, 0.0, 2.35))
+        bpy = _bpy_for_transform_objects([parent, child])
+        parent.flush()
+        child.flush()
+        expected_world = [6.4, 0.0, 2.35]
+
+        result = _call_parent(bpy, "HeroCam", "Pivot")
+
+        assert result["success"] is True, result
+        assert result["context"]["world_transform_preserved"] is True
+        # The un-invertible basis sent _keep_world_transform down its fallback,
+        # which bakes the parent transform into the local channels instead.
+        assert child.world_assignments == 1
+        child.flush()
+        assert _world_translation(child) == expected_world
 
     def test_missing_objects_and_self_parenting_still_report_errors(self):
         pivot = FakeTransformObject("Pivot")

@@ -296,3 +296,63 @@ class TestMeshSceneOpsE2E:
         assert bpy.data.objects["RigCam"].parent is None
         for actual, expected in zip(bpy.data.objects["RigCam"].matrix_world.translation, (6.4, 0.0, 2.35)):
             assert abs(actual - expected) <= 1e-6
+
+    def test_move_object_after_parenting_moves_to_the_world_position(self):
+        """Pin the parenting semantics: move_object targets world coordinates.
+
+        parent_object cancels the parent transform into matrix_parent_inverse
+        (parentinv = P^-1 @ W @ B^-1), which collapses to P^-1 for a child that
+        was unparented when it was parented. The local translation channel then
+        keeps holding world coordinates, so move_object moves the child to that
+        world position instead of to an offset under its parent.
+        """
+        create_mod = load_skill("blender-objects", "create_object")
+        assert create_mod.create_object(object_type="empty", name="Rig", location=[2.0, 3.0, 4.0])["success"] is True
+
+        camera_mod = load_skill("blender-camera", "create_camera")
+        assert camera_mod.create_camera(name="WorldCam")["success"] is True
+
+        move_mod = load_skill("blender-objects", "move_object")
+        assert move_mod.move_object(name="WorldCam", location=[6.4, 0.0, 2.35])["success"] is True
+
+        parent_mod = load_skill("blender-objects", "parent_object")
+        parented = parent_mod.parent_object(child_name="WorldCam", parent_name="Rig")
+        assert parented["success"] is True, parented
+
+        moved = move_mod.move_object(name="WorldCam", location=[1.0, -2.0, 3.5])
+        assert moved["success"] is True, moved
+
+        # matrix_world is the cached evaluated matrix, so refresh it first.
+        bpy.context.view_layer.update()
+        camera = bpy.data.objects["WorldCam"]
+        for actual, expected in zip(camera.matrix_world.translation, (1.0, -2.0, 3.5)):
+            assert abs(actual - expected) <= 1e-6
+        for actual, expected in zip(camera.location, (1.0, -2.0, 3.5)):
+            assert abs(actual - expected) <= 1e-6
+        # A parent-space reading would land the child at (3.0, 1.0, 7.5).
+        assert camera.parent is not None and camera.parent.name == "Rig"
+
+    def test_reparenting_directly_to_another_parent_keeps_the_world_position(self):
+        """Re-parenting A -> B without unparenting first must not move the child."""
+        create_mod = load_skill("blender-objects", "create_object")
+        assert create_mod.create_object(object_type="empty", name="RigA", location=[2.0, 3.0, 4.0])["success"] is True
+        assert create_mod.create_object(object_type="empty", name="RigB", location=[-1.0, 0.5, 10.0])["success"] is True
+
+        camera_mod = load_skill("blender-camera", "create_camera")
+        assert camera_mod.create_camera(name="SwapCam")["success"] is True
+
+        move_mod = load_skill("blender-objects", "move_object")
+        assert move_mod.move_object(name="SwapCam", location=[6.4, 0.0, 2.35])["success"] is True
+
+        parent_mod = load_skill("blender-objects", "parent_object")
+        assert parent_mod.parent_object(child_name="SwapCam", parent_name="RigA")["success"] is True
+
+        reparented = parent_mod.parent_object(child_name="SwapCam", parent_name="RigB")
+        assert reparented["success"] is True, reparented
+        assert reparented["context"]["world_transform_preserved"] is True
+
+        bpy.context.view_layer.update()
+        camera = bpy.data.objects["SwapCam"]
+        assert camera.parent is not None and camera.parent.name == "RigB"
+        for actual, expected in zip(camera.matrix_world.translation, (6.4, 0.0, 2.35)):
+            assert abs(actual - expected) <= 1e-6

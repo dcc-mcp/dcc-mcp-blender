@@ -335,7 +335,11 @@ def parent_object(child_name: str, parent_name: str | None = None) -> dict:
         child.parent = parent
         delta = None
         if world_before is not None:
-            _flush_depsgraph(bpy)
+            # No flush between the re-parenting and the re-anchor: the parent's
+            # evaluated matrix was already refreshed above and matrix_basis is
+            # recomputed from the local channels on read, so the only matrix
+            # that must be re-evaluated is the child's own matrix_world, and
+            # that happens with the flush below, before it is verified.
             _keep_world_transform(child, parent, world_before)
             _flush_depsgraph(bpy)
             delta = _matrix_delta(child.matrix_world, world_before)

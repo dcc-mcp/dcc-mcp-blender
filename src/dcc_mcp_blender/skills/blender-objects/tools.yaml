@@ -80,7 +80,13 @@ tools:
     destructive: false
     idempotent: false
   - name: move_object
-    description: "Move an object to a specified location"
+    description: >-
+      Move an object to a specified [x, y, z] location. The coordinates are written to the
+      object's local translation channel (obj.location), which for an unparented object is its
+      world position. parent_object cancels the parent transform into matrix_parent_inverse
+      (parentinv = P^-1 @ W @ B^-1), so a child that was unparented when it was parented keeps
+      world == matrix_basis: move_object([x, y, z]) on such a child moves it to the world
+      position [x, y, z], not to [x, y, z] relative to its parent.
     source_file: scripts/move_object.py
     execution: sync
     affinity: main
