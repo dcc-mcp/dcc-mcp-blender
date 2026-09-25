@@ -61,6 +61,36 @@ rejected. Each PNG is decoded by Blender, dimension checked, and hashed;
 status reads verify the entire file hash. Failed images retain individual
 errors and do not make the batch successful.
 
+## Render device for background jobs
+
+`start_render_job` has no device of its own: `device` defaults to `null`, so no
+`--cycles-device` flag reaches the worker and the job renders with the Cycles
+device saved in the `.blend` file (`scene.cycles.device`), which is CPU for a
+new scene. Leave it unset unless the caller explicitly asks for a specific
+device — it is the only portable choice, because a forced value overrides the
+artist's scene.
+
+Pass one of `OPTIX`, `CUDA`, `HIP`, `ONEAPI`, `METAL`, `CPU` only to override.
+`OPTIX` needs an NVIDIA GPU and is supported on Windows and Linux only, so it
+always fails on macOS and on any host without an NVIDIA GPU.
+
+When a job fails, `get_render_job` attaches the worker's log tails as
+`stderr_tail` and `stdout_tail` (Blender puts the device error on stdout on
+some platforms and on stderr on others). The message then reports, in order:
+`failure_hint` when the requested device is the cause; the job's own `error`
+when it recorded one, as a recovered multiview receipt does; otherwise a
+pointer at the two tails.
+
+The device advice is kind-specific. For an animation job it says to retry
+`start_render_job` with `device="CPU"`. A multiview job gets different advice,
+because `start_multiview_render_job` takes no `device` argument and resubmitting
+through `start_render_job` would drop the camera and pass list — change
+`scene.cycles.device` and resubmit the multiview job instead.
+
+A recovered job reads only log files that sit directly inside `job_directory`
+and are not symlinks: the directory is caller-supplied, and a receipt there
+proves nothing about the files beside it.
+
 ## Output configuration
 
 Typed tools for the settings that decide what ends up on disk. Reach for them

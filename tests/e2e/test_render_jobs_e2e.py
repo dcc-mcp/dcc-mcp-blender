@@ -34,8 +34,11 @@ TERMINAL = {"completed", "failed", "cancelled"}
 
 # CI runners have no GPU, and Blender consumes the trailing
 # ``--cycles-device`` argument a job appends: asking for OPTIX there fails with
-# "Found no Cycles device of the specified type". CPU keeps the job portable
-# across the whole matrix while still exercising the device pass-through.
+# "Found no Cycles device of the specified type". Pinning CPU below keeps the
+# device pass-through exercised and the cases portable across the whole matrix.
+# ``test_start_render_job_uses_scene_device_when_unset`` deliberately omits
+# ``device`` instead: that is the default path, and it is what used to force
+# OPTIX on every lane, including the macOS lanes where OptiX is unsupported.
 DEVICE = "CPU"
 
 
@@ -110,6 +113,38 @@ def test_start_render_job_writes_scene_format(tmp_path, scene_format):
             path = output_dir / name
             assert path.stat().st_size > 0, path
             assert jobs._is_valid_output(path, output_format=scene_format), (path, scene_format)
+    finally:
+        scene.render.image_settings.file_format = previous_format
+        jobs._JOBS.pop(job_id, None)
+
+
+def test_start_render_job_uses_scene_device_when_unset(tmp_path):
+    """Omitting ``device`` renders with the Cycles device saved in the scene.
+
+    Regression guard for a default of ``device="OPTIX"``: Blender answers
+    "Found no Cycles device of the specified type" there, so every macOS lane
+    (OptiX is Windows/Linux only) and every GPU-less host failed by default.
+    With no ``--cycles-device`` appended the worker honours
+    ``scene.cycles.device``, which this scene sets to CPU.
+    """
+    scene = _prepare_scene(tmp_path)
+    previous_format = scene.render.image_settings.file_format
+    output_dir = tmp_path / "scene_device"
+    scene.render.image_settings.file_format = "PNG"
+    scene.cycles.device = "CPU"
+    job_id = None
+    try:
+        result = start_render_job(str(output_dir / "beauty_####"), 1, 2)
+        assert result["success"], result
+        job_id = result["context"]["job_id"]
+
+        context = _await_completion(job_id)
+        assert context["status"] == "completed", (context, _worker_logs(context))
+        assert context["expected_frame_count"] == 2, context
+        assert context["written_frame_count"] == 2, context
+
+        written = _frame_names(output_dir)
+        assert written == ["beauty_0001.png", "beauty_0002.png"], written
     finally:
         scene.render.image_settings.file_format = previous_format
         jobs._JOBS.pop(job_id, None)

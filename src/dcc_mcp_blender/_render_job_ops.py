@@ -28,6 +28,16 @@ _OUTPUT_FORMATS = {
 # multi-layer container, and anything else has to fail loudly rather than fall
 # back to EXR.
 _SCENE_OUTPUT_FORMATS = ("OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG")
+# Cycles device names a worker accepts through ``-- --cycles-device``. Kept as
+# the single source of truth for the hint a device failure returns so it cannot
+# drift away from the enum published by the skill contract.
+_DEVICES = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL", "CPU")
+# Blender's error when ``--cycles-device`` names a device the host cannot
+# provide, matched case-insensitively against a worker's log tail: OPTIX on
+# macOS (Windows/Linux only) or on any host without an NVIDIA GPU.
+_CYCLES_DEVICE_ERROR = "found no cycles device of the specified type"
+# Bytes read from the end of each worker log for failure attribution.
+_LOG_TAIL_BYTES = 4096
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
@@ -150,16 +160,120 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
         return False
 
 
+def _log_tail(source: Dict[str, Any], key: str, *, allowed_directory: Any = None) -> str:
+    """Return the tail of one worker log file, or "" when it cannot be read.
+
+    A failed job used to report only ``status: failed``, leaving the caller to
+    open the log paths itself. Carrying the tails here is what lets an agent
+    tell a device failure from a bad output path without a second round trip.
+
+    Seeks to the end instead of reading the whole file: render logs can be
+    large, and a failed job re-reads them on every poll.
+
+    Refuses symlinks and, when ``allowed_directory`` is given, anything outside
+    it. On the multiview recovery path the caller supplies ``job_directory``,
+    and a receipt there only proves the directory holds a matching
+    ``result.json`` -- not that it owns the log files next to it. Without these
+    two checks a crafted directory could point ``stdout.log`` at any file on the
+    host and have its tail handed to the agent as tool output.
+    """
+    try:
+        path = Path(source[key])
+        if path.is_symlink():
+            return ""
+        if allowed_directory is not None and path.parent.resolve() != Path(allowed_directory).resolve():
+            return ""
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(stream.tell() - _LOG_TAIL_BYTES, 0))
+            return stream.read().decode("utf-8", "replace")
+    except (KeyError, OSError, TypeError, ValueError):
+        return ""
+
+
+def _failed_job_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Add worker log tails to a failed job's context, plus a device hint.
+
+    Works for every job kind because both the animation and the multiview
+    context carry ``stdout_path`` / ``stderr_path``. Both logs are read because
+    Blender reports the device error on stdout on some platforms and on stderr
+    on others.
+    """
+    enriched = dict(context)
+    # ``job_directory`` is caller-supplied on the recovery path, so the log
+    # reads are confined to it rather than trusted.
+    allowed_directory = context.get("job_directory")
+    stderr_tail = _log_tail(context, "stderr_path", allowed_directory=allowed_directory)
+    stdout_tail = _log_tail(context, "stdout_path", allowed_directory=allowed_directory)
+    enriched["stderr_tail"] = stderr_tail
+    enriched["stdout_tail"] = stdout_tail
+    hint = _device_failure_hint(stderr_tail, multiview=context.get("kind") == "multiview") or _device_failure_hint(
+        stdout_tail, multiview=context.get("kind") == "multiview"
+    )
+    if hint:
+        enriched["failure_hint"] = hint
+    return enriched
+
+
+def _failure_message(context: Dict[str, Any]) -> str:
+    """Summarise a failed job using only fields the context actually has.
+
+    The device hint wins because it is actionable; a job that already recorded
+    its own ``error`` (multiview receipts do) is quoted; otherwise the caller
+    is pointed at the tails, which are always present on this path.
+    """
+    if context.get("failure_hint"):
+        return context["failure_hint"]
+    if context.get("error"):
+        return "Render job failed: {}".format(context["error"])
+    return "Render job failed; see stderr_tail and stdout_tail for the worker's last output."
+
+
+def _device_failure_hint(log_tail: str, *, multiview: bool = False) -> str:
+    """Attribute an unresolvable Cycles device to the job's device choice.
+
+    Returns "" unless the tail carries Blender's "Found no Cycles device of the
+    specified type". In that case the failure is caused by the device the job
+    was asked to use, so the hint names the way out and the caller can retry
+    instead of reporting an anonymous failure.
+
+    ``multiview`` switches the advice because ``start_multiview_render_job``
+    takes no ``device`` argument and would drop the camera and pass list if the
+    caller re-submitted through ``start_render_job``.
+    """
+    if _CYCLES_DEVICE_ERROR not in log_tail.lower():
+        return ""
+    devices = ", ".join(_DEVICES)
+    if multiview:
+        return (
+            "Blender found no Cycles device of the type this multiview job requested. "
+            "start_multiview_render_job has no device argument, so change scene.cycles.device to CPU "
+            "(or to a device this host provides: {}) and resubmit the multiview job. "
+            "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(devices)
+        )
+    return (
+        "Blender found no Cycles device of the type this job requested. Retry start_render_job with "
+        'device="CPU", or with a device this host actually provides ({}). '
+        "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(devices)
+    )
+
+
 def _build_blender_command(
     *,
     blender_path: str,
     scene_path: str,
     output_pattern: str,
     frames: List[int],
-    device: str,
+    device: str = None,
     factory_startup: bool,
     output_format: str = "OPEN_EXR_MULTILAYER",
 ) -> List[str]:
+    """Build the ``blender --background`` command for an owned render job.
+
+    ``device=None`` omits ``-- --cycles-device`` entirely so the worker falls
+    back to the Cycles device stored in the .blend file. Passing a device is an
+    explicit override and stays the only way to override an artist's scene.
+    """
     format_name = str(output_format).strip().upper()
     _output_format_spec(format_name)
     command = [blender_path, "--background"]
@@ -189,7 +303,7 @@ def start_render_job(
     end_frame: int,
     step: int = 1,
     resume_missing: bool = True,
-    device: str = "OPTIX",
+    device: str = None,
     save_before_render: bool = True,
     factory_startup: bool = False,
     output_format: str = None,
@@ -199,6 +313,13 @@ def start_render_job(
     ``output_format`` defaults to the live scene's
     ``render.image_settings.file_format`` so ``set_render_settings`` controls
     the frames a job writes instead of every job silently emitting EXR.
+
+    ``device`` defaults to ``None``: no ``--cycles-device`` is appended and the
+    worker uses the Cycles device saved in the .blend (CPU for a new scene).
+    Forcing a device here overrides the artist's scene, and ``OPTIX`` in
+    particular fails with "Found no Cycles device of the specified type" on
+    macOS and on every host without an NVIDIA GPU. Pass one of ``OPTIX``,
+    ``CUDA``, ``HIP``, ``ONEAPI``, ``METAL``, ``CPU`` only to override.
     """
     try:
         import bpy  # Lazy import: requires Blender's embedded Python.
@@ -278,9 +399,22 @@ def get_render_job(job_id: str, job_directory: str = None) -> dict:
             return skill_error("Render job not found", "Unknown job_id: {}".format(job_id))
         job = dict(job_id=job_id, kind="multiview", job_directory=job_directory)
     try:
-        return skill_success("Render job status", **_job_context(job))
+        context = _job_context(job)
     except (OSError, ValueError, KeyError) as exc:
         return skill_error("Render receipt unavailable", str(exc))
+    if context["status"] != "failed":
+        return skill_success("Render job status", **context)
+    # Enriched here rather than in ``_job_context`` so every job kind gets the
+    # tails: ``multiview_context`` returns early and never reaches the
+    # animation branch below. A failed job is a successful status read, but the
+    # message has to say why instead of reporting an anonymous failure.
+    context = _failed_job_context(context)
+    message = _failure_message(context)
+    return skill_success(
+        message,
+        **context,
+        prompt=context.get("failure_hint") or "Read stderr_tail and stdout_tail, then resubmit the job.",
+    )
 
 
 def cancel_render_job(job_id: str, job_directory: str = None) -> dict:
@@ -349,7 +483,7 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     written_set = set(written)
     missing = [frame for frame in job["frames"] if frame not in written_set]
     expected_count = len(job["frames"])
-    return {
+    context = {
         "job_id": job["job_id"],
         "status": job["status"],
         "pid": None if process is None else process.pid,
@@ -362,6 +496,7 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
         "stdout_path": job["stdout_path"],
         "stderr_path": job["stderr_path"],
     }
+    return context
 
 
 def _terminate_process_tree(process: Any) -> None:
