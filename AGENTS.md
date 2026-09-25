@@ -40,9 +40,9 @@ a running server.
 
 **Current version:** 0.2.3 <!-- x-release-please-version -->
 **Core dependency:** `dcc-mcp-core>=0.20.0,<0.21.0`
-**Python:** Use Blender's bundled interpreter; 5.2 uses 3.13, 4.5 uses 3.11.
-**Blender CI targets:** 5.2.1 LTS and 4.5.13 LTS on Windows/Linux/macOS;
-legacy matrix and acceptance boundaries are documented in README.md.
+**Python:** Use Blender's bundled interpreter; Blender 4.5 uses 3.11, 5.2 uses 3.13.
+**Blender CI targets:** 4.5.13 LTS and 5.2.1 on Windows/Linux/macOS; 4.5 is the
+minimum supported host and acceptance boundaries are documented in README.md.
 **Coverage:** See [docs/capability-coverage.md](docs/capability-coverage.md).
 
 ---

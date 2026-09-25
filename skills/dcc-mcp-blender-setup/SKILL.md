@@ -66,7 +66,7 @@ returned `next_steps`; do not report the adapter as directly usable yet.
 
 The lifecycle command:
 
-1. Probes Blender 3.6+ and the exact target Python before writing.
+1. Probes Blender 4.5+ and the exact target Python before writing.
 2. Resolves the per-user Blender scripts profile without changing the host
    installation directory.
 3. Stages and atomically replaces the owned startup script with rollback.
@@ -112,7 +112,7 @@ python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --source py
 If discovery fails, ask the user for the full Blender Python path and re-run:
 
 ```bash
-python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --blender-python "C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\bin\python.exe"
+python skills/dcc-mcp-blender-setup/scripts/setup_dcc_mcp_blender.py --blender-python "C:\Program Files\Blender Foundation\Blender 4.5\4.5\python\bin\python.exe"
 ```
 
 If Blender's bundled `site-packages` is read-only, select the user-site fallback:
@@ -130,7 +130,7 @@ blender --python-use-system-env
 Do not omit `--python-use-system-env`: Blender otherwise ignores packages
 installed by pip with `--user`.
 
-> Blender 4.2+ Extension ZIP installs (Option 1 in `README.md`) are an
+> Blender 4.5+ Extension ZIP installs (Option 1 in `README.md`) are an
 > alternative path. They bundle `dcc-mcp-core` in an isolated environment and
 > must not be combined with this pip/startup-script setup.
 

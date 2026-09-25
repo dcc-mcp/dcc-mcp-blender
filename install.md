@@ -7,8 +7,8 @@ selected Blender interpreter. It never controls Blender's UI.
 
 ## Requirements
 
-- **Blender:** 3.6 or newer for the Python/startup-hook path. The Blender
-  Extensions ZIP requires Blender 4.2 or newer.
+- **Blender:** 4.5 or newer. Both the Python/startup-hook path and the
+  Blender Extensions ZIP require Blender 4.5 or newer.
 - **Python:** Blender's selected bundled interpreter, Python 3.7 or newer.
 - **dcc-mcp-core:** `>=0.20.0,<0.21.0` in that exact interpreter.
 - **Platforms:** Windows, macOS, and Linux.
@@ -35,7 +35,7 @@ blender --python-use-system-env
 
 | Adapter | dcc-mcp-core | Blender | Python | Platforms |
 |---|---|---|---|---|
-| Current `0.2.x` | `>=0.20.0,<0.21.0` | `3.6+` startup hook; `4.2+` Extension ZIP | `3.7+` | Windows, macOS, Linux |
+| Current `0.2.x` | `>=0.20.0,<0.21.0` | `4.5+` startup hook and Extension ZIP | `3.7+` | Windows, macOS, Linux |
 
 The adapter declares no upper Python bound: it runs on Python 3.13 (Blender
 5.x) as long as its dependencies are visible to the interpreter. Newer
@@ -122,7 +122,7 @@ backup, atomically commits the new file and receipt, and performs rollback if a
 commit fails. Unknown unreceipted startup files are preserved and fail closed.
 Re-running the same desired version converges without duplicating hooks.
 
-The release Extension ZIP is an alternative distribution for Blender 4.2+.
+The release Extension ZIP is an alternative distribution for Blender 4.5+.
 Because Blender physically owns its Extension enablement UI, install it with
 `Edit > Preferences > Extensions > Install from Disk`, then enable **DCC MCP
 Blender**. Do not combine the ZIP and startup-hook paths, and do not automate
@@ -250,7 +250,7 @@ a Blender user extension or add-ons directory, remove that copy (Blender
 |---|---|---|
 | Exit `10`, `dcc_path_required` | Blender was not selected safely | Pass the exact executable or `.app` with `--dcc-path`. |
 | Exit `10`, `python_required` | Blender's target interpreter was not selected | Pass its exact interpreter with `--python` or `DCC_MCP_INSTALL_PYTHON`. |
-| Exit `10`, `unsupported_blender_version` | Host is older than Blender 3.6 | Install a supported Blender version. |
+| Exit `10`, `unsupported_blender_version` | Host is older than Blender 4.5 | Install a supported Blender version. |
 | Exit `10`, `python_mismatch` | Interpreter differs from the receipt | Use the exact receipted Blender Python or uninstall from the original target first. |
 | Exit `10`, `unreceipted_startup_script` | Ownership cannot be proven | Inspect the reported file; do not delete or overwrite user content. |
 | Exit `20` | Package acquisition/integrity failed | Reinstall only from the official pinned catalog or PyPI package. |

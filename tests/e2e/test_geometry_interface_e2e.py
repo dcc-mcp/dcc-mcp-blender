@@ -33,11 +33,6 @@ def test_native_geometry_interface_crud_and_group_ports(socket_type, default_val
     update = load_skill("blender-geometry-nodes", "update_geometry_node_socket").main
     remove = load_skill("blender-geometry-nodes", "remove_geometry_node_socket").main
     before = inspect(group_name=group.name)
-    if bpy.app.version < (4, 0, 0):
-        assert not before["success"], before
-        assert before["context"]["error_code"] == "interface_api_unavailable"
-        assert before["context"]["mutation_applied"] is False
-        return
     assert before["success"], before
     created = create(
         group_name=group.name,

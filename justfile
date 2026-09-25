@@ -212,8 +212,8 @@ lint-all: lint lint-skills
 # Blender Local Development
 # ============================================================================
 
-# Blender version for local dev (override: just blender-version=4.2 blender-link)
-blender-version := env("BLENDER_VERSION", "4.2")
+# Blender version for local dev (override: just blender-version=4.5 blender-link)
+blender-version := env("BLENDER_VERSION", "4.5")
 
 # Detect Blender scripts directory (platform-aware)
 _blender-scripts-dir := if os() == "windows" {
@@ -371,7 +371,7 @@ blender-dev: blender-link verify-deps
 #
 #   just blender-dev-build-link-core-win
 #   just blender-dev-debug-win
-#   just blender-version=4.3 blender-dev-debug-win
+#   just blender-version=4.5 blender-dev-debug-win
 @blender-dev-build-link-core-win:
     powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-dev-build-link-core-win.ps1 -BlenderVersion {{ blender-version }}
 

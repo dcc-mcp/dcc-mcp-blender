@@ -511,7 +511,7 @@ def _bpy_with_lights(*objects, collections=()):
 
 
 def _linking_object(name="Spot", light_type="SPOT"):
-    """A light object with Blender 4.1+ light linking on the object itself."""
+    """A light object with light linking on the object itself."""
     obj = _light_object(name=name, light_type=light_type)
     obj.light_linking = SimpleNamespace(receiver_collection=None, blocker_collection=None)
     return obj
@@ -552,14 +552,14 @@ def test_set_light_linking_reports_a_missing_collection():
 
 
 def test_set_light_linking_reports_a_light_without_support():
-    """Pre-4.1 objects have no light_linking; that must be an explicit error."""
+    """Objects with no light_linking attribute must be an explicit error."""
     obj = _light_object()  # no light_linking attribute
     assert not hasattr(obj, "light_linking")
 
     result = _call(LIGHTING, "set_light_linking", _bpy_with_lights(obj), light_name="Spot", receiver_collection="Chars")
     assert result["success"] is False
     assert "unavailable" in result["message"].lower()
-    assert "4.1" in result["error"]
+    assert "light_linking" in result["error"]
 
 
 def test_set_light_linking_requires_a_change():

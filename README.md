@@ -116,7 +116,7 @@ Download the platform-specific ZIP from the GitHub Release and install it with
 [![GitHub Release](https://img.shields.io/github/v/release/dcc-mcp/dcc-mcp-blender.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/releases)
 [![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-blender/blob/main/pyproject.toml)
 [![dcc-mcp-core](https://img.shields.io/badge/dcc--mcp--core-%3E%3D0.20.0-blue.svg)](https://github.com/dcc-mcp/dcc-mcp-core)
-[![Blender CI targets](https://img.shields.io/badge/Blender%20CI-5.2%20LTS%20%7C%204.5%20LTS-orange.svg)](https://www.blender.org/download/)
+[![Blender CI targets](https://img.shields.io/badge/Blender%20CI-4.5%20LTS%20%7C%205.2-orange.svg)](https://www.blender.org/download/)
 [![MCP](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -197,7 +197,7 @@ paths.
 
 ![Blender MCP rain sports car LookDev](docs/showcase/rain-sports-car-lookdev.gif)
 
-This live Blender 4.2 test moves from the imported mesh wireframe to a Cycles
+This live Blender 4.5 test moves from the imported mesh wireframe to a Cycles
 PBR beauty render, then rotates an HDRI and three-point light rig through 360°
 while a heavy particle rain simulation interacts with the sports car and wet
 ground. It exercises asset import, clearcoat and transmission materials,
@@ -266,26 +266,20 @@ See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SK
 
 ### Blender compatibility
 
-The current CI targets are **Blender 5.2.1 LTS** (bundled Python 3.13) and
-**Blender 4.5.13 LTS** (Python 3.11), using SHA256-verified official archives
-on Windows x64, Linux x64, and macOS arm64. See the
+**Blender 4.5 is the minimum supported host version.** The CI targets are
+**Blender 4.5.13 LTS** (bundled Python 3.11) and **Blender 5.2.1** (Python 3.13), using
+SHA256-verified official archives on Windows x64, Linux x64, and macOS arm64.
+Hosts older than 4.5 are rejected at install time and are not tested. See the
 [official release list](https://www.blender.org/releases/) and
 [exact-version E2E matrix](.github/workflows/e2e.yml).
 
-Legacy coverage remains for Blender 3.6.5, 4.2.0, 4.3.2, and 4.4.3 on Linux,
-plus 4.2.0/4.4.3 on Windows and macOS. These are compatibility targets, not
-a claim that Blender upstream still maintains those releases. The extension
-ZIP requires Blender 4.2+; older versions use the Python installation path.
+Blender 5.x Geometry Nodes inputs use RNA properties; animation readback,
+deletion, and interpolation use the object's assigned Action Slot. Windows
+runtime DLLs must match Blender's Python minor version.
 
-Blender 5.2 Geometry Nodes inputs use RNA properties; animation readback,
-deletion, and interpolation use the object's assigned Action Slot. Older
-modifier properties and legacy Actions retain their compatibility paths.
-Windows runtime DLLs must match Blender's Python minor version.
-
-CI runs real background Blender tests and separate-process MCP smoke tests.
-The legacy Windows 4.2.0/4.4.3 MCP smoke exclusions remain explicit; they do
-not apply to the new LTS entries. Background tests do not establish GUI,
-GPU, shared-gateway CLI, or whole-software workflow acceptance. Consult the
+CI runs real background Blender tests and separate-process MCP smoke tests on
+every matrix entry. Background tests do not establish GUI, GPU,
+shared-gateway CLI, or whole-software workflow acceptance. Consult the
 [capability coverage and delivery phases](docs/capability-coverage.md) for
 known gaps; raw Python execution is not counted as typed workflow coverage.
 
@@ -304,7 +298,7 @@ options below are for manual installation.
 
 ### Option 1 — Install as Blender Extension (ZIP, recommended)
 
-> **Important:** The release ZIP uses the **Blender 4.2+ Extension** format with
+> **Important:** The release ZIP uses the **Blender Extension** format with
 > `blender_manifest.toml` at the archive root and a flat package layout.
 > **Legacy add-on install** (`Edit → Preferences → Add-ons → Install`) will
 > fail with *"ZIP packaged incorrectly; `__init__.py` should be in a
@@ -314,14 +308,14 @@ options below are for manual installation.
 1. Download the latest platform ZIP from the [Releases](https://github.com/dcc-mcp/dcc-mcp-blender/releases) page:
    `dcc_mcp_blender_addon_win64_vX.Y.Z.zip`, `dcc_mcp_blender_addon_linux_vX.Y.Z.zip`, or
    `dcc_mcp_blender_addon_macos_vX.Y.Z.zip`
-2. In Blender 4.2+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP.
+2. In Blender 4.5+: **Edit → Preferences → Extensions → Install from Disk…** → select the ZIP.
    (Do **NOT** use **Edit → Preferences → Add-ons → Install** — that legacy path is unsupported.)
 3. Enable **DCC MCP Blender**
 4. The MCP server starts on an OS-assigned instance port and registers with the local gateway.
 
-Release ZIPs are Blender 4.2+ Extension packages. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
+Release ZIPs are Blender Extension packages for Blender 4.5+. They include `blender_manifest.toml` and the matching `dcc-mcp-core` wheel under `wheels/`, so Blender installs the Python dependency into the extension's isolated environment.
 
-The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender 4.2+ then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. Build locally with `just blender-addon-zip` for the host platform, or `just blender-addon-zip win64 dist_addon` (replace `win64` with `linux` or `macos`) for an explicit target. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
+The extension ZIP is assembled by `packaging/assemble_zip.py`. It resolves the latest compatible `dcc-mcp-core` wheel, places it under `wheels/`, and injects that wheel into `blender_manifest.toml`; Blender then installs it through the extension wheel mechanism instead of relying on global `pip` packages or `sys.path` edits. Build locally with `just blender-addon-zip` for the host platform, or `just blender-addon-zip win64 dist_addon` (replace `win64` with `linux` or `macos`) for an explicit target. See [`packaging/release_smoke_checklist.md`](packaging/release_smoke_checklist.md) for the manual smoke test procedure.
 
 Native UI Control requires standalone `dcc-cua` 0.4.0 or newer on `PATH` (or
 `DCC_MCP_CUA_BINARY`). Core owns the `ui_control__*` contract; the Blender ZIP

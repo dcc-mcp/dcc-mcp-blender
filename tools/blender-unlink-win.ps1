@@ -8,7 +8,7 @@ param(
 
 # Default Blender version
 if ([string]::IsNullOrEmpty($BlenderVersion)) {
-    $BlenderVersion = "4.2"
+    $BlenderVersion = "4.5"
 }
 
 # Detect Blender addons directory

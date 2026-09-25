@@ -2,7 +2,7 @@
 
 Shipped at the root of the add-on folder next to ``blender_manifest.toml``.
 Keeps ``bl_info`` for legacy ``scripts/addons`` installs and supplies the
-extension manifest for Blender 4.2+ extension workflows.
+extension manifest for Blender extension workflows.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ bl_info = {
         2,  # x-release-please-minor
         10,  # x-release-please-patch
     ),
-    "blender": (4, 2, 0),
+    "blender": (4, 5, 0),
     "location": "Top Bar > DCC MCP",
     "description": "Embeds an MCP HTTP server inside Blender for AI-driven 3D workflows",
     "category": "System",

@@ -11,7 +11,7 @@
 **License:** MIT
 **Repo:** https://github.com/dcc-mcp/dcc-mcp-blender
 **Python:** >=3.10 (bundled with Blender)
-**Blender:** 3.6 LTS, 4.2 LTS, 4.3, 4.4
+**Blender:** 4.5+ (CI covers 4.5.13 and 5.2.1)
 **Core dep:** `dcc-mcp-core>=0.20.0,<0.21.0`
 
 ---

@@ -58,8 +58,8 @@ class BlenderContextSnapshotProvider:
                 "selection":    ["Cube", ...],
                 "frame":        1,
                 "frame_range":  [1, 250],
-                "version":      "4.0.0",
-                "display_name": "Blender 4.0.0 — file.blend",
+                "version":      "5.1.0",
+                "display_name": "Blender 5.1.0 — file.blend",
                 "pid":          12345,
                 "available":    True | False,
             }

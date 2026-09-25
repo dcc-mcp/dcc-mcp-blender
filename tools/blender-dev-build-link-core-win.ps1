@@ -4,9 +4,9 @@
 # Prerequisites: Rust (cargo) on PATH, Git, optional vx on PATH for stubgen fallback.
 #
 # Usage:
-#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.2
-#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.2 -CoreRepo G:\path\to\dcc-mcp-core
-#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.2 -LaunchBlender
+#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.5
+#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.5 -CoreRepo G:\path\to\dcc-mcp-core
+#   .\tools\blender-dev-build-link-core-win.ps1 -BlenderVersion 4.5 -LaunchBlender
 #
 # Environment:
 #   DCC_MCP_CORE_REPO — override path to dcc-mcp-core (default: sibling of this git repo)
@@ -15,7 +15,7 @@
 # then symlink both dcc_mcp_core and dcc_mcp_blender into Blender's addons directory.
 
 param(
-    [string]$BlenderVersion = "4.2",
+    [string]$BlenderVersion = "4.5",
     [string]$CoreRepo = "",
     [switch]$SkipBuild,
     [switch]$LaunchBlender

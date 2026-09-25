@@ -1,4 +1,4 @@
-# Blender extension manifest (4.2+ extensions / bundling).
+# Blender extension manifest (extensions / bundling).
 # https://docs.blender.org/manual/en/latest/advanced/extensions/getting_started.html
 # Version is bumped only by release-please (keep in sync with pyproject / wheel).
 
@@ -13,8 +13,8 @@ type = "add-on"
 
 tags = ["System", "Pipeline", "Animation"]
 
-# Minimum Blender version for the Extensions + wheels workflow (see Blender manual).
-blender_version_min = "4.2.0"
+# Minimum supported Blender version for the Extensions + wheels workflow.
+blender_version_min = "4.5.0"
 
 # The source repository remains MIT. Blender Extensions accepts add-ons under
 # GPL-compatible terms, so the assembled marketplace archive is GPL-3.0-or-later

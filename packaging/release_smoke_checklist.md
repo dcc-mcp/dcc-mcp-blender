@@ -1,11 +1,11 @@
 # Release Smoke Checklist — dcc-mcp-blender
 
 Run these checks against every release ZIP before publishing.
-This checklist validates the GUI Extension install path for Blender 4.2+.
+This checklist validates the GUI Extension install path for Blender 4.5+.
 
 ## Prerequisites
 
-- Blender 4.2.0 or later (LTS recommended)
+- Blender 4.5.0 or later
 - A clean Blender profile (no prior dcc-mcp-blender installed):
   ```bash
   blender --factory-startup
@@ -34,7 +34,7 @@ This checklist validates the GUI Extension install path for Blender 4.2+.
 - [ ] **DO NOT** use **Edit → Preferences → Add-ons → Install** — the legacy
   add-on path is unsupported. Installing there will produce:
   > *"ZIP packaged incorrectly; `__init__.py` should be in a directory, not at top-level"*
-  This is expected — the ZIP uses the Blender 4.2+ Extension flat-package layout.
+  This is expected — the ZIP uses the Blender Extension flat-package layout.
 
 ## 2. Server Auto-Start
 
