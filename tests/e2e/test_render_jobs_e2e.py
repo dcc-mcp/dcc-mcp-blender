@@ -20,15 +20,55 @@ pytestmark = pytest.mark.e2e
 from dcc_mcp_blender import _render_job_ops as jobs  # noqa: E402
 from dcc_mcp_blender._render_job_ops import get_render_job, start_render_job  # noqa: E402
 
-# Scene ``render.image_settings.file_format`` values every supported Blender
-# still exposes, mapped to the extension the worker must write for them.
-# ``OPEN_EXR_MULTILAYER`` is deliberately absent: Blender 5.x dropped it from
-# the scene enum, so it is covered through the explicit ``output_format``
-# argument below instead, which reaches the worker's ``--render-format``.
+# Scene ``render.image_settings.file_format`` values a job must reproduce,
+# mapped to the extension the worker has to write for them.
+# ``OPEN_EXR_MULTILAYER`` belongs here because the scene path owns it: a scene
+# saved with it has to stay multi-layer instead of silently degrading to a
+# single-layer EXR. Hosts that no longer accept the value skip the case rather
+# than fail it; the explicit ``output_format`` argument below still reaches the
+# worker's ``--render-format`` on every host.
 SCENE_FORMATS = {
     "OPEN_EXR": ".exr",
+    "OPEN_EXR_MULTILAYER": ".exr",
     "PNG": ".png",
 }
+
+
+def _scene_format_accepted(name: str) -> bool:
+    """Report whether this host still accepts ``name`` as a scene format.
+
+    Blender 5.x keeps ``OPEN_EXR_MULTILAYER`` listed in the property's
+    ``enum_items`` but rejects the assignment with "enum ... not found in
+    (...)", so reading the enum is not a faithful gate -- only a round-trip
+    assignment is. The previous value is restored either way, so probing a
+    value costs nothing beyond the assignment itself.
+    """
+    settings = bpy.context.scene.render.image_settings
+    previous = settings.file_format
+    try:
+        settings.file_format = name
+    except (TypeError, ValueError):
+        return False
+    finally:
+        settings.file_format = previous
+    return True
+
+
+# Probed once at collection time: a host's answer cannot change mid-session,
+# and skipping a value it does not offer beats reporting a false failure.
+SCENE_FORMAT_CASES = [
+    pytest.param(
+        name,
+        marks=pytest.mark.skipif(
+            not _scene_format_accepted(name),
+            reason="Blender {} rejects {} on render.image_settings.file_format".format(
+                ".".join(str(part) for part in bpy.app.version), name
+            ),
+        ),
+    )
+    for name in sorted(SCENE_FORMATS)
+]
+
 
 TERMINAL = {"completed", "failed", "cancelled"}
 
@@ -86,7 +126,7 @@ def _frame_names(output_dir):
     return sorted(path.name for path in output_dir.iterdir() if not path.name.startswith("."))
 
 
-@pytest.mark.parametrize("scene_format", sorted(SCENE_FORMATS))
+@pytest.mark.parametrize("scene_format", SCENE_FORMAT_CASES)
 def test_start_render_job_writes_scene_format(tmp_path, scene_format):
     """A saved scene's ``file_format`` decides the frames the worker writes."""
     scene = _prepare_scene(tmp_path)
@@ -115,6 +155,12 @@ def test_start_render_job_writes_scene_format(tmp_path, scene_format):
             assert jobs._is_valid_output(path, output_format=scene_format), (path, scene_format)
     finally:
         scene.render.image_settings.file_format = previous_format
+        # Cancel before dropping the entry: ``_JOBS[job_id]["process"]`` is the
+        # only handle on the detached worker, so a timeout or a failed assertion
+        # above would otherwise leave a ``blender --background`` running forever.
+        # Harmless on the green path -- cancelling a finished job is a no-op.
+        if job_id is not None:
+            jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
 
 
@@ -147,6 +193,8 @@ def test_start_render_job_uses_scene_device_when_unset(tmp_path):
         assert written == ["beauty_0001.png", "beauty_0002.png"], written
     finally:
         scene.render.image_settings.file_format = previous_format
+        if job_id is not None:
+            jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
 
 
@@ -179,4 +227,6 @@ def test_start_render_job_explicit_format_overrides_scene(tmp_path):
         assert jobs._is_valid_output(output_dir / written[0], output_format="OPEN_EXR_MULTILAYER")
     finally:
         scene.render.image_settings.file_format = previous_format
+        if job_id is not None:
+            jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
