@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,7 +10,66 @@ from unittest.mock import MagicMock
 
 import yaml
 
+from dcc_mcp_blender import _render_job_ops
 from tests.conftest import load_and_call, make_mock_bpy
+
+
+def _device_schema_validators():
+    """Return every core validator that gates a published tool schema."""
+    try:
+        from dcc_mcp_core._core import ToolValidator as RustValidator
+    except ImportError:  # pragma: no cover - native module unavailable
+        pass
+    else:
+
+        def validate_rust(schema, params):
+            return RustValidator.from_schema_json(json.dumps(schema)).validate(json.dumps(params))[1]
+
+        yield validate_rust
+
+    try:
+        from dcc_mcp_core.skills_helper import ToolValidator as PythonValidator
+    except ImportError:  # pragma: no cover - helper unavailable
+        pass
+    else:
+
+        def validate_python(schema, params):
+            return PythonValidator.from_schema_json(json.dumps(schema)).validate(json.dumps(params))[1]
+
+        yield validate_python
+
+
+def _assert_nullable_device_schema(device):
+    """Pin the shape that lets an omitted device stay absent.
+
+    ``start_render_job`` used to publish ``default: OPTIX``, which forced
+    every job onto a device the host may not have. The repair is a schema
+    detail that no test guarded: core's Rust validator ignores ``anyOf``
+    outright and rejects ``null`` whenever an ``enum`` is present, so only
+    ``enum: [..., null]`` accepts an omitted or explicitly null device
+    while still rejecting a bogus one. A regression here is worse than the
+    original bug: the gateway would reject the call before Blender starts.
+    """
+    assert "null" in device["type"], device
+    assert device["default"] is None, device
+    assert None in device["enum"], device
+    devices = [value for value in device["enum"] if value is not None]
+    assert devices == list(_render_job_ops._DEVICES), (devices, _render_job_ops._DEVICES)
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"device": dict(device)},
+    }
+    for validator in _device_schema_validators():
+        for params, label in (
+            ({}, "omitted"),
+            ({"device": None}, "null"),
+            ({"device": "CPU"}, "CPU"),
+        ):
+            errors = validator(schema, params)
+            assert not errors, (label, errors)
+        assert validator(schema, {"device": "BOGUS"}), "a bogus device must be rejected"
 
 
 def test_render_tools_publish_ci_safe_input_contracts():
@@ -27,6 +87,7 @@ def test_render_tools_publish_ci_safe_input_contracts():
     # scene's render.image_settings.file_format instead of forcing EXR.
     assert "default" not in output_format
     assert output_format["enum"] == ["OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG"]
+    _assert_nullable_device_schema(render_job["properties"]["device"])
 
     settings = tools["set_render_settings"]["input_schema"]["properties"]
     assert "CYCLES" in settings["engine"]["enum"]

@@ -6,6 +6,14 @@ from dcc_mcp_blender import _render_job_ops as jobs
 from dcc_mcp_blender._multiview_receipt import multiview_context, png_evidence, write_receipt
 
 
+@pytest.fixture(autouse=True)
+def _isolated_jobs():
+    """Keep registered worker handles from leaking between tests."""
+    jobs._JOBS.clear()
+    yield
+    jobs._JOBS.clear()
+
+
 def receipt(tmp_path, status="running"):
     result = dict(
         job_id="test",
@@ -52,6 +60,53 @@ def test_worker_crash_marks_unfinished_items_failed(tmp_path):
     assert result["status"] == "failed"
     assert result["items"][0]["status"] == "failed"
     assert jobs.get_render_job("test", str(tmp_path))["context"]["status"] == "failed"
+
+
+def _register_live_process(tmp_path, process):
+    """Attach a worker handle so recovery observes a real exit."""
+    jobs._JOBS["test"] = dict(job_id="test", kind="multiview", job_directory=str(tmp_path), process=process)
+
+
+def test_failed_recovery_quotes_the_receipt_error_not_missing_tails(tmp_path):
+    """The failure message only references fields the context really has.
+
+    A multiview context never carries log tails, so pointing the caller at
+    ``stderr_tail`` used to name keys that do not exist while hiding the
+    receipt's own ``error``.
+    """
+    receipt(tmp_path)
+    jobs._JOBS.clear()
+    process = MagicMock()
+    process.poll.return_value = 2
+    _register_live_process(tmp_path, process)
+
+    result = jobs.get_render_job("test", str(tmp_path))
+
+    context = result["context"]
+    assert context["status"] == "failed"
+    assert "code 2" in result["message"], result["message"]
+    assert "stderr_tail" not in result["message"]
+    # The tails themselves are still attached, so the message is not a dead end.
+    assert context["stderr_tail"] == ""
+    assert context["stdout_tail"] == ""
+
+
+def test_failed_recovery_reads_whichever_log_the_worker_used(tmp_path):
+    """Recovery surfaces a device error written to either worker log."""
+    receipt(tmp_path)
+    jobs._JOBS.clear()
+    (tmp_path / "stdout.log").write_text(
+        "00:01.687  reports | ERROR Found no Cycles device of the specified type\n",
+        encoding="utf-8",
+    )
+    process = MagicMock()
+    process.poll.return_value = 2
+    _register_live_process(tmp_path, process)
+
+    context = jobs.get_render_job("test", str(tmp_path))["context"]
+
+    assert context["status"] == "failed"
+    assert 'device="CPU"' in context["failure_hint"]
 
 
 def test_completed_output_is_rechecked_not_just_file_exists(tmp_path):

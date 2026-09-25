@@ -36,8 +36,8 @@ _DEVICES = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL", "CPU")
 # provide, matched case-insensitively against a worker's log tail: OPTIX on
 # macOS (Windows/Linux only) or on any host without an NVIDIA GPU.
 _CYCLES_DEVICE_ERROR = "found no cycles device of the specified type"
-# Characters of each worker log kept for failure attribution.
-_LOG_TAIL_LIMIT = 1500
+# Bytes read from the end of each worker log for failure attribution.
+_LOG_TAIL_BYTES = 4096
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
@@ -160,17 +160,56 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
         return False
 
 
-def _log_tail(job: Dict[str, Any], key: str) -> str:
+def _log_tail(source: Dict[str, Any], key: str) -> str:
     """Return the tail of one worker log file, or "" when it cannot be read.
 
     A failed job used to report only ``status: failed``, leaving the caller to
     open the log paths itself. Carrying the tails here is what lets an agent
     tell a device failure from a bad output path without a second round trip.
+
+    Seeks to the end instead of reading the whole file: render logs can be
+    large, and a failed job re-reads them on every poll.
     """
     try:
-        return Path(job[key]).read_text(errors="replace")[-_LOG_TAIL_LIMIT:]
+        with open(source[key], "rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(stream.tell() - _LOG_TAIL_BYTES, 0))
+            return stream.read().decode("utf-8", "replace")
     except (KeyError, OSError, TypeError, ValueError):
         return ""
+
+
+def _failed_job_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Add worker log tails to a failed job's context, plus a device hint.
+
+    Works for every job kind because both the animation and the multiview
+    context carry ``stdout_path`` / ``stderr_path``. Both logs are read because
+    Blender reports the device error on stdout on some platforms and on stderr
+    on others.
+    """
+    enriched = dict(context)
+    stderr_tail = _log_tail(context, "stderr_path")
+    stdout_tail = _log_tail(context, "stdout_path")
+    enriched["stderr_tail"] = stderr_tail
+    enriched["stdout_tail"] = stdout_tail
+    hint = _device_failure_hint(stderr_tail) or _device_failure_hint(stdout_tail)
+    if hint:
+        enriched["failure_hint"] = hint
+    return enriched
+
+
+def _failure_message(context: Dict[str, Any]) -> str:
+    """Summarise a failed job using only fields the context actually has.
+
+    The device hint wins because it is actionable; a job that already recorded
+    its own ``error`` (multiview receipts do) is quoted; otherwise the caller
+    is pointed at the tails, which are always present on this path.
+    """
+    if context.get("failure_hint"):
+        return context["failure_hint"]
+    if context.get("error"):
+        return "Render job failed: {}".format(context["error"])
+    return "Render job failed; see stderr_tail and stdout_tail for the worker's last output."
 
 
 def _device_failure_hint(log_tail: str) -> str:
@@ -336,15 +375,16 @@ def get_render_job(job_id: str, job_directory: str = None) -> dict:
         return skill_error("Render receipt unavailable", str(exc))
     if context["status"] != "failed":
         return skill_success("Render job status", **context)
-    # A failed job is a successful status read, but the message has to say why:
-    # the device hint turns "failed" into a retry an agent can act on, and the
-    # stderr tail covers every other worker error.
+    # Enriched here rather than in ``_job_context`` so every job kind gets the
+    # tails: ``multiview_context`` returns early and never reaches the
+    # animation branch below. A failed job is a successful status read, but the
+    # message has to say why instead of reporting an anonymous failure.
+    context = _failed_job_context(context)
+    message = _failure_message(context)
     return skill_success(
-        context.get("failure_hint")
-        or "Render job failed; see stderr_tail and stdout_tail for the worker's last output.",
+        message,
         **context,
-        prompt=context.get("failure_hint")
-        or "Read stderr_tail and stdout_tail, fix the reported cause, then resubmit the job.",
+        prompt=context.get("failure_hint") or "Read stderr_tail and stdout_tail, then resubmit the job.",
     )
 
 
@@ -427,19 +467,6 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
         "stdout_path": job["stdout_path"],
         "stderr_path": job["stderr_path"],
     }
-    if job["status"] == "failed":
-        # A failed job whose cause stays inside its log files is an anonymous
-        # failure: surface both tails, and name ``device`` when either says the
-        # requested Cycles device does not exist on this host. Both are read
-        # because Blender reports the device error on stdout on some platforms
-        # and on stderr on others.
-        stderr_tail = _log_tail(job, "stderr_path")
-        stdout_tail = _log_tail(job, "stdout_path")
-        context["stderr_tail"] = stderr_tail
-        context["stdout_tail"] = stdout_tail
-        hint = _device_failure_hint(stderr_tail) or _device_failure_hint(stdout_tail)
-        if hint:
-            context["failure_hint"] = hint
     return context
 
 

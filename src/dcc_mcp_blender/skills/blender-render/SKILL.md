@@ -74,11 +74,13 @@ Pass one of `OPTIX`, `CUDA`, `HIP`, `ONEAPI`, `METAL`, `CPU` only to override.
 `OPTIX` needs an NVIDIA GPU and is supported on Windows and Linux only, so it
 always fails on macOS and on any host without an NVIDIA GPU.
 
-When a job fails, `get_render_job` reports the worker's log tails as
+When a job fails, `get_render_job` attaches the worker's log tails as
 `stderr_tail` and `stdout_tail` (Blender puts the device error on stdout on
-some platforms and on stderr on others). If the requested device is the cause,
-it also sets `failure_hint`, which names `device` and suggests retrying with
-`device="CPU"`.
+some platforms and on stderr on others). The message then reports, in order:
+`failure_hint` when the requested device is the cause — it names `device` and
+suggests retrying with `device="CPU"`; the job's own `error` when it recorded
+one, as a recovered multiview receipt does; otherwise a pointer at the two
+tails.
 
 ## Output configuration
 

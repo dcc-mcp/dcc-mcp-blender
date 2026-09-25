@@ -353,11 +353,16 @@ def test_failed_job_reports_stderr_tail_without_device_hint(tmp_path):
     jobs._JOBS.clear()
     job_id = _failed_job(tmp_path, "Error: Cannot open file /nope/scene.blend\n")
 
-    context = jobs.get_render_job(job_id)["context"]
+    result = jobs.get_render_job(job_id)
+    context = result["context"]
 
     assert context["status"] == "failed"
     assert "Cannot open file" in context["stderr_tail"]
     assert "failure_hint" not in context
+    # Without a device hint the message must still point at the tails, which
+    # are the only things that explain the failure.
+    assert result["message"] == ("Render job failed; see stderr_tail and stdout_tail for the worker's last output.")
+    assert result["prompt"] == "Read stderr_tail and stdout_tail, then resubmit the job."
 
 
 def test_failed_job_finds_device_error_on_stdout(tmp_path):
