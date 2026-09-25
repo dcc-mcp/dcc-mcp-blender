@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.11](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.10...v0.2.11) (2026-09-25)
+
+
+### Bug Fixes
+
+* **blender5x:** restore PYTHONPATH dropped by isolated Blender Python ([76f7acf](https://github.com/dcc-mcp/dcc-mcp-blender/commit/76f7acf9c780cca64da3552b85218465d936b643))
+* **blender:** fail loudly when a stale user-level copy shadows the resolved runtime ([45ab2a4](https://github.com/dcc-mcp/dcc-mcp-blender/commit/45ab2a485b7c2275ec0a393542974d3ad0593f2d))
+* **extension:** keep the public import contract across distribution channels ([#254](https://github.com/dcc-mcp/dcc-mcp-blender/issues/254)) ([f6254d9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f6254d922c7c4cbe24193d78ae84b23eca0cb608))
+* **host-support:** report a named host support boundary instead of ModuleNotFoundError ([3cf6b59](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3cf6b59767fbd62b214b03c41a293debc12f0f40))
+* **objects:** preserve world transform when parenting a positioned object ([e240d30](https://github.com/dcc-mcp/dcc-mcp-blender/commit/e240d3062d51af10b9c546cfb581b3218a8ee724))
+* **render:** reuse scene file_format in start_render_job ([#253](https://github.com/dcc-mcp/dcc-mcp-blender/issues/253)) ([b2d2c08](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b2d2c083a4d3d355ff55996cba7a20ae135558fb))
+* **render:** stop forcing OPTIX as the default render device ([#260](https://github.com/dcc-mcp/dcc-mcp-blender/issues/260)) ([019d03f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/019d03fd388316b7e0b998804e26ef9dcea1f99f))
+
+
+### Code Refactoring
+
+* **blender:** raise the supported host baseline to Blender 4.5 ([#259](https://github.com/dcc-mcp/dcc-mcp-blender/issues/259)) ([7f0a169](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7f0a16947c71dd23f4a2e69666f70dcf67d149ee))
+
 ## [0.2.10](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.9...v0.2.10) (2026-09-24)
 
 
