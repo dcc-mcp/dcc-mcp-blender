@@ -37,6 +37,34 @@ blender --python-use-system-env
 |---|---|---|---|---|
 | Current `0.2.x` | `>=0.20.0,<0.21.0` | `3.6+` startup hook; `4.2+` Extension ZIP | `3.7+` | Windows, macOS, Linux |
 
+The adapter declares no upper Python bound: it runs on Python 3.13 (Blender
+5.x) as long as its dependencies are visible to the interpreter. Newer
+interpreters are reported as beyond the tested maximum, not rejected.
+
+## Host support boundary
+
+Blender 5.x starts its bundled interpreter in isolated mode, so `PYTHONPATH` and
+user-site entries never reach `sys.path` and `import dcc_mcp_blender` fails with
+`ModuleNotFoundError`. Run the preflight in the target interpreter to get the
+declared boundary, the detected mode, and the matching fix instead:
+
+```bash
+blender --background --python <site-packages>/dcc_mcp_blender/_host_support.py -- --json
+```
+
+Run it **inside the host** (`blender --python`), not with a bare interpreter: only
+the host interpreter reproduces the isolation flags that hide `PYTHONPATH`, so a
+bare `<blender-python>` run reports `isolated=0` and can print `supported` for a
+host that cannot import the adapter. Script arguments go after `--`; Blender's own
+arguments are ignored. The standalone run always checks both `dcc_mcp_blender` and
+`dcc_mcp_core`; `--require MODULE` adds to that set, it never replaces it.
+
+It imports no adapter modules, exits `0` when the host is supported and `1` when
+it is not, and names the missing distributions plus the fix that matches the
+detected mode: `--python-use-system-env` for an isolated interpreter, or the
+Extension ZIP that bundles the `dcc-mcp-core` wheel. Hosts that reach the
+adapter itself raise the same `HostSupportError` at import time.
+
 Preflight runs `<blender> --version`, rejects unsupported hosts, and binds the
 matching versioned user profile. `--dcc-path` and `--python` always select the
 exact host and interpreter recorded in the plan and receipt.
