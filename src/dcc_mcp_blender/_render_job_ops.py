@@ -160,7 +160,7 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
         return False
 
 
-def _log_tail(source: Dict[str, Any], key: str) -> str:
+def _log_tail(source: Dict[str, Any], key: str, *, allowed_directory: Any = None) -> str:
     """Return the tail of one worker log file, or "" when it cannot be read.
 
     A failed job used to report only ``status: failed``, leaving the caller to
@@ -169,9 +169,21 @@ def _log_tail(source: Dict[str, Any], key: str) -> str:
 
     Seeks to the end instead of reading the whole file: render logs can be
     large, and a failed job re-reads them on every poll.
+
+    Refuses symlinks and, when ``allowed_directory`` is given, anything outside
+    it. On the multiview recovery path the caller supplies ``job_directory``,
+    and a receipt there only proves the directory holds a matching
+    ``result.json`` -- not that it owns the log files next to it. Without these
+    two checks a crafted directory could point ``stdout.log`` at any file on the
+    host and have its tail handed to the agent as tool output.
     """
     try:
-        with open(source[key], "rb") as stream:
+        path = Path(source[key])
+        if path.is_symlink():
+            return ""
+        if allowed_directory is not None and path.parent.resolve() != Path(allowed_directory).resolve():
+            return ""
+        with path.open("rb") as stream:
             stream.seek(0, os.SEEK_END)
             stream.seek(max(stream.tell() - _LOG_TAIL_BYTES, 0))
             return stream.read().decode("utf-8", "replace")
@@ -188,11 +200,16 @@ def _failed_job_context(context: Dict[str, Any]) -> Dict[str, Any]:
     on others.
     """
     enriched = dict(context)
-    stderr_tail = _log_tail(context, "stderr_path")
-    stdout_tail = _log_tail(context, "stdout_path")
+    # ``job_directory`` is caller-supplied on the recovery path, so the log
+    # reads are confined to it rather than trusted.
+    allowed_directory = context.get("job_directory")
+    stderr_tail = _log_tail(context, "stderr_path", allowed_directory=allowed_directory)
+    stdout_tail = _log_tail(context, "stdout_path", allowed_directory=allowed_directory)
     enriched["stderr_tail"] = stderr_tail
     enriched["stdout_tail"] = stdout_tail
-    hint = _device_failure_hint(stderr_tail) or _device_failure_hint(stdout_tail)
+    hint = _device_failure_hint(stderr_tail, multiview=context.get("kind") == "multiview") or _device_failure_hint(
+        stdout_tail, multiview=context.get("kind") == "multiview"
+    )
     if hint:
         enriched["failure_hint"] = hint
     return enriched
@@ -212,20 +229,32 @@ def _failure_message(context: Dict[str, Any]) -> str:
     return "Render job failed; see stderr_tail and stdout_tail for the worker's last output."
 
 
-def _device_failure_hint(log_tail: str) -> str:
-    """Attribute an unresolvable Cycles device to the ``device`` argument.
+def _device_failure_hint(log_tail: str, *, multiview: bool = False) -> str:
+    """Attribute an unresolvable Cycles device to the job's device choice.
 
     Returns "" unless the tail carries Blender's "Found no Cycles device of the
     specified type". In that case the failure is caused by the device the job
-    was asked to use, so the hint names ``device`` and suggests ``CPU``; the
-    caller can then retry instead of reporting an anonymous failure.
+    was asked to use, so the hint names the way out and the caller can retry
+    instead of reporting an anonymous failure.
+
+    ``multiview`` switches the advice because ``start_multiview_render_job``
+    takes no ``device`` argument and would drop the camera and pass list if the
+    caller re-submitted through ``start_render_job``.
     """
     if _CYCLES_DEVICE_ERROR not in log_tail.lower():
         return ""
+    devices = ", ".join(_DEVICES)
+    if multiview:
+        return (
+            "Blender found no Cycles device of the type this multiview job requested. "
+            "start_multiview_render_job has no device argument, so change scene.cycles.device to CPU "
+            "(or to a device this host provides: {}) and resubmit the multiview job. "
+            "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(devices)
+        )
     return (
         "Blender found no Cycles device of the type this job requested. Retry start_render_job with "
         'device="CPU", or with a device this host actually provides ({}). '
-        "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(", ".join(_DEVICES))
+        "OptiX requires an NVIDIA GPU and is unavailable on macOS.".format(devices)
     )
 
 

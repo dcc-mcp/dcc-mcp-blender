@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 
 from dcc_mcp_blender import _render_job_ops
@@ -61,7 +62,13 @@ def _assert_nullable_device_schema(device):
         "additionalProperties": False,
         "properties": {"device": dict(device)},
     }
-    for validator in _device_schema_validators():
+    validators = list(_device_schema_validators())
+    if not validators:
+        # Silently passing would hide the one guard that matters: the Rust
+        # validator is the arm that ignores ``anyOf``. Skipping keeps the gap
+        # visible in the report instead of looking like a green round trip.
+        pytest.skip("no core ToolValidator importable; schema round trip not exercised")
+    for validator in validators:
         for params, label in (
             ({}, "omitted"),
             ({"device": None}, "null"),
@@ -100,6 +107,15 @@ def test_render_tools_publish_ci_safe_input_contracts():
     assert capture["properties"]["resolution_x"]["minimum"] == 1
 
     assert tools["get_render_info"]["input_schema"]["properties"] == {}
+
+
+def test_device_schema_round_trip_is_actually_exercised():
+    """The round trip must run at least one validator, not silently pass."""
+    validators = list(_device_schema_validators())
+
+    if not validators:
+        pytest.skip("no core ToolValidator importable")
+    assert len(validators) >= 1
 
 
 class TestGetRenderInfo:
