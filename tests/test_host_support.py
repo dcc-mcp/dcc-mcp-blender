@@ -10,14 +10,51 @@ import pytest
 
 from dcc_mcp_blender import _host_support as host_support
 
+# Every flag name CPython has shipped on a structseq ``sys.flags``. Names this
+# interpreter does not know fall back to 0, so the stub stays usable on the
+# 3.7-3.13 range declared by the adapter.
+_FLAG_NAMES = (
+    "bytes_warning",
+    "debug",
+    "dev_mode",
+    "dont_write_bytecode",
+    "hash_randomization",
+    "ignore_environment",
+    "inspect",
+    "interactive",
+    "isolated",
+    "no_debug_ranges",
+    "no_site",
+    "no_user_site",
+    "optimize",
+    "quiet",
+    "safe_path",
+    "utf8_mode",
+    "verbose",
+    "warn_default_encoding",
+)
+
 
 def _flags(**overrides):
-    base = {
-        "ignore_environment": 0,
-        "isolated": 0,
-        "no_user_site": 0,
-        "no_site": 0,
-    }
+    """Return the real interpreter flags with ``overrides`` applied.
+
+    Seeding from the live ``sys.flags`` keeps every attribute the stdlib reads.
+    ``importlib.util.find_spec`` reaches ``sys.flags.verbose`` through
+    ``_verbose_message``, so a stub carrying only the four flags this module
+    asserts on raises ``AttributeError`` as soon as a test exercises a
+    distribution that is not already in ``sys.modules``.
+    """
+    base = {name: getattr(sys.flags, name, 0) for name in _FLAG_NAMES}
+    # A supported host starts un-isolated; pin the four flags the preflight
+    # branches on so the assertions below do not inherit the runner's flags.
+    base.update(
+        {
+            "ignore_environment": 0,
+            "isolated": 0,
+            "no_user_site": 0,
+            "no_site": 0,
+        }
+    )
     base.update(overrides)
     return SimpleNamespace(**base)
 
