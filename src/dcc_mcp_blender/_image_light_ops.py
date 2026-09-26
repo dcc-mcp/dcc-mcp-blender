@@ -689,6 +689,79 @@ def _remove_ies_nodes(node_tree: Any) -> int:
     return removed
 
 
+def _remove_ies_strength_links(node_tree: Any) -> int:
+    """Drop only the Strength links an IES node was driving; return how many.
+
+    Clearing must not touch anything the user wired themselves. An emission
+    node's Strength can be driven by a Value node, a driver, or a fallback the
+    rigger set up, and removing that to "tidy up" would silently undo their work
+    while still reporting success. So a link is only removed when the node on
+    the far end is one of ours.
+
+    Every emission node is checked, not just the one driving the light output,
+    so a profile attached before this tool refused that shape is still cleaned
+    up rather than left behind.
+    """
+    nodes = getattr(node_tree, "nodes", None)
+    if nodes is None:
+        return 0
+    removed = 0
+    for node in nodes:
+        if getattr(node, "type", None) != "EMISSION":
+            continue
+        strength = _socket_by_name(getattr(node, "inputs", None), "Strength")
+        links = getattr(strength, "links", None)
+        if not links:
+            continue
+        for link in list(links):
+            if getattr(getattr(link, "from_node", None), "type", None) != IES_NODE_TREE_TYPE:
+                continue
+            try:
+                node_tree.links.remove(link)
+                removed += 1
+            except Exception:
+                # A link that will not go must not stop the rest from going.
+                continue
+    return removed
+
+
+def _ies_node_from_link(link: Any) -> Any:
+    """Return the IES node at the far end of a link, or None.
+
+    Used to find the node that is currently driving an emission node's Strength
+    input, which is the only one whose profile actually reaches the render.
+    """
+    if link is None:
+        return None
+    node = getattr(link, "from_node", None)
+    if getattr(node, "type", None) != IES_NODE_TREE_TYPE:
+        return None
+    return node
+
+
+def _ies_link_is_from(emission: Any, ies: Any) -> bool:
+    """True when ``ies`` is the node driving ``emission``'s Strength input.
+
+    Compares by node name rather than identity. Blender returns a fresh wrapper
+    object on every attribute access, so a node reached through a link is never
+    identity-equal to the same node reached by iterating the tree -- an ``is``
+    check here would report failure for a wiring that is perfectly correct.
+    Node names are unique within a tree, which makes the name check exact.
+    """
+    link = _strength_link(emission)
+    if link is None:
+        return False
+    source = getattr(link, "from_node", None)
+    if getattr(source, "type", None) != IES_NODE_TREE_TYPE:
+        return False
+    expected = getattr(ies, "name", None)
+    actual = getattr(source, "name", None)
+    if not isinstance(expected, str) or not isinstance(actual, str):
+        # Without names to compare, fall back to identity rather than assume.
+        return source is ies
+    return actual == expected
+
+
 def _strength_link(emission: Any) -> Any:
     """Return the link driving an emission node's Strength input, or None."""
     strength = _socket_by_name(getattr(emission, "inputs", None), "Strength")
@@ -770,17 +843,7 @@ def set_light_ies(
                     prompt="The light has no shader tree, so there is no profile to remove.",
                 )
             removed = _remove_ies_nodes(node_tree)
-            emission = _find_node(getattr(node_tree, "nodes", None), "EMISSION")
-            if emission is not None:
-                link = _strength_link(emission)
-                if link is not None:
-                    try:
-                        node_tree.links.remove(link)
-                    except Exception:
-                        pass
-                strength_socket = _socket_by_name(getattr(emission, "inputs", None), "Strength")
-                if strength_socket is not None:
-                    strength_socket.default_value = 1.0
+            links_removed = _remove_ies_strength_links(node_tree)
 
             # Confirm the tree no longer carries a profile before calling it done.
             still_present = _ies_node_on(light) is not None
@@ -794,6 +857,7 @@ def set_light_ies(
                 object_name=light_name,
                 applied=False,
                 removed=removed,
+                links_removed=links_removed,
                 prompt="The light renders unshaped again; render to confirm.",
             )
 
@@ -824,8 +888,16 @@ def set_light_ies(
         if ensure_error:
             return ensure_error
 
-        # Reuse the existing node so repeat calls update instead of stacking.
-        ies = _ies_node_on(light)
+        # Reuse the node that is actually driving the light, so repeat calls
+        # update the profile the renderer reads instead of stacking a second one.
+        # Taking the first IES node in the tree is not enough: with two of them,
+        # configuring the one that is not connected reports success for a profile
+        # that never renders.
+        target = _socket_by_name(getattr(emission, "inputs", None), "Strength")
+        existing_link = _strength_link(emission)
+        ies = _ies_node_from_link(existing_link)
+        if ies is None:
+            ies = _ies_node_on(light)
         if ies is None:
             try:
                 ies = node_tree.nodes.new(IES_NODE_TYPE)
@@ -847,19 +919,25 @@ def set_light_ies(
             strength_socket.default_value = float(strength)
 
         fac = _socket_by_name(getattr(ies, "outputs", None), "Fac")
-        target = _socket_by_name(getattr(emission, "inputs", None), "Strength")
         if fac is None or target is None:
             return skill_error(
                 f"IES node cannot drive {light_name}",
                 "the IES node has no Fac output, or the emission node has no Strength input.",
             )
-        if not getattr(target, "is_linked", False):
+        # Rewire when a different IES node currently holds the socket; otherwise
+        # the profile we just configured stays off the render path.
+        if not _ies_link_is_from(emission, ies):
+            if existing_link is not None:
+                try:
+                    node_tree.links.remove(existing_link)
+                except Exception:
+                    pass
             node_tree.links.new(fac, target)
 
-        # ── Verify: the node is in the tree, configured, and actually driving
-        # the emission node the renderer reads.
-        confirmed = _ies_node_on(light)
-        if confirmed is None:
+        # ── Verify: the node we configured is the one actually driving the
+        # emission node the renderer reads.
+        confirmed = ies
+        if _ies_node_on(light) is None:
             return skill_error(
                 f"IES profile not applied to {light_name}",
                 "no IES node is present in the light's shader tree after the write.",
@@ -872,13 +950,11 @@ def set_light_ies(
                 f"the node points at '{confirmed_path}', not '{resolved_path}'.",
             )
 
-        link = _strength_link(emission)
-        driving = link is not None and getattr(getattr(link, "from_node", None), "type", None) == IES_NODE_TREE_TYPE
-        if not driving:
+        if not _ies_link_is_from(emission, confirmed):
             return skill_error(
                 f"IES profile is not driving {light_name}",
-                "the IES node's Fac output is not linked to the emission node's Strength input, "
-                "so the light would render unshaped",
+                "a different IES node is wired to the emission node's Strength input, so the "
+                "profile just configured would not render",
             )
 
         strength_socket = _socket_by_name(getattr(confirmed, "inputs", None), "Strength")

@@ -706,6 +706,7 @@ class _Nodes:
         "ShaderNodeTexIES": "IES Texture",
         "ShaderNodeEmission": "Emission",
         "ShaderNodeMixShader": "Mix Shader",
+        "ShaderNodeValue": "Value",
         "ShaderNodeOutputLight": "Light Output",
     }
 
@@ -751,6 +752,8 @@ class _Nodes:
                 inputs=[_Socket("Color", (1.0, 1.0, 1.0, 1.0)), _Socket("Strength", 1.0)],
                 outputs=[_Socket("Emission", (0.0, 0.0, 0.0, 1.0))],
             )
+        elif node_type == "ShaderNodeValue":
+            node = _Node("VALUE", name, inputs=[], outputs=[_Socket("Value", 1.0)])
         elif node_type == "ShaderNodeMixShader":
             node = _Node(
                 "MIX_SHADER",
@@ -1142,3 +1145,134 @@ class TestSetLightIes:
         emission = surface.links[0].from_node
         assert emission.type == "EMISSION"
         assert emission.inputs["Strength"].links[0].from_node.type == "TEX_IES"
+
+    # ── clear must not touch wiring it did not create ────────────────────────
+
+    def test_clear_leaves_the_users_own_strength_wiring_alone(self):
+        """A Value node driving Strength is the user's, not ours, to remove.
+
+        With no profile on the light there is nothing to clear, so a call that
+        still unwired the socket and reset its value would be silent data loss
+        on a light the caller never gave an IES profile to.
+        """
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+        strength.default_value = 3.0
+        tree.links.new(value.outputs["Value"], strength)
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", clear=True)
+
+        assert result["success"] is True
+        assert result["context"]["removed"] == 0
+        assert [link.from_node.type for link in strength.links] == ["VALUE"]
+        assert strength.default_value == 3.0, "clearing must not reset a value it never set"
+
+    def test_clear_removes_only_the_ies_link(self, tmp_path):
+        """An IES link goes; a neighbouring Value link does not."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile))
+
+        tree = light.node_tree
+        emission = _emission_node(light)
+        # The IES link is removed with the node; add a second, user-owned link
+        # to the same socket to prove only ours is touched.
+        value = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+        strength.default_value = 5.0
+        tree.links.new(value.outputs["Value"], strength)
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", clear=True)
+
+        assert result["success"] is True
+        assert _ies_node(light) is None
+        assert [link.from_node.type for link in strength.links] == ["VALUE"]
+        assert strength.default_value == 5.0
+
+    def test_clear_does_not_reset_strength_on_an_unrelated_emission(self, tmp_path):
+        """With two emission nodes, only the IES-driven one is touched."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile))
+
+        tree = light.node_tree
+        orphan = tree.nodes.new("ShaderNodeEmission")
+        value = tree.nodes.new("ShaderNodeValue")
+        orphan_strength = orphan.inputs["Strength"]
+        orphan_strength.default_value = 7.0
+        tree.links.new(value.outputs["Value"], orphan_strength)
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", clear=True)
+
+        assert result["success"] is True
+        assert [link.from_node.type for link in orphan_strength.links] == ["VALUE"]
+        assert orphan_strength.default_value == 7.0, "clearing hit an emission node it does not own"
+
+    # ── the node that renders is the one that must be configured ─────────────
+
+    def test_configures_the_ies_node_that_is_driving(self, tmp_path):
+        """With two IES nodes, the one wired to Strength is the one to write.
+
+        Taking the first IES node in the tree would report success with the new
+        path while the renderer kept reading the other node's profile.
+        """
+        first = tmp_path / "old.ies"
+        first.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        second = tmp_path / "new.ies"
+        second.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(first))
+
+        tree = light.node_tree
+        emission = _emission_node(light)
+        original = _ies_node(light)
+        # A second IES node takes over the socket, as a hand-edited tree would.
+        takeover = tree.nodes.new("ShaderNodeTexIES")
+        takeover.mode = "EXTERNAL"
+        takeover.filepath = str(first)
+        strength = emission.inputs["Strength"]
+        for link in list(strength.links):
+            tree.links.remove(link)
+        tree.links.new(takeover.outputs["Fac"], strength)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(second)
+        )
+
+        assert result["success"] is True
+        driving = strength.links[0].from_node
+        assert driving is takeover, "the profile was written to a node that renders nothing"
+        assert os.path.abspath(driving.filepath) == os.path.abspath(str(second))
+        assert result["context"]["node_name"] == driving.name
+        # The superseded node is left alone rather than silently mutated.
+        assert os.path.abspath(original.filepath) == os.path.abspath(str(first))
+
+    def test_reports_the_node_that_renders(self, tmp_path):
+        """The reported node name is the one carrying the requested profile."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        emission = _emission_node(light)
+        driving = emission.inputs["Strength"].links[0].from_node
+        assert result["success"] is True
+        assert result["context"]["node_name"] == driving.name
+        assert os.path.abspath(driving.filepath) == os.path.abspath(str(profile))
