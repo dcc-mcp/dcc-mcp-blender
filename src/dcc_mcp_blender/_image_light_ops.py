@@ -971,12 +971,33 @@ def set_light_ies(
             # Confirm the link is really back instead of trusting the call.
             restored = _strength_link_is(emission, previous[0])
 
+        def _previous_state_note() -> str:
+            """Describe what actually happened to the wiring we took over.
+
+            A hardcoded "nothing was changed" would be a lie whenever the
+            restore did not land, and the caller reads a failure as "nothing
+            changed". So the wording follows the observed outcome.
+            """
+            if not rewired or previous is None:
+                return "the previous wiring was left as it was."
+            if restored:
+                return "the previous wiring was put back, so the light renders as it did before."
+            return (
+                "the previous wiring could not be restored, so the light is left with nothing "
+                "driving its Strength input."
+            )
+
         # Rewire when a different IES node currently holds the socket; otherwise
         # the profile we just configured stays off the render path.
         if not _ies_link_is_from(emission, ies):
             if existing_link is not None:
                 try:
                     node_tree.links.remove(existing_link)
+                    # The take-over is committed the moment the old link comes
+                    # off, not once the new one lands. Everything after this
+                    # point has to put it back on failure, including a link
+                    # attempt that raises.
+                    rewired = True
                 except Exception:
                     pass
             try:
@@ -985,10 +1006,11 @@ def set_light_ies(
                 _restore_previous_link()
                 return skill_error(
                     f"IES profile could not be wired into {light_name}",
-                    f"the emission node's Strength input could not be linked ({exc}); the previous "
-                    "wiring was left as it was.",
+                    f"the emission node's Strength input could not be linked ({exc}); " + _previous_state_note(),
+                    previous_link=previous_type,
+                    took_over_link=rewired,
+                    previous_link_restored=restored if rewired else None,
                 )
-            rewired = True
 
         # ── Verify: the node we configured is the one actually driving the
         # emission node the renderer reads. Every failure from here on puts the
@@ -998,17 +1020,12 @@ def set_light_ies(
 
         def _refuse(message: str, error: str) -> dict:
             _restore_previous_link()
-            if rewired and previous is not None and not restored:
-                # The previous wiring could not be put back. Say so loudly: the
-                # light is now driven by nothing, and reporting only the original
-                # failure would hide that.
-                error = (
-                    error + " The previous wiring on the Strength input could not be restored, so the "
-                    "light is left with nothing driving it."
-                )
+            detail = (error or "").rstrip()
+            if detail and not detail.endswith("."):
+                detail += "."
             return skill_error(
                 message,
-                error,
+                (detail + " " + _previous_state_note()).strip(),
                 previous_link=previous_type,
                 took_over_link=rewired and previous is not None,
                 previous_link_restored=restored if (rewired and previous is not None) else None,
