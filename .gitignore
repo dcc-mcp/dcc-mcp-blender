@@ -109,3 +109,10 @@ dist_*
 # local_directory, but they must not be committed.
 .agent_context/
 .multica/
+
+# Blender writes unpacked images to //textures/ relative to the blend file.
+# Running the E2E suite from the repo root therefore drops that directory here
+# (test_pack_and_unpack_round_trip is one producer). It is a run artifact, not a
+# fixture, so ignoring it keeps a local test run from dirtying the tree and from
+# being swept up by a later `git add`.
+/textures/
