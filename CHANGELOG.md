@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.11...v0.2.12) (2026-09-26)
+
+
+### Features
+
+* **lighting:** expose real IES photometric profiles on lights ([#263](https://github.com/dcc-mcp/dcc-mcp-blender/issues/263)) ([8e04977](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8e04977ce5bf0258077296e1007a5b11c4cb7aaa))
+
 ## [0.2.11](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.10...v0.2.11) (2026-09-25)
 
 

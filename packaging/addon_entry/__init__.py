@@ -27,7 +27,7 @@ bl_info = {
     "version": (
         0,  # x-release-please-major
         2,  # x-release-please-minor
-        11,  # x-release-please-patch
+        12,  # x-release-please-patch
     ),
     "blender": (4, 5, 0),
     "location": "Top Bar > DCC MCP",
@@ -841,4 +841,4 @@ def unregister() -> None:
 # ``unregister()`` detaches rather than uninstalls it, which is what keeps
 # ``import dcc_mcp_blender`` working after ``wm.read_factory_settings``.
 
-__addon_version__ = "0.2.11"  # x-release-please-version
+__addon_version__ = "0.2.12"  # x-release-please-version
