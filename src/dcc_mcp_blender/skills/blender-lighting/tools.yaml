@@ -32,6 +32,48 @@ tools:
     destructive: false
     idempotent: true
 
+  - name: set_light_ies
+    description: "Attach an IES photometric profile to a light by wiring a ShaderNodeTexIES node into the light's shader tree, or remove one with clear."
+    source_file: scripts/set_light_ies.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [light_name]
+      properties:
+        light_name:
+          type: string
+          minLength: 1
+          description: Light to shape.
+        ies_path:
+          type: string
+          minLength: 1
+          description: Path to an .ies photometric file. Required unless clear is true.
+        strength:
+          type: number
+          description: Optional multiplier on the profile's contribution.
+        clear:
+          type: boolean
+          default: false
+          description: Remove the existing IES profile instead of setting one.
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
   - name: set_light_linking
     description: "Restrict which objects a light illuminates using light linking: a receiver collection and an optional blocker collection."
     source_file: scripts/set_light_linking.py

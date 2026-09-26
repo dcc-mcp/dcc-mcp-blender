@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import struct
 from unittest.mock import MagicMock
 
@@ -626,3 +627,423 @@ class TestSetWorldBackground:
         assert result["success"] is False
         assert "output" in result["message"].lower()
         assert world.use_nodes is False, "a failed call must not switch the world onto nodes"
+
+
+# -- IES photometric profiles -------------------------------------------------
+
+
+class _Socket:
+    """Stand-in for a Blender node socket."""
+
+    def __init__(self, name, default_value=None):
+        self.name = name
+        self.default_value = default_value
+        self.links = []
+        self.node = None
+
+    @property
+    def is_linked(self):
+        return bool(self.links)
+
+
+class _Link:
+    def __init__(self, from_socket, to_socket):
+        self.from_socket = from_socket
+        self.from_node = from_socket.node
+        self.to_socket = to_socket
+        self.to_node = to_socket.node
+
+
+class _Links:
+    """NodeLink container.
+
+    ``silent_fail`` mimics a socket that refuses the link: ``new()`` returns a
+    link object but the socket never records it, which is what a write that
+    looks successful but changes nothing looks like from the outside.
+    """
+
+    def __init__(self):
+        self.created = []
+        self.silent_fail = False
+
+    def new(self, from_socket, to_socket):
+        link = _Link(from_socket, to_socket)
+        if not self.silent_fail:
+            from_socket.links.append(link)
+            to_socket.links.append(link)
+        self.created.append(link)
+        return link
+
+    def remove(self, link):
+        for socket in (link.from_socket, link.to_socket):
+            if link in socket.links:
+                socket.links.remove(link)
+        if link in self.created:
+            self.created.remove(link)
+
+
+class _Node:
+    """Stand-in for a Blender shader node."""
+
+    def __init__(self, node_type, name, inputs=(), outputs=()):
+        self.type = node_type
+        self.name = name
+        self.inputs = {}
+        self.outputs = {}
+        for socket in inputs:
+            socket.node = self
+            self.inputs[socket.name] = socket
+        for socket in outputs:
+            socket.node = self
+            self.outputs[socket.name] = socket
+
+
+class _Nodes:
+    """Container mimicking ``node_tree.nodes`` including ``.new()``."""
+
+    # Blender names duplicate nodes "IES Texture", "IES Texture.001", ...
+    _NAMES = {
+        "ShaderNodeTexIES": "IES Texture",
+        "ShaderNodeEmission": "Emission",
+        "ShaderNodeOutputLight": "Light Output",
+    }
+
+    def __init__(self):
+        self._nodes = []
+        self.failing_types = set()
+
+    def __iter__(self):
+        return iter(list(self._nodes))
+
+    def __len__(self):
+        return len(self._nodes)
+
+    def __contains__(self, item):
+        return any(node is item for node in self._nodes)
+
+    def _unique_name(self, node_type):
+        base = self._NAMES.get(node_type, node_type)
+        name = base
+        suffix = 0
+        while any(node.name == name for node in self._nodes):
+            suffix += 1
+            name = "{0}.{1:03d}".format(base, suffix)
+        return name
+
+    def new(self, node_type):
+        if node_type in self.failing_types:
+            raise RuntimeError("node type {0} is not registered".format(node_type))
+        name = self._unique_name(node_type)
+        if node_type == "ShaderNodeTexIES":
+            node = _Node(
+                "TEX_IES",
+                name,
+                inputs=[_Socket("Vector", (0.0, 0.0, 0.0)), _Socket("Strength", 1.0)],
+                outputs=[_Socket("Fac", 0.0)],
+            )
+            node.mode = "INTERNAL"
+            node.filepath = ""
+        elif node_type == "ShaderNodeEmission":
+            node = _Node(
+                "EMISSION",
+                name,
+                inputs=[_Socket("Color", (1.0, 1.0, 1.0, 1.0)), _Socket("Strength", 1.0)],
+                outputs=[_Socket("Emission", (0.0, 0.0, 0.0, 1.0))],
+            )
+        else:
+            node = _Node("OUTPUT_LIGHT", name, inputs=[_Socket("Surface", None)], outputs=[])
+        self._nodes.append(node)
+        return node
+
+    def remove(self, node):
+        self._nodes.remove(node)
+
+
+class _LightTree:
+    def __init__(self):
+        self.nodes = _Nodes()
+        self.links = _Links()
+
+
+class _FakeLight:
+    """Light double that materialises the default node tree on ``use_nodes``."""
+
+    def __init__(self):
+        self._use_nodes = False
+        self._node_tree = None
+
+    @property
+    def use_nodes(self):
+        return self._use_nodes
+
+    @use_nodes.setter
+    def use_nodes(self, value):
+        value = bool(value)
+        if value and self._node_tree is None:
+            self._node_tree = _LightTree()
+            emission = self._node_tree.nodes.new("ShaderNodeEmission")
+            output = self._node_tree.nodes.new("ShaderNodeOutputLight")
+            self._node_tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+        self._use_nodes = value
+
+    @property
+    def node_tree(self):
+        return self._node_tree
+
+
+def _make_light_bpy(light=None, version=(4, 5, 0)):
+    """Build a mock bpy whose scene carries one light."""
+    bpy = make_mock_bpy()
+    obj = MagicMock()
+    obj.name = "Spot"
+    obj.type = "LIGHT"
+    obj.data = light if light is not None else _FakeLight()
+    bpy.data.objects.get.return_value = obj
+    bpy.app.version = version
+    return bpy
+
+
+def _ies_node(light):
+    if light.node_tree is None:
+        return None
+    for node in light.node_tree.nodes:
+        if node.type == "TEX_IES":
+            return node
+    return None
+
+
+def _emission_node(light):
+    for node in light.node_tree.nodes:
+        if node.type == "EMISSION":
+            return node
+    return None
+
+
+class TestSetLightIes:
+    """Unit tests for ``set_light_ies`` (bpy mocked)."""
+
+    def test_attaches_an_ies_node_to_the_light(self, tmp_path):
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        node = _ies_node(light)
+        assert node is not None, "no IES node was created"
+        assert node.mode == "EXTERNAL"
+        assert os.path.abspath(str(profile)) == os.path.abspath(node.filepath)
+
+    def test_fac_drives_the_emission_node_that_feeds_the_output(self, tmp_path):
+        """A node that renders nothing must not count as a success."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        emission = _emission_node(light)
+        link = emission.inputs["Strength"].links[0]
+        assert link.from_node.type == "TEX_IES"
+
+    def test_repeat_call_reuses_the_existing_node(self, tmp_path):
+        """Calling twice must update, not stack a second profile."""
+        first_path = tmp_path / "a.ies"
+        first_path.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        second_path = tmp_path / "b.ies"
+        second_path.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(first_path))
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(second_path))
+
+        ies_nodes = [node for node in light.node_tree.nodes if node.type == "TEX_IES"]
+        assert len(ies_nodes) == 1
+        assert os.path.abspath(str(second_path)) == os.path.abspath(ies_nodes[0].filepath)
+
+    def test_strength_is_applied_and_read_back(self, tmp_path):
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py",
+            bpy,
+            light_name="Spot",
+            ies_path=str(profile),
+            strength=2.5,
+        )
+
+        assert result["success"] is True
+        assert _ies_node(light).inputs["Strength"].default_value == 2.5
+        assert result["context"]["strength"] == 2.5
+
+    def test_clear_removes_the_node_and_restores_strength(self, tmp_path):
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile))
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", clear=True)
+
+        assert result["success"] is True
+        assert _ies_node(light) is None
+        assert _emission_node(light).inputs["Strength"].default_value == 1.0
+        assert _emission_node(light).inputs["Strength"].links == []
+
+    def test_clear_on_a_light_without_a_profile(self):
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", clear=True)
+
+        assert result["success"] is True
+        assert result["context"]["removed"] == 0
+
+    def test_missing_profile_file_is_refused(self, tmp_path):
+        """Blender accepts a missing path and then renders unshaped; refuse instead."""
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py",
+            bpy,
+            light_name="Spot",
+            ies_path=str(tmp_path / "absent.ies"),
+        )
+
+        assert result["success"] is False
+        assert _ies_node(light) is None
+
+    def test_no_path_and_no_clear_is_refused(self):
+        bpy = _make_light_bpy()
+
+        result = load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot")
+
+        assert result["success"] is False
+
+    def test_unknown_light_is_refused(self, tmp_path):
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        bpy = make_mock_bpy()
+        bpy.data.objects.get.return_value = None
+        bpy.app.version = (4, 5, 0)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Ghost", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+
+    def test_non_light_object_is_refused(self, tmp_path):
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        bpy = make_mock_bpy()
+        obj = MagicMock()
+        obj.type = "MESH"
+        bpy.data.objects.get.return_value = obj
+        bpy.app.version = (4, 5, 0)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Cube", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+
+    def test_older_blender_is_refused_with_a_stated_reason(self, tmp_path):
+        """Version handling is explicit, not a hasattr guess."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light, version=(3, 6, 5))
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert "3.6.5" in result["message"] + str(result.get("error") or "")
+        assert _ies_node(light) is None
+
+    def test_build_without_the_node_type_is_refused(self, tmp_path):
+        """A build that cannot create the node refuses instead of no-opping."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        light.node_tree.nodes.failing_types.add("ShaderNodeTexIES")
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert "ShaderNodeTexIES" in result["message"] + str(result.get("error") or "")
+
+    def test_reports_failure_when_the_link_does_not_take(self, tmp_path):
+        """A wiring that never lands must surface as success=false.
+
+        The node can be created and configured correctly while the link is
+        refused, which leaves the light rendering unshaped. Only reading the
+        tree back catches that, so this is the test that fails if the
+        verification step is removed.
+        """
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        light.node_tree.links.silent_fail = True
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert _ies_node(light) is not None, "the node was still created; the link is what failed"
+
+    def test_vector_input_is_left_unconnected(self, tmp_path):
+        """Connecting a geometry direction there mis-aims the beam."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        load_and_call("blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile))
+
+        assert _ies_node(light).inputs["Vector"].links == []
+
+    def test_second_emission_node_does_not_shadow_the_driving_one(self, tmp_path):
+        """With two emission nodes, the one feeding the output is the one wired."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        output = next(node for node in tree.nodes if node.type == "OUTPUT_LIGHT")
+        surface = output.inputs["Surface"]
+        tree.links.remove(surface.links[0])
+        driving = tree.nodes.new("ShaderNodeEmission")
+        tree.links.new(driving.outputs["Emission"], surface)
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        assert driving.inputs["Strength"].links[0].from_node.type == "TEX_IES"
+        assert emission.inputs["Strength"].links == []
