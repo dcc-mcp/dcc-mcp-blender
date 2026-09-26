@@ -626,9 +626,9 @@ def test_tools_yaml_declares_the_new_tools():
     }.issubset(names)
     light_names = {tool["name"] for tool in lighting["tools"]}
     assert "set_light_linking" in light_names
-    # Blender has no Light.ies_file property, so the IES tool was removed rather
-    # than left as a facade that can only ever report "unavailable".
-    assert "set_light_ies" not in light_names
+    # Blender has no Light.ies_file property, so IES is a ShaderNodeTexIES in
+    # the light's shader tree rather than a property assignment.
+    assert "set_light_ies" in light_names
 
 
 def test_new_tools_declare_required_contract_fields():
@@ -645,7 +645,7 @@ def test_new_tools_declare_required_contract_fields():
             "image_file_status",
             "list_image_tiles",
         ),
-        LIGHTING: ("set_light_linking",),
+        LIGHTING: ("set_light_linking", "set_light_ies"),
     }
     for skill, names in expected.items():
         tools = {tool["name"]: tool for tool in docs[skill]["tools"]}

@@ -7,11 +7,13 @@ reload_image.
 
 Lighting tools here cover what create_light and set_light_properties do not:
 Blender 4.x light linking, which is version dependent and therefore checked
-before being reported as available.
+before being reported as available, and IES photometric profiles, which are a
+node in the light's shader tree rather than a property on the light.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -420,6 +422,24 @@ def list_image_tiles(image_name: str) -> dict:
         return skill_exception(exc, message=f"Failed to list tiles for {image_name}")
 
 
+# The adapter's declared host baseline, mirrored from install.MIN_BLENDER_VERSION
+# (Blender 4.5, see "raise the supported host baseline to Blender 4.5"). It is
+# copied rather than imported so the IES path stays importable on its own.
+#
+# This floor is the adapter's support window, NOT an IES requirement:
+# ShaderNodeTexIES predates 4.5 by years. It is checked first because a refusal
+# that names the supported window is more actionable than one naming a node type
+# the caller has never heard of. The floor is deliberately not the real gate --
+# that is the "can this build create the node" check below, which is what decides
+# support on any build that clears the baseline.
+MIN_BLENDER_VERSION_FOR_IES = (4, 5)
+
+# Node type that carries a photometric profile. Named once so the refusal, the
+# lookup, and the verification all agree on what "IES support" means.
+IES_NODE_TYPE = "ShaderNodeTexIES"
+IES_NODE_TREE_TYPE = "TEX_IES"
+
+
 def _resolve_light(bpy: Any, light_name: str) -> Tuple[Any, Optional[dict]]:
     """Return a light object's data, or an error for the caller."""
     obj = bpy.data.objects.get(light_name)
@@ -519,3 +539,563 @@ def set_light_linking(
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to set light linking on {light_name}")
+
+
+def _first_socket(sockets: Any) -> Any:
+    """Return the first socket of a collection, or None when there is none.
+
+    Blender collections index by position, while a plain mapping only supports
+    its keys, so both shapes are handled rather than assuming that indexing by
+    0 works everywhere.
+    """
+    if sockets is None:
+        return None
+    try:
+        return sockets[0]
+    except (KeyError, IndexError, TypeError):
+        pass
+    values = getattr(sockets, "values", None)
+    if callable(values):
+        for socket in values():
+            return socket
+    try:
+        for socket in sockets:
+            return socket
+    except TypeError:
+        return None
+    return None
+
+
+def _find_node(nodes: Any, node_type: str) -> Any:
+    """Return the first node of ``node_type``, or None."""
+    if nodes is None:
+        return None
+    for node in nodes:
+        if getattr(node, "type", None) == node_type:
+            return node
+    return None
+
+
+def _socket_by_name(sockets: Any, name: str) -> Any:
+    """Return the named socket, or None when there is no such socket."""
+    if sockets is None:
+        return None
+    getter = getattr(sockets, "get", None)
+    if callable(getter):
+        try:
+            socket = getter(name)
+        except Exception:
+            socket = None
+        if socket is not None:
+            return socket
+    try:
+        return sockets[name]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _driving_emission_node(nodes: Any) -> Any:
+    """Return the Emission node that feeds ``ShaderNodeOutputLight.Surface``.
+
+    A light tree can hold several emission nodes, and node order says nothing
+    about which one the renderer reads. Following the link back from the light
+    output is what makes the difference between writing the node that lights the
+    scene and writing an orphan that renders nothing. Returns None when the link
+    cannot be traced.
+    """
+    output = _find_node(nodes, "OUTPUT_LIGHT")
+    if output is None:
+        return None
+    surface = _socket_by_name(getattr(output, "inputs", None), "Surface")
+    if surface is None:
+        return None
+    links = getattr(surface, "links", None)
+    if not links:
+        return None
+    try:
+        link = links[0]
+    except (IndexError, KeyError, TypeError):
+        return None
+    source_name = getattr(getattr(link, "from_node", None), "name", None)
+    if not isinstance(source_name, str):
+        return None
+    for node in nodes:
+        if getattr(node, "name", None) == source_name:
+            return node
+    return None
+
+
+def _ensure_emission_node(node_tree: Any) -> Tuple[Any, Optional[dict]]:
+    """Return the light's driving Emission node, or an error for the caller.
+
+    IES shapes a light by driving an emission node's ``Strength`` input, so the
+    node it is attached to has to be the one the renderer reads. When the light
+    output is already driven by something that is not an emission node there is
+    no Strength input to drive at all, and attaching to any other emission node
+    in the tree would wire the profile into something that renders nothing while
+    still passing every check on the node itself. That case is refused rather
+    than guessed.
+    """
+    nodes = node_tree.nodes
+
+    driving = _driving_emission_node(nodes)
+    if driving is not None:
+        if getattr(driving, "type", None) == "EMISSION":
+            return driving, None
+        # Something other than an emission shader feeds the light output, so the
+        # profile has nowhere to land that the renderer would read.
+        node_type = getattr(driving, "type", None) or "unknown"
+        return None, skill_error(
+            f"Light output is driven by a {node_type} node, not an emission shader",
+            f"IES drives an emission node's Strength input, but ShaderNodeOutputLight is fed by "
+            f"'{node_type}'. Remove that node or route the light through an emission shader first.",
+        )
+
+    # Nothing drives the output yet, so the light is free to be taken over.
+    emission = _find_node(nodes, "EMISSION")
+    if emission is None:
+        emission = nodes.new("ShaderNodeEmission")
+
+    output = _find_node(nodes, "OUTPUT_LIGHT")
+    if output is None:
+        output = nodes.new("ShaderNodeOutputLight")
+    surface = _socket_by_name(getattr(output, "inputs", None), "Surface")
+    if surface is not None and not getattr(surface, "is_linked", False):
+        node_tree.links.new(_first_socket(getattr(emission, "outputs", None)), surface)
+    return emission, None
+
+
+def _ies_node_on(light: Any) -> Any:
+    """Return the light's existing IES node, or None."""
+    node_tree = getattr(light, "node_tree", None)
+    if node_tree is None:
+        return None
+    return _find_node(getattr(node_tree, "nodes", None), IES_NODE_TREE_TYPE)
+
+
+def _remove_ies_nodes(node_tree: Any) -> int:
+    """Delete every IES node from a light tree; return how many went away."""
+    nodes = getattr(node_tree, "nodes", None)
+    if nodes is None:
+        return 0
+    removed = 0
+    for node in [node for node in nodes if getattr(node, "type", None) == IES_NODE_TREE_TYPE]:
+        try:
+            nodes.remove(node)
+            removed += 1
+        except Exception:
+            # A node that cannot be removed must not hide the ones that can.
+            continue
+    return removed
+
+
+def _remove_ies_strength_links(node_tree: Any) -> int:
+    """Drop only the Strength links an IES node was driving; return how many.
+
+    Clearing must not touch anything the user wired themselves. An emission
+    node's Strength can be driven by a Value node, a driver, or a fallback the
+    rigger set up, and removing that to "tidy up" would silently undo their work
+    while still reporting success. So a link is only removed when the node on
+    the far end is one of ours.
+
+    Every emission node is checked, not just the one driving the light output,
+    so a profile attached before this tool refused that shape is still cleaned
+    up rather than left behind.
+    """
+    nodes = getattr(node_tree, "nodes", None)
+    if nodes is None:
+        return 0
+    removed = 0
+    for node in nodes:
+        if getattr(node, "type", None) != "EMISSION":
+            continue
+        strength = _socket_by_name(getattr(node, "inputs", None), "Strength")
+        links = getattr(strength, "links", None)
+        if not links:
+            continue
+        for link in list(links):
+            if getattr(getattr(link, "from_node", None), "type", None) != IES_NODE_TREE_TYPE:
+                continue
+            try:
+                node_tree.links.remove(link)
+                removed += 1
+            except Exception:
+                # A link that will not go must not stop the rest from going.
+                continue
+    return removed
+
+
+def _ies_node_from_link(link: Any) -> Any:
+    """Return the IES node at the far end of a link, or None.
+
+    Used to find the node that is currently driving an emission node's Strength
+    input, which is the only one whose profile actually reaches the render.
+    """
+    if link is None:
+        return None
+    node = getattr(link, "from_node", None)
+    if getattr(node, "type", None) != IES_NODE_TREE_TYPE:
+        return None
+    return node
+
+
+def _ies_link_is_from(emission: Any, ies: Any) -> bool:
+    """True when ``ies`` is the node driving ``emission``'s Strength input.
+
+    Compares by node name rather than identity. Blender returns a fresh wrapper
+    object on every attribute access, so a node reached through a link is never
+    identity-equal to the same node reached by iterating the tree -- an ``is``
+    check here would report failure for a wiring that is perfectly correct.
+    Node names are unique within a tree, which makes the name check exact.
+    """
+    link = _strength_link(emission)
+    if link is None:
+        return False
+    source = getattr(link, "from_node", None)
+    if getattr(source, "type", None) != IES_NODE_TREE_TYPE:
+        return False
+    expected = getattr(ies, "name", None)
+    actual = getattr(source, "name", None)
+    if not isinstance(expected, str) or not isinstance(actual, str):
+        # Without names to compare, fall back to identity rather than assume.
+        return source is ies
+    return actual == expected
+
+
+def _socket_identity(socket: Any) -> Optional[Tuple[str, str]]:
+    """Return a stable identifier for a socket, or None when it has none.
+
+    Blender hands out a fresh Python wrapper for a socket on every access, so
+    two wrappers for the same socket are not identity-equal. Node names are
+    unique within a tree and socket names are unique within a node, so the pair
+    identifies a socket without relying on object identity.
+    """
+    if socket is None:
+        return None
+    node_name = getattr(getattr(socket, "node", None), "name", None)
+    socket_name = getattr(socket, "name", None)
+    if not isinstance(node_name, str) or not isinstance(socket_name, str):
+        return None
+    return (node_name, socket_name)
+
+
+def _strength_link_is(emission: Any, socket: Any) -> bool:
+    """True when ``socket`` is what currently drives ``emission``'s Strength.
+
+    Used to confirm a restored link really landed. The socket being compared was
+    captured from the link that was removed, while the one read back belongs to
+    the link that replaced it -- two different link objects, so an identity
+    check between them would report "not restored" for a restore that worked.
+    Comparison is therefore by stable identifiers, with identity as a fallback
+    for objects that expose neither a node nor a name.
+    """
+    if socket is None:
+        return False
+    link = _strength_link(emission)
+    if link is None:
+        return False
+    current = getattr(link, "from_socket", None)
+    if current is None:
+        return False
+    expected = _socket_identity(socket)
+    actual = _socket_identity(current)
+    if expected is not None and actual is not None:
+        return expected == actual
+    return current is socket
+
+
+def _strength_link(emission: Any) -> Any:
+    """Return the link driving an emission node's Strength input, or None."""
+    strength = _socket_by_name(getattr(emission, "inputs", None), "Strength")
+    if strength is None:
+        return None
+    links = getattr(strength, "links", None)
+    if not links:
+        return None
+    try:
+        return links[0]
+    except (IndexError, KeyError, TypeError):
+        return None
+
+
+def set_light_ies(
+    light_name: str,
+    ies_path: Optional[str] = None,
+    strength: Optional[float] = None,
+    clear: bool = False,
+) -> dict:
+    """Attach an IES photometric profile to a light.
+
+    Blender has no ``Light.ies_file`` property. A photometric profile is a
+    ``ShaderNodeTexIES`` in the light's shader tree whose ``Fac`` output drives
+    the emission node's ``Strength`` input, so that is what this builds.
+
+    Two things decide whether the profile actually reaches the render, and both
+    are verified here rather than assumed:
+
+    * the node has to feed the emission node that drives the light output -- an
+      emission node that renders nothing would make the whole call a no-op; and
+    * an external profile has to point at a file that exists. Blender accepts a
+      missing path without complaint and then renders the light unshaped, which
+      is the failure this check exists to catch.
+
+    The node's ``Vector`` input is deliberately left unconnected: the renderer
+    resolves the profile direction from the light itself, and connecting a
+    Geometry node there mis-aims the beam.
+
+    Args:
+        light_name: Light to shape.
+        ies_path: Path to an ``.ies`` photometric file. Required unless ``clear``.
+        strength: Optional multiplier on the profile's contribution.
+        clear: Remove the IES node instead of setting one.
+    """
+    if not clear and not ies_path:
+        return skill_error(
+            "No IES profile supplied",
+            "Provide ies_path, or clear=true to remove an existing profile.",
+        )
+
+    try:
+        import bpy
+
+        obj, error = _resolve_light(bpy, light_name)
+        if error:
+            return error
+
+        version = tuple(bpy.app.version[:3])
+        if version < MIN_BLENDER_VERSION_FOR_IES:
+            return skill_error(
+                "IES profiles unavailable on this Blender version",
+                "this build runs Blender {0}.{1}.{2}; the adapter supports {3}.{4} and newer".format(
+                    version[0], version[1], version[2], MIN_BLENDER_VERSION_FOR_IES[0], MIN_BLENDER_VERSION_FOR_IES[1]
+                ),
+            )
+
+        light = obj.data
+
+        # Clearing leaves the light unshaped; the profile file is not needed.
+        if clear:
+            node_tree = getattr(light, "node_tree", None)
+            if node_tree is None:
+                return skill_success(
+                    f"No IES profile on {light_name}",
+                    object_name=light_name,
+                    applied=False,
+                    removed=0,
+                    prompt="The light has no shader tree, so there is no profile to remove.",
+                )
+            removed = _remove_ies_nodes(node_tree)
+            links_removed = _remove_ies_strength_links(node_tree)
+
+            # Confirm the tree no longer carries a profile before calling it done.
+            still_present = _ies_node_on(light) is not None
+            if still_present:
+                return skill_error(
+                    f"IES profile not removed from {light_name}",
+                    "an IES node is still present in the light's shader tree after removal.",
+                )
+            return skill_success(
+                f"Removed IES profile from {light_name}",
+                object_name=light_name,
+                applied=False,
+                removed=removed,
+                links_removed=links_removed,
+                prompt="The light renders unshaped again; render to confirm.",
+            )
+
+        # An external profile Blender cannot open shapes nothing at all, and the
+        # failure is silent at render time, so the file is checked up front.
+        resolved_path = os.path.abspath(os.path.expanduser(str(ies_path)))
+        if not os.path.isfile(resolved_path):
+            return skill_error(
+                f"IES profile not found: {ies_path}",
+                f"No readable file at '{resolved_path}'. Blender accepts a missing path and then "
+                "renders the light unshaped, so the path is verified before it is used.",
+            )
+
+        node_tree = getattr(light, "node_tree", None)
+        if node_tree is None:
+            # Blender materialises the default tree once nodes are switched on.
+            use_nodes = getattr(light, "use_nodes", None)
+            if use_nodes is not None and not use_nodes:
+                light.use_nodes = True
+            node_tree = getattr(light, "node_tree", None)
+        if node_tree is None:
+            return skill_error(
+                f"{light_name} has no shader tree",
+                "this build does not expose a node tree on the light, so no IES node can be added.",
+            )
+
+        emission, ensure_error = _ensure_emission_node(node_tree)
+        if ensure_error:
+            return ensure_error
+
+        # Reuse the node that is actually driving the light, so repeat calls
+        # update the profile the renderer reads instead of stacking a second one.
+        # Taking the first IES node in the tree is not enough: with two of them,
+        # configuring the one that is not connected reports success for a profile
+        # that never renders.
+        target = _socket_by_name(getattr(emission, "inputs", None), "Strength")
+        existing_link = _strength_link(emission)
+        ies = _ies_node_from_link(existing_link)
+        if ies is None:
+            ies = _ies_node_on(light)
+        if ies is None:
+            try:
+                ies = node_tree.nodes.new(IES_NODE_TYPE)
+            except Exception as exc:
+                return skill_error(
+                    "IES profiles unavailable on this Blender version",
+                    f"this build cannot create a {IES_NODE_TYPE} node ({exc}).",
+                )
+
+        ies.mode = "EXTERNAL"
+        ies.filepath = resolved_path
+        if strength is not None:
+            strength_socket = _socket_by_name(getattr(ies, "inputs", None), "Strength")
+            if strength_socket is None:
+                return skill_error(
+                    f"IES node on {light_name} has no Strength input",
+                    "this build's IES node exposes no Strength socket, so the multiplier cannot be applied.",
+                )
+            strength_socket.default_value = float(strength)
+
+        fac = _socket_by_name(getattr(ies, "outputs", None), "Fac")
+        if fac is None or target is None:
+            return skill_error(
+                f"IES node cannot drive {light_name}",
+                "the IES node has no Fac output, or the emission node has no Strength input.",
+            )
+        # Taking over the socket is destructive, so the previous wiring is
+        # remembered and put back if anything goes wrong afterwards. Without
+        # this, a link that fails to land leaves the caller being told "it did
+        # not work" while the light has in fact lost whatever drove it before --
+        # the caller reasonably reads a failure as "nothing changed".
+        previous = None
+        if existing_link is not None:
+            previous = (existing_link.from_socket, existing_link.to_socket)
+        previous_type = None
+        if existing_link is not None:
+            previous_type = getattr(getattr(existing_link, "from_node", None), "type", None)
+        rewired = False
+
+        restored = False
+
+        def _restore_previous_link() -> None:
+            """Put the previous wiring back; remember whether it actually landed.
+
+            A restore that silently fails would leave the light un driven while
+            the caller is told the previous wiring is in place, so the outcome is
+            recorded and surfaced rather than assumed.
+            """
+            nonlocal restored
+            if not rewired or previous is None:
+                return
+            try:
+                node_tree.links.new(previous[0], previous[1])
+            except Exception:
+                return
+            # Confirm the link is really back instead of trusting the call.
+            restored = _strength_link_is(emission, previous[0])
+
+        def _previous_state_note() -> str:
+            """Describe what actually happened to the wiring we took over.
+
+            A hardcoded "nothing was changed" would be a lie whenever the
+            restore did not land, and the caller reads a failure as "nothing
+            changed". So the wording follows the observed outcome.
+            """
+            if not rewired or previous is None:
+                return "the previous wiring was left as it was."
+            if restored:
+                return "the previous wiring was put back, so the light renders as it did before."
+            return (
+                "the previous wiring could not be restored, so the light is left with nothing "
+                "driving its Strength input."
+            )
+
+        # Rewire when a different IES node currently holds the socket; otherwise
+        # the profile we just configured stays off the render path.
+        if not _ies_link_is_from(emission, ies):
+            if existing_link is not None:
+                try:
+                    node_tree.links.remove(existing_link)
+                    # The take-over is committed the moment the old link comes
+                    # off, not once the new one lands. Everything after this
+                    # point has to put it back on failure, including a link
+                    # attempt that raises.
+                    rewired = True
+                except Exception:
+                    pass
+            try:
+                node_tree.links.new(fac, target)
+            except Exception as exc:
+                _restore_previous_link()
+                return skill_error(
+                    f"IES profile could not be wired into {light_name}",
+                    f"the emission node's Strength input could not be linked ({exc}); " + _previous_state_note(),
+                    previous_link=previous_type,
+                    took_over_link=rewired,
+                    previous_link_restored=restored if rewired else None,
+                )
+
+        # ── Verify: the node we configured is the one actually driving the
+        # emission node the renderer reads. Every failure from here on puts the
+        # previous wiring back before reporting, so a refusal never leaves the
+        # light in a worse state than it was found.
+        confirmed = ies
+
+        def _refuse(message: str, error: str) -> dict:
+            _restore_previous_link()
+            detail = (error or "").rstrip()
+            if detail and not detail.endswith("."):
+                detail += "."
+            return skill_error(
+                message,
+                (detail + " " + _previous_state_note()).strip(),
+                previous_link=previous_type,
+                took_over_link=rewired and previous is not None,
+                previous_link_restored=restored if (rewired and previous is not None) else None,
+            )
+
+        if _ies_node_on(light) is None:
+            return _refuse(
+                f"IES profile not applied to {light_name}",
+                "no IES node is present in the light's shader tree after the write.",
+            )
+
+        confirmed_path = getattr(confirmed, "filepath", None)
+        if confirmed_path and os.path.abspath(os.path.expanduser(str(confirmed_path))) != resolved_path:
+            return _refuse(
+                f"IES profile not applied to {light_name}",
+                f"the node points at '{confirmed_path}', not '{resolved_path}'.",
+            )
+
+        if not _ies_link_is_from(emission, confirmed):
+            return _refuse(
+                f"IES profile is not driving {light_name}",
+                "the IES node's Fac output did not take over the emission node's Strength input, "
+                "so the profile would not render",
+            )
+
+        strength_socket = _socket_by_name(getattr(confirmed, "inputs", None), "Strength")
+        return skill_success(
+            f"Set IES profile on {light_name}",
+            object_name=light_name,
+            applied=True,
+            ies_path=resolved_path,
+            mode="EXTERNAL",
+            node_name=getattr(confirmed, "name", None),
+            strength=getattr(strength_socket, "default_value", None),
+            # Taking over somebody else's wiring is a real change to their scene,
+            # so it is reported rather than done quietly.
+            # Only report a take-over when one actually happened. Reusing the
+            # existing IES node replaces nothing, and reporting the node it
+            # happens to be wired from would claim a change that did not occur.
+            replaced_link=previous_type if rewired else None,
+            prompt="IES shapes the light in Cycles and EEVEE Next; render to see the beam.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to set IES profile on {light_name}")

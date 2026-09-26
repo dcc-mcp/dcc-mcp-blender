@@ -9,6 +9,9 @@ Run::
 
 from __future__ import annotations
 
+import math
+import os
+
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="bpy not available — run inside Blender Python interpreter")
@@ -310,3 +313,280 @@ class TestRenderSkillsE2E:
         result = mod.render_scene(output_path=out_path, write_still=True)
         assert result["success"] is True
         assert (tmp_path / "e2e_render.png").exists()
+
+
+# ── IES photometric profiles ─────────────────────────────────────────────────
+
+
+def _write_ies_profile(path, half_width, label="test profile"):
+    """Write a real LM-63 photometric file.
+
+    The file is photometric type A and repeats one vertical distribution across
+    every horizontal angle. Two details matter and both were learned the hard
+    way: a single horizontal angle gives Blender a zero-width horizontal range
+    that reads as black everywhere, and photometric type B rotates the frame so
+    the beam no longer follows the lamp.
+    """
+    vertical = [float(v) for v in range(0, 91, 5)]
+    horizontal = [float(h) for h in range(0, 361, 30)]
+    lines = [
+        "IESNA:LM-63-2002",
+        "[TEST] " + label,
+        "[MANUFAC] dcc-mcp-blender",
+        "[LUMINAIRE] " + label,
+        "TILT=NONE",
+        # lamps lumens multiplier n_vertical n_horizontal photo_type units ...
+        "1 1000 1 {0} {1} 1 2 0 0 0".format(len(vertical), len(horizontal)),
+        "1 1 50",
+        " ".join("{0:g}".format(v) for v in vertical),
+        " ".join("{0:g}".format(v) for v in horizontal),
+    ]
+    for _ in horizontal:
+        line = []
+        for angle in vertical:
+            line.append("{0:g}".format(round(1000.0 * math.exp(-((angle / half_width) ** 2)), 2)))
+        lines.append(" ".join(line))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def _ies_floor_scene(samples=32, resolution=128):
+    """A floor, a spot lamp five metres up, and a top-down camera.
+
+    The camera is orthographic so a pixel maps to a world position by a plain
+    linear scale, which keeps the beam-position assertions free of projection
+    guesswork. Cycles on the CPU needs no GPU, so this runs headless.
+    """
+    _new_scene()
+    scene = bpy.context.scene
+    scene.world = None
+
+    bpy.ops.mesh.primitive_plane_add(size=40.0, location=(0.0, 0.0, 0.0))
+    floor = bpy.context.active_object
+    material = bpy.data.materials.new("FloorMat")
+    # A new material starts with use_nodes off and node_tree None on Blender 4.x;
+    # 5.x flips it on at creation. Setting it explicitly is what makes the node
+    # lookup below safe on both, rather than only on the version it was written on.
+    material.use_nodes = True
+    bsdf = material.node_tree.nodes.get("Principled BSDF")
+    bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    bsdf.inputs["Roughness"].default_value = 1.0
+    floor.data.materials.append(material)
+
+    bpy.ops.object.light_add(type="SPOT", location=(0.0, 0.0, 5.0))
+    lamp = bpy.context.active_object
+    lamp.name = "E2ESpot"
+    lamp.data.energy = 600.0
+    lamp.data.spot_size = math.radians(150)
+    lamp.data.spot_blend = 0.0
+    lamp.data.shadow_soft_size = 0.0
+
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 16.0))
+    camera = bpy.context.active_object
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    camera.data.type = "ORTHO"
+    camera.data.ortho_scale = 40.0
+    scene.camera = camera
+
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = samples
+    scene.cycles.use_denoising = False
+    scene.cycles.seed = 1
+    scene.cycles.max_bounces = 0
+    scene.render.resolution_x = resolution
+    scene.render.resolution_y = resolution
+    scene.render.resolution_percentage = 100
+    bpy.context.view_layer.update()
+    return lamp
+
+
+def _render_luminance(path):
+    """Render to ``path`` and return per-pixel luminance as a flat list."""
+    bpy.context.scene.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+    image = bpy.data.images.load(path)
+    pixels = list(image.pixels)
+    bpy.data.images.remove(image)
+    count = len(pixels) // 4
+    return [0.2126 * pixels[4 * i] + 0.7152 * pixels[4 * i + 1] + 0.0722 * pixels[4 * i + 2] for i in range(count)]
+
+
+def _mean_abs_difference(left, right):
+    return sum(abs(a - b) for a, b in zip(left, right)) / len(left)
+
+
+class TestSetLightIesE2E:
+    def setup_method(self):
+        _new_scene()
+
+    def _spot(self):
+        bpy.ops.object.light_add(type="SPOT", location=(0.0, 0.0, 5.0))
+        lamp = bpy.context.active_object
+        lamp.name = "E2ESpot"
+        return lamp.name
+
+    def test_attaches_an_ies_node(self, tmp_path):
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+        name = self._spot()
+
+        result = mod.set_light_ies(light_name=name, ies_path=profile)
+
+        assert result["success"] is True
+        light = bpy.data.objects[name].data
+        ies_nodes = [node for node in light.node_tree.nodes if node.type == "TEX_IES"]
+        assert len(ies_nodes) == 1
+        assert ies_nodes[0].mode == "EXTERNAL"
+
+    def test_ies_node_drives_the_light_output(self, tmp_path):
+        """The node has to feed the emission node the renderer actually reads."""
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+        name = self._spot()
+
+        mod.set_light_ies(light_name=name, ies_path=profile)
+
+        light = bpy.data.objects[name].data
+        tree = light.node_tree
+        output = next(node for node in tree.nodes if node.type == "OUTPUT_LIGHT")
+        surface_link = output.inputs["Surface"].links[0]
+        emission = surface_link.from_node
+        strength = emission.inputs["Strength"]
+        assert strength.links, "the IES node is not driving the light's emission"
+        assert strength.links[0].from_node.type == "TEX_IES"
+
+    def test_vector_input_stays_unconnected(self, tmp_path):
+        """Connecting a direction there mis-aims the beam away from the aim."""
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+        name = self._spot()
+
+        mod.set_light_ies(light_name=name, ies_path=profile)
+
+        light = bpy.data.objects[name].data
+        ies = next(node for node in light.node_tree.nodes if node.type == "TEX_IES")
+        assert list(ies.inputs["Vector"].links) == []
+
+    def test_repeat_call_does_not_stack_nodes(self, tmp_path):
+        mod = load_skill("blender-lighting", "set_light_ies")
+        first = _write_ies_profile(tmp_path / "a.ies", 12.0)
+        second = _write_ies_profile(tmp_path / "b.ies", 35.0)
+        name = self._spot()
+
+        mod.set_light_ies(light_name=name, ies_path=first)
+        mod.set_light_ies(light_name=name, ies_path=second)
+
+        light = bpy.data.objects[name].data
+        ies_nodes = [node for node in light.node_tree.nodes if node.type == "TEX_IES"]
+        assert len(ies_nodes) == 1
+        # Blender normalises the stored path on some releases and leaves it alone on
+        # others, so compare resolved paths rather than the stored string.
+        assert os.path.abspath(ies_nodes[0].filepath) == os.path.abspath(second)
+
+    def test_clear_removes_the_profile(self, tmp_path):
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+        name = self._spot()
+        mod.set_light_ies(light_name=name, ies_path=profile)
+
+        result = mod.set_light_ies(light_name=name, clear=True)
+
+        assert result["success"] is True
+        light = bpy.data.objects[name].data
+        assert [node for node in light.node_tree.nodes if node.type == "TEX_IES"] == []
+
+    def test_missing_profile_file_is_refused(self, tmp_path):
+        mod = load_skill("blender-lighting", "set_light_ies")
+        name = self._spot()
+
+        result = mod.set_light_ies(light_name=name, ies_path=str(tmp_path / "absent.ies"))
+
+        assert result["success"] is False
+
+    def test_unknown_light_is_refused(self, tmp_path):
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+
+        result = mod.set_light_ies(light_name="NoSuchLight_XYZ", ies_path=profile)
+
+        assert result["success"] is False
+
+    def test_profile_changes_the_render(self, tmp_path):
+        """Render proof: the beam has to change with the profile.
+
+        A node that is wired but inert still passes every structural check, so
+        the only evidence that matters is a difference in rendered pixels.
+        """
+        mod = load_skill("blender-lighting", "set_light_ies")
+        narrow = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+        flood = _write_ies_profile(tmp_path / "flood.ies", 35.0)
+
+        renders = {}
+        for label, profile in (("plain", None), ("narrow", narrow), ("flood", flood)):
+            lamp = _ies_floor_scene()
+            if profile is not None:
+                result = mod.set_light_ies(light_name=lamp.name, ies_path=profile)
+                assert result["success"] is True, result
+            renders[label] = _render_luminance(str(tmp_path / ("ies_" + label + ".png")))
+
+        narrow_diff = _mean_abs_difference(renders["plain"], renders["narrow"])
+        flood_diff = _mean_abs_difference(renders["plain"], renders["flood"])
+        profile_diff = _mean_abs_difference(renders["narrow"], renders["flood"])
+
+        assert narrow_diff > 0.01, f"the narrow profile did not change the render (diff {narrow_diff:.4f})"
+        assert flood_diff > 0.01, f"the flood profile did not change the render (diff {flood_diff:.4f})"
+        assert profile_diff > 0.01, (
+            "two different profiles rendered the same image: the profile is not reaching the "
+            f"renderer (diff {profile_diff:.4f})"
+        )
+
+    def test_beam_is_centred_under_a_level_lamp(self, tmp_path):
+        """A symmetric profile on a level lamp must light the floor symmetrically."""
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+
+        lamp = _ies_floor_scene()
+        assert mod.set_light_ies(light_name=lamp.name, ies_path=profile)["success"] is True
+        luminance = _render_luminance(str(tmp_path / "ies_centred.png"))
+
+        resolution = bpy.context.scene.render.resolution_x
+        centre_row = resolution // 2
+
+        def at(world_x):
+            pixel = int((world_x + 20.0) / 40.0 * resolution)
+            return luminance[centre_row * resolution + min(pixel, resolution - 1)]
+
+        # Sampled either side of nadir; a mis-aimed profile lights one side only.
+        left, right = at(-2.0), at(2.0)
+        assert left > 0.05 and right > 0.05, f"the beam is off-centre: left={left:.4f} right={right:.4f}"
+        assert abs(left - right) < 0.25, f"the beam is asymmetric: left={left:.4f} right={right:.4f}"
+
+    def test_beam_follows_the_lamp_aim(self, tmp_path):
+        """Tilting the lamp must move the beam, so the profile is lamp-relative."""
+        mod = load_skill("blender-lighting", "set_light_ies")
+        profile = _write_ies_profile(tmp_path / "narrow.ies", 12.0)
+
+        def centroid_x(rotation_y):
+            lamp = _ies_floor_scene()
+            lamp.rotation_euler = (0.0, rotation_y, 0.0)
+            bpy.context.view_layer.update()
+            assert mod.set_light_ies(light_name=lamp.name, ies_path=profile)["success"] is True
+            luminance = _render_luminance(str(tmp_path / "ies_aim.png"))
+            resolution = bpy.context.scene.render.resolution_x
+            centre_row = resolution // 2
+            total = weighted = 0.0
+            for pixel in range(resolution):
+                value = luminance[centre_row * resolution + pixel]
+                if value > 0.10:
+                    total += value
+                    weighted += value * (pixel - resolution / 2.0)
+            return weighted / total if total else 0.0
+
+        tilted_negative = centroid_x(math.radians(-45.0))
+        tilted_positive = centroid_x(math.radians(45.0))
+
+        # The two aims are mirror images, so the beam must land on opposite sides.
+        assert tilted_negative * tilted_positive < 0, (
+            f"the beam did not follow the lamp's aim: -45deg -> {tilted_negative:+.2f}px, "
+            f"+45deg -> {tilted_positive:+.2f}px"
+        )
