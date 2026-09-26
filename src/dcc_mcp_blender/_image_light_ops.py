@@ -422,9 +422,16 @@ def list_image_tiles(image_name: str) -> dict:
         return skill_exception(exc, message=f"Failed to list tiles for {image_name}")
 
 
-# The adapter's declared host baseline. IES is a shader node rather than a
-# version-gated property, but the baseline is still stated so a refusal names
-# the supported window instead of only reporting a missing node type.
+# The adapter's declared host baseline, mirrored from install.MIN_BLENDER_VERSION
+# (Blender 4.5, see "raise the supported host baseline to Blender 4.5"). It is
+# copied rather than imported so the IES path stays importable on its own.
+#
+# This floor is the adapter's support window, NOT an IES requirement:
+# ShaderNodeTexIES predates 4.5 by years. It is checked first because a refusal
+# that names the supported window is more actionable than one naming a node type
+# the caller has never heard of. The floor is deliberately not the real gate --
+# that is the "can this build create the node" check below, which is what decides
+# support on any build that clears the baseline.
 MIN_BLENDER_VERSION_FOR_IES = (4, 5)
 
 # Node type that carries a photometric profile. Named once so the refusal, the
@@ -534,6 +541,31 @@ def set_light_linking(
         return skill_exception(exc, message=f"Failed to set light linking on {light_name}")
 
 
+def _first_socket(sockets: Any) -> Any:
+    """Return the first socket of a collection, or None when there is none.
+
+    Blender collections index by position, while a plain mapping only supports
+    its keys, so both shapes are handled rather than assuming that indexing by
+    0 works everywhere.
+    """
+    if sockets is None:
+        return None
+    try:
+        return sockets[0]
+    except (KeyError, IndexError, TypeError):
+        pass
+    values = getattr(sockets, "values", None)
+    if callable(values):
+        for socket in values():
+            return socket
+    try:
+        for socket in sockets:
+            return socket
+    except TypeError:
+        return None
+    return None
+
+
 def _find_node(nodes: Any, node_type: str) -> Any:
     """Return the first node of ``node_type``, or None."""
     if nodes is None:
@@ -593,13 +625,33 @@ def _driving_emission_node(nodes: Any) -> Any:
     return None
 
 
-def _ensure_emission_node(node_tree: Any) -> Any:
-    """Return the light's driving Emission node, creating the default chain if needed."""
-    nodes = node_tree.nodes
-    emission = _driving_emission_node(nodes)
-    if emission is not None and getattr(emission, "type", None) == "EMISSION":
-        return emission
+def _ensure_emission_node(node_tree: Any) -> Tuple[Any, Optional[dict]]:
+    """Return the light's driving Emission node, or an error for the caller.
 
+    IES shapes a light by driving an emission node's ``Strength`` input, so the
+    node it is attached to has to be the one the renderer reads. When the light
+    output is already driven by something that is not an emission node there is
+    no Strength input to drive at all, and attaching to any other emission node
+    in the tree would wire the profile into something that renders nothing while
+    still passing every check on the node itself. That case is refused rather
+    than guessed.
+    """
+    nodes = node_tree.nodes
+
+    driving = _driving_emission_node(nodes)
+    if driving is not None:
+        if getattr(driving, "type", None) == "EMISSION":
+            return driving, None
+        # Something other than an emission shader feeds the light output, so the
+        # profile has nowhere to land that the renderer would read.
+        node_type = getattr(driving, "type", None) or "unknown"
+        return None, skill_error(
+            f"Light output is driven by a {node_type} node, not an emission shader",
+            f"IES drives an emission node's Strength input, but ShaderNodeOutputLight is fed by "
+            f"'{node_type}'. Remove that node or route the light through an emission shader first.",
+        )
+
+    # Nothing drives the output yet, so the light is free to be taken over.
     emission = _find_node(nodes, "EMISSION")
     if emission is None:
         emission = nodes.new("ShaderNodeEmission")
@@ -609,8 +661,8 @@ def _ensure_emission_node(node_tree: Any) -> Any:
         output = nodes.new("ShaderNodeOutputLight")
     surface = _socket_by_name(getattr(output, "inputs", None), "Surface")
     if surface is not None and not getattr(surface, "is_linked", False):
-        node_tree.links.new(emission.outputs[0], surface)
-    return emission
+        node_tree.links.new(_first_socket(getattr(emission, "outputs", None)), surface)
+    return emission, None
 
 
 def _ies_node_on(light: Any) -> Any:
@@ -768,7 +820,9 @@ def set_light_ies(
                 "this build does not expose a node tree on the light, so no IES node can be added.",
             )
 
-        emission = _ensure_emission_node(node_tree)
+        emission, ensure_error = _ensure_emission_node(node_tree)
+        if ensure_error:
+            return ensure_error
 
         # Reuse the existing node so repeat calls update instead of stacking.
         ies = _ies_node_on(light)

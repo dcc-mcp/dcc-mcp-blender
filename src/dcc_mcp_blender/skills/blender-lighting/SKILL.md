@@ -82,6 +82,17 @@ Version handling is explicit, not a `hasattr` guess: a build below the supported
 baseline, or one that cannot create the node type, is refused with that reason
 instead of reporting success.
 
+The 4.5 floor is the **adapter's** support window, not an IES requirement —
+`ShaderNodeTexIES` predates 4.5 by years. It is checked first only because a
+refusal naming the supported window is more actionable than one naming an
+obscure node type; the real gate is whether the build can create the node.
+
+A light whose output is driven by something other than an emission shader (a
+Mix Shader, say) is also refused. IES drives an emission node's `Strength`, so
+with no emission node on the output there is nowhere to attach it that the
+renderer would read — wiring an orphan instead would report success for a light
+that renders unshaped.
+
 Photometric files are read as supplied. Two file-level details change the result
 and neither is reported by Blender, so they are worth knowing when a profile
 renders as nothing:

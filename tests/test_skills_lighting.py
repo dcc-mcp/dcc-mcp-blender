@@ -705,6 +705,7 @@ class _Nodes:
     _NAMES = {
         "ShaderNodeTexIES": "IES Texture",
         "ShaderNodeEmission": "Emission",
+        "ShaderNodeMixShader": "Mix Shader",
         "ShaderNodeOutputLight": "Light Output",
     }
 
@@ -749,6 +750,13 @@ class _Nodes:
                 name,
                 inputs=[_Socket("Color", (1.0, 1.0, 1.0, 1.0)), _Socket("Strength", 1.0)],
                 outputs=[_Socket("Emission", (0.0, 0.0, 0.0, 1.0))],
+            )
+        elif node_type == "ShaderNodeMixShader":
+            node = _Node(
+                "MIX_SHADER",
+                name,
+                inputs=[_Socket("Fac", 0.5), _Socket("Shader1", None), _Socket("Shader2", None)],
+                outputs=[_Socket("Shader", None)],
             )
         else:
             node = _Node("OUTPUT_LIGHT", name, inputs=[_Socket("Surface", None)], outputs=[])
@@ -1047,3 +1055,90 @@ class TestSetLightIes:
         assert result["success"] is True
         assert driving.inputs["Strength"].links[0].from_node.type == "TEX_IES"
         assert emission.inputs["Strength"].links == []
+
+    def test_refuses_when_a_non_emission_node_drives_the_output(self, tmp_path):
+        """A MIX shader feeding the output leaves the profile nowhere to land.
+
+        Every check on the IES node itself still passes in this shape -- the node
+        is in the tree, the path matches, its Fac is linked to a Strength input --
+        so anchoring verification to the node rather than to whatever drives the
+        light output reports success for a light that renders unshaped.
+        """
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        orphan = tree.nodes.new("ShaderNodeEmission")
+        output = next(node for node in tree.nodes if node.type == "OUTPUT_LIGHT")
+        surface = output.inputs["Surface"]
+        for link in list(surface.links):
+            tree.links.remove(link)
+        tree.links.new(mix.outputs["Shader"], surface)
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert "MIX_SHADER" in result["message"]
+        # Refusing must not leave a half-wired profile behind.
+        assert _ies_node(light) is None
+        assert orphan.inputs["Strength"].links == []
+        assert [link.from_node for link in surface.links] == [mix]
+
+    def test_refuses_when_no_emission_node_exists_to_drive(self, tmp_path):
+        """Same shape, but with no emission node in the tree at all.
+
+        The temptation here is to create one and wire the profile into it; it
+        would render nothing, because the output is still fed by the mix shader.
+        """
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        # Drop the default emission node too, so the tree really has none.
+        for node in [node for node in tree.nodes if node.type == "EMISSION"]:
+            tree.nodes.remove(node)
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        output = next(node for node in tree.nodes if node.type == "OUTPUT_LIGHT")
+        surface = output.inputs["Surface"]
+        for link in list(surface.links):
+            tree.links.remove(link)
+        tree.links.new(mix.outputs["Shader"], surface)
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert _ies_node(light) is None
+        assert [node for node in tree.nodes if node.type == "EMISSION"] == []
+        assert [link.from_node for link in surface.links] == [mix]
+
+    def test_takes_over_an_unconnected_output(self, tmp_path):
+        """Nothing drives the light output yet, so the light can be taken over."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        output = next(node for node in tree.nodes if node.type == "OUTPUT_LIGHT")
+        surface = output.inputs["Surface"]
+        for link in list(surface.links):
+            tree.links.remove(link)
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        assert surface.links, "the emission node was not wired into the light output"
+        emission = surface.links[0].from_node
+        assert emission.type == "EMISSION"
+        assert emission.inputs["Strength"].links[0].from_node.type == "TEX_IES"
