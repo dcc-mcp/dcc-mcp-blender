@@ -762,6 +762,21 @@ def _ies_link_is_from(emission: Any, ies: Any) -> bool:
     return actual == expected
 
 
+def _strength_link_is(emission: Any, socket: Any) -> bool:
+    """True when ``socket`` is what currently drives ``emission``'s Strength.
+
+    Used to confirm a restored link really landed. Compares sockets by identity,
+    which holds here because both come from the same link object rather than
+    from separate traversals of the tree.
+    """
+    if socket is None:
+        return False
+    link = _strength_link(emission)
+    if link is None:
+        return False
+    return getattr(link, "from_socket", None) is socket
+
+
 def _strength_link(emission: Any) -> Any:
     """Return the link driving an emission node's Strength input, or None."""
     strength = _socket_by_name(getattr(emission, "inputs", None), "Strength")
@@ -924,6 +939,38 @@ def set_light_ies(
                 f"IES node cannot drive {light_name}",
                 "the IES node has no Fac output, or the emission node has no Strength input.",
             )
+        # Taking over the socket is destructive, so the previous wiring is
+        # remembered and put back if anything goes wrong afterwards. Without
+        # this, a link that fails to land leaves the caller being told "it did
+        # not work" while the light has in fact lost whatever drove it before --
+        # the caller reasonably reads a failure as "nothing changed".
+        previous = None
+        if existing_link is not None:
+            previous = (existing_link.from_socket, existing_link.to_socket)
+        previous_type = None
+        if existing_link is not None:
+            previous_type = getattr(getattr(existing_link, "from_node", None), "type", None)
+        rewired = False
+
+        restored = False
+
+        def _restore_previous_link() -> None:
+            """Put the previous wiring back; remember whether it actually landed.
+
+            A restore that silently fails would leave the light un driven while
+            the caller is told the previous wiring is in place, so the outcome is
+            recorded and surfaced rather than assumed.
+            """
+            nonlocal restored
+            if not rewired or previous is None:
+                return
+            try:
+                node_tree.links.new(previous[0], previous[1])
+            except Exception:
+                return
+            # Confirm the link is really back instead of trusting the call.
+            restored = _strength_link_is(emission, previous[0])
+
         # Rewire when a different IES node currently holds the socket; otherwise
         # the profile we just configured stays off the render path.
         if not _ies_link_is_from(emission, ies):
@@ -932,29 +979,59 @@ def set_light_ies(
                     node_tree.links.remove(existing_link)
                 except Exception:
                     pass
-            node_tree.links.new(fac, target)
+            try:
+                node_tree.links.new(fac, target)
+            except Exception as exc:
+                _restore_previous_link()
+                return skill_error(
+                    f"IES profile could not be wired into {light_name}",
+                    f"the emission node's Strength input could not be linked ({exc}); the previous "
+                    "wiring was left as it was.",
+                )
+            rewired = True
 
         # ── Verify: the node we configured is the one actually driving the
-        # emission node the renderer reads.
+        # emission node the renderer reads. Every failure from here on puts the
+        # previous wiring back before reporting, so a refusal never leaves the
+        # light in a worse state than it was found.
         confirmed = ies
-        if _ies_node_on(light) is None:
+
+        def _refuse(message: str, error: str) -> dict:
+            _restore_previous_link()
+            if rewired and previous is not None and not restored:
+                # The previous wiring could not be put back. Say so loudly: the
+                # light is now driven by nothing, and reporting only the original
+                # failure would hide that.
+                error = (
+                    error + " The previous wiring on the Strength input could not be restored, so the "
+                    "light is left with nothing driving it."
+                )
             return skill_error(
+                message,
+                error,
+                previous_link=previous_type,
+                took_over_link=rewired and previous is not None,
+                previous_link_restored=restored if (rewired and previous is not None) else None,
+            )
+
+        if _ies_node_on(light) is None:
+            return _refuse(
                 f"IES profile not applied to {light_name}",
                 "no IES node is present in the light's shader tree after the write.",
             )
 
         confirmed_path = getattr(confirmed, "filepath", None)
         if confirmed_path and os.path.abspath(os.path.expanduser(str(confirmed_path))) != resolved_path:
-            return skill_error(
+            return _refuse(
                 f"IES profile not applied to {light_name}",
                 f"the node points at '{confirmed_path}', not '{resolved_path}'.",
             )
 
         if not _ies_link_is_from(emission, confirmed):
-            return skill_error(
+            return _refuse(
                 f"IES profile is not driving {light_name}",
-                "a different IES node is wired to the emission node's Strength input, so the "
-                "profile just configured would not render",
+                "the IES node's Fac output did not take over the emission node's Strength input, "
+                "so the profile would not render",
             )
 
         strength_socket = _socket_by_name(getattr(confirmed, "inputs", None), "Strength")
@@ -966,6 +1043,9 @@ def set_light_ies(
             mode="EXTERNAL",
             node_name=getattr(confirmed, "name", None),
             strength=getattr(strength_socket, "default_value", None),
+            # Taking over somebody else's wiring is a real change to their scene,
+            # so it is reported rather than done quietly.
+            replaced_link=previous_type,
             prompt="IES shapes the light in Cycles and EEVEE Next; render to see the beam.",
         )
     except ImportError:

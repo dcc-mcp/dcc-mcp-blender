@@ -1276,3 +1276,113 @@ class TestSetLightIes:
         assert result["success"] is True
         assert result["context"]["node_name"] == driving.name
         assert os.path.abspath(driving.filepath) == os.path.abspath(str(profile))
+
+    # ── taking over the socket must never leave the light worse off ──────────
+
+    def test_restores_the_previous_link_when_the_rewire_fails(self, tmp_path):
+        """A rewire that does not land must put back what was there before.
+
+        The caller reads success=False as \"nothing changed\". If the take-over
+        already removed their link, that reading is wrong and the light is left
+        with nothing driving Strength.
+        """
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+        tree.links.new(value.outputs["Value"], strength)
+        bpy = _make_light_bpy(light)
+
+        # Everything lands until the tool has taken the old link off, then the
+        # new link refuses to register -- but a later re-link can still succeed.
+        state = {"removed": False, "failed_once": False}
+        real_remove = tree.links.remove
+        real_new = tree.links.new
+
+        def remove(link):
+            state["removed"] = True
+            return real_remove(link)
+
+        def new(from_socket, to_socket):
+            if state["removed"] and not state["failed_once"]:
+                state["failed_once"] = True
+                return None
+            return real_new(from_socket, to_socket)
+
+        tree.links.remove = remove
+        tree.links.new = new
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert [link.from_node.type for link in strength.links] == ["VALUE"], (
+            "the previous wiring was not restored after a failed take-over"
+        )
+        assert result["context"]["previous_link"] == "VALUE"
+        assert result["context"]["took_over_link"] is True
+        assert result["context"]["previous_link_restored"] is True
+
+    def test_says_so_when_the_previous_link_cannot_be_restored(self, tmp_path):
+        """An unrecoverable take-over must be reported, not assumed recovered.
+
+        The wiring cannot be put back here, so the error has to carry that
+        rather than let the caller believe the light is as it was.
+        """
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+        tree.links.new(value.outputs["Value"], strength)
+        bpy = _make_light_bpy(light)
+
+        state = {"removed": False}
+        real_remove = tree.links.remove
+
+        def remove(link):
+            state["removed"] = True
+            return real_remove(link)
+
+        # Nothing can be linked once the take-over has started.
+        tree.links.remove = remove
+        tree.links.new = lambda from_socket, to_socket: None
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is False
+        assert result["context"]["previous_link_restored"] is False
+        assert "could not be restored" in (result.get("error") or "")
+
+    def test_reports_taking_over_existing_wiring(self, tmp_path):
+        """A successful take-over is reported, not done quietly."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        tree.links.new(value.outputs["Value"], emission.inputs["Strength"])
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        # The caller's Value node was replaced, so say which one went.
+        assert result["context"]["replaced_link"] == "VALUE"
+        driving = emission.inputs["Strength"].links[0].from_node
+        assert driving.type == "TEX_IES"
+        assert os.path.abspath(driving.filepath) == os.path.abspath(str(profile))
