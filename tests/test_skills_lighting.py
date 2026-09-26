@@ -632,6 +632,26 @@ class TestSetWorldBackground:
 # -- IES photometric profiles -------------------------------------------------
 
 
+class _SocketView:
+    """A fresh wrapper for a socket, the way Blender returns one per access.
+
+    Attribute access is forwarded to the wrapped socket, so it reads like the
+    socket itself while never being identity-equal to it.
+    """
+
+    def __init__(self, socket):
+        self._socket = socket
+
+    def __getattr__(self, name):
+        return getattr(self._socket, name)
+
+    def __setattr__(self, name, value):
+        if name == "_socket":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._socket, name, value)
+
+
 class _Socket:
     """Stand-in for a Blender node socket."""
 
@@ -647,11 +667,27 @@ class _Socket:
 
 
 class _Link:
+    """NodeLink double.
+
+    ``from_socket`` / ``to_socket`` hand out a fresh wrapper on every access,
+    which is what Blender does. Code that compares sockets by identity looks
+    correct against a double that returns the same object every time and then
+    breaks on a real host, so the double has to reproduce the wrapper behaviour.
+    """
+
     def __init__(self, from_socket, to_socket):
-        self.from_socket = from_socket
+        self._from_socket = from_socket
+        self._to_socket = to_socket
         self.from_node = from_socket.node
-        self.to_socket = to_socket
         self.to_node = to_socket.node
+
+    @property
+    def from_socket(self):
+        return _SocketView(self._from_socket)
+
+    @property
+    def to_socket(self):
+        return _SocketView(self._to_socket)
 
 
 class _Links:
@@ -1464,3 +1500,98 @@ class TestSetLightIes:
         assert result["context"]["previous_link_restored"] is False
         assert "could not be restored" in detail
         assert "left as it was" not in detail, "the detail claims nothing changed when it did"
+
+    # ── report only what actually happened ──────────────────────────────────
+
+    def test_replaced_link_is_not_reported_when_nothing_was_replaced(self, tmp_path):
+        """Reusing the existing IES node replaces nothing, so say nothing.
+
+        Reporting the node it happens to be wired from would claim a change to
+        the caller's scene that did not happen.
+        """
+        first = tmp_path / "a.ies"
+        first.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        second = tmp_path / "b.ies"
+        second.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        bpy = _make_light_bpy(light)
+
+        first_result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(first)
+        )
+        assert first_result["success"] is True
+        assert first_result["context"]["replaced_link"] is None
+        assert len([node for node in light.node_tree.nodes if node.type == "TEX_IES"]) == 1
+
+        second_result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(second)
+        )
+
+        assert second_result["success"] is True
+        # The node was reused, so nothing of the caller's was taken over.
+        assert second_result["context"]["replaced_link"] is None, (
+            "reported taking over wiring on a call that replaced nothing"
+        )
+        assert len([node for node in light.node_tree.nodes if node.type == "TEX_IES"]) == 1
+
+    def test_replaced_link_is_reported_when_wiring_was_taken_over(self, tmp_path):
+        """The counterpart: a real take-over is still reported."""
+        profile = tmp_path / "profile.ies"
+        profile.write_text("IESNA:LM-63-2002\n", encoding="utf-8")
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        tree.links.new(value.outputs["Value"], emission.inputs["Strength"])
+        bpy = _make_light_bpy(light)
+
+        result = load_and_call(
+            "blender-lighting/scripts/set_light_ies.py", bpy, light_name="Spot", ies_path=str(profile)
+        )
+
+        assert result["success"] is True
+        assert result["context"]["replaced_link"] == "VALUE"
+
+    def test_restored_link_is_recognised_across_link_objects(self):
+        """A restored socket must not be missed because the wrapper differs.
+
+        The socket is captured from the link that was removed and read back from
+        the one that replaced it. Blender does not promise the same Python
+        wrapper for the same socket, so identity alone would report "not
+        restored" for a restore that worked.
+        """
+
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+
+        first = tree.links.new(value.outputs["Value"], strength)
+        captured = first.from_socket
+        tree.links.remove(first)
+        # Same socket, reached through a different link object.
+        tree.links.new(value.outputs["Value"], strength)
+
+        from dcc_mcp_blender._image_light_ops import _strength_link_is
+
+        assert _strength_link_is(emission, captured) is True
+
+    def test_restore_detection_distinguishes_a_different_socket(self):
+        """A different socket must still be recognised as different."""
+        light = _FakeLight()
+        light.use_nodes = True
+        tree = light.node_tree
+        emission = _emission_node(light)
+        value = tree.nodes.new("ShaderNodeValue")
+        other = tree.nodes.new("ShaderNodeValue")
+        strength = emission.inputs["Strength"]
+
+        captured = value.outputs["Value"]
+        tree.links.new(other.outputs["Value"], strength)
+
+        from dcc_mcp_blender._image_light_ops import _strength_link_is
+
+        assert _strength_link_is(emission, captured) is False

@@ -762,19 +762,46 @@ def _ies_link_is_from(emission: Any, ies: Any) -> bool:
     return actual == expected
 
 
+def _socket_identity(socket: Any) -> Optional[Tuple[str, str]]:
+    """Return a stable identifier for a socket, or None when it has none.
+
+    Blender hands out a fresh Python wrapper for a socket on every access, so
+    two wrappers for the same socket are not identity-equal. Node names are
+    unique within a tree and socket names are unique within a node, so the pair
+    identifies a socket without relying on object identity.
+    """
+    if socket is None:
+        return None
+    node_name = getattr(getattr(socket, "node", None), "name", None)
+    socket_name = getattr(socket, "name", None)
+    if not isinstance(node_name, str) or not isinstance(socket_name, str):
+        return None
+    return (node_name, socket_name)
+
+
 def _strength_link_is(emission: Any, socket: Any) -> bool:
     """True when ``socket`` is what currently drives ``emission``'s Strength.
 
-    Used to confirm a restored link really landed. Compares sockets by identity,
-    which holds here because both come from the same link object rather than
-    from separate traversals of the tree.
+    Used to confirm a restored link really landed. The socket being compared was
+    captured from the link that was removed, while the one read back belongs to
+    the link that replaced it -- two different link objects, so an identity
+    check between them would report "not restored" for a restore that worked.
+    Comparison is therefore by stable identifiers, with identity as a fallback
+    for objects that expose neither a node nor a name.
     """
     if socket is None:
         return False
     link = _strength_link(emission)
     if link is None:
         return False
-    return getattr(link, "from_socket", None) is socket
+    current = getattr(link, "from_socket", None)
+    if current is None:
+        return False
+    expected = _socket_identity(socket)
+    actual = _socket_identity(current)
+    if expected is not None and actual is not None:
+        return expected == actual
+    return current is socket
 
 
 def _strength_link(emission: Any) -> Any:
@@ -1062,7 +1089,10 @@ def set_light_ies(
             strength=getattr(strength_socket, "default_value", None),
             # Taking over somebody else's wiring is a real change to their scene,
             # so it is reported rather than done quietly.
-            replaced_link=previous_type,
+            # Only report a take-over when one actually happened. Reusing the
+            # existing IES node replaces nothing, and reporting the node it
+            # happens to be wired from would claim a change that did not occur.
+            replaced_link=previous_type if rewired else None,
             prompt="IES shapes the light in Cycles and EEVEE Next; render to see the beam.",
         )
     except ImportError:
