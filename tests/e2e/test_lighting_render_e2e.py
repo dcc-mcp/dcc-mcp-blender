@@ -364,6 +364,10 @@ def _ies_floor_scene(samples=32, resolution=128):
     bpy.ops.mesh.primitive_plane_add(size=40.0, location=(0.0, 0.0, 0.0))
     floor = bpy.context.active_object
     material = bpy.data.materials.new("FloorMat")
+    # A new material starts with use_nodes off and node_tree None on Blender 4.x;
+    # 5.x flips it on at creation. Setting it explicitly is what makes the node
+    # lookup below safe on both, rather than only on the version it was written on.
+    material.use_nodes = True
     bsdf = material.node_tree.nodes.get("Principled BSDF")
     bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     bsdf.inputs["Roughness"].default_value = 1.0
