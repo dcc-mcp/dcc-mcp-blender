@@ -67,6 +67,7 @@ Or install the Blender extension (ZIP) and the server starts automatically.
 - **README.md** — Installation, quick start, environment variables, bundled tools list.
 - **install.md** — Agent-facing setup entry: install pip dependencies, guide Blender add-on loading, and run a first smoke prompt.
 - **skills/dcc-mcp-blender-setup/SKILL.md** — Setup skill reference, one-command install script.
+- **skills/dcc-blender-assembly-pitfalls/SKILL.md** — Failure-mode skill: read before creating, sizing, orienting, or joining geometry through MCP.
 - **src/dcc_mcp_blender/skills/SKILLS_INDEX.md** — Staged loading guidance, task-to-skill chains, side-effect profiles for all bundled skills.
 
 ### Layer 2 — You Are a Skill Author
