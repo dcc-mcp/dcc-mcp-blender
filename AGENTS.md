@@ -95,7 +95,114 @@ Create a new skill package under `src/dcc_mcp_blender/skills/<your-skill>/` with
 
 ---
 
-## Key Environment Variables
+## Agent Contract Files
+
+`AGENTS.md` is the **only** agent contract file at the repository root. It is the
+native instruction file for Codex, OpenCode, Cursor, GitHub Copilot, Windsurf,
+Cline, Roo Code, Kiro, Trae, and Augment, and Claude Code falls back to it when
+no `CLAUDE.md` exists. Guidance that used to live in `CLAUDE.md` and `GEMINI.md` has been folded
+into [**Client Integration Notes**](#client-integration-notes) below.
+
+**Gemini CLI exception:** Gemini CLI defaults its context file to `GEMINI.md`. To
+make it read `AGENTS.md`, set `context.fileName` once in `~/.gemini/settings.json`:
+
+```json
+{
+  "context": {
+    "fileName": ["AGENTS.md", "GEMINI.md"]
+  }
+}
+```
+
+
+---
+
+## Client Integration Notes
+
+All MCP clients use the same endpoint — `http://127.0.0.1:9765/mcp` (MCP
+Streamable HTTP, spec `2025-03-26`).
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "blender": {
+      "url": "http://127.0.0.1:9765/mcp"
+    }
+  }
+}
+```
+
+File locations:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Restart Claude Desktop after editing.
+
+**Progressive loading.** By default the server starts with a minimal set of
+built-in tools active:
+
+- `execute_python`, `execute_script_file`, `get_blender_info`
+- `get_scene_info`, `get_session_info`, `list_objects`
+- `search_tools`, `list_skills`, `load_skill`
+
+**All other skills appear as `__skill__<name>` stubs.** When a tool from an
+unloaded skill is needed:
+
+1. Call `load_skill("blender-animation")` to expand the skill.
+2. Then call the desired tool (e.g. `blender_animation__set_keyframe`).
+
+**Claude-specific tips.**
+
+- **Viewport feedback:** ask the model to call `capture_viewport` after geometry changes — the result is a base64-encoded PNG it can "see" in the conversation.
+- **Cancellation:** the client can send `notifications/cancelled` for long renders; skill scripts that poll `check_blender_cancelled()` exit cleanly.
+- **Code execution:** prefer `search_skills` → `load_skill` → typed tools with `inputSchema`. Use `execute_python` only when no skill covers the task (bulk in-Blender loops, bpy API gaps, one-offs). Operators can refuse it with `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON=1` or `DCC_MCP_BLENDER_DISABLE_ARBITRARY_SCRIPT=1`.
+
+### Gemini
+
+Gemini is strong at generating whole skill packages. Author scripts against
+`dcc_mcp_blender.api`:
+
+```python
+from dcc_mcp_blender.api import blender_success, blender_error
+
+def batch_rename(prefix: str) -> dict:
+    """Rename selected objects with prefix."""
+    import bpy
+    selected = bpy.context.selected_objects or []
+    renamed = []
+    for obj in selected:
+        obj.name = f"{prefix}{obj.name}"
+        renamed.append(obj.name)
+    return blender_success("Renamed objects", renamed=renamed, count=len(renamed))
+```
+
+Results are nested JSON that Gemini parses directly:
+
+```json
+{
+  "success": true,
+  "message": "Created sphere",
+  "context": {
+    "object_name": "Sphere",
+    "radius": 1.0
+  }
+}
+```
+
+Discover capabilities with `search_skills("render batch")` and
+`search_tools(query="bake", tags=["texture"])`, then generate `SKILL.md`,
+`tools.yaml`, and `scripts/*.py` into a directory listed in
+`DCC_MCP_BLENDER_SKILL_PATHS`. Feed `capture_viewport` base64 PNGs back to Gemini
+for visual state verification.
+
+---
+
+## ## Key Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -129,7 +236,6 @@ See **README.md** for the full env var table.
 ## See Also
 
 - [README.md](README.md) — Installation, features, all env vars
-- [CLAUDE.md](CLAUDE.md) — Claude Desktop-specific integration
-- [GEMINI.md](GEMINI.md) — Gemini-specific integration
+- [Client Integration Notes](#client-integration-notes) — Claude Desktop config, progressive loading, Gemini skill generation
 - [llms.txt](llms.txt) — One-page core reference for AI agents
 - [install.md](install.md) — Agent-facing setup workflow
