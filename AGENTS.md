@@ -1,12 +1,30 @@
-# AGENTS.md — dcc-mcp-blender Agent Navigation Map
+# AGENTS.md — dcc-mcp-blender
 
-> Progressive disclosure: this file is a **map**, not an encyclopedia.
-> Follow the links for depth. Stay here for breadth.
+> Navigation map for AI agents. Detailed API lives in `README.md` and `llms.txt`.
+> This file is a **map**, not an encyclopedia — follow the links for depth.
 
-## Agent Control Path
+## Build & test
 
-AI agent runtimes default to the shared gateway through the
-`dcc-mcp` skill and `dcc-mcp-cli` REST commands:
+```bash
+vx just setup              # install dev deps + verify imports
+vx just check              # ruff lint + quick tests
+vx just prek               # pre-commit gate: autofix, format, lint, quick tests
+vx just ci                 # lint-all + coverage (local CI simulation)
+```
+
+Host-side helpers (verify recipe names in `justfile` before inventing new ones):
+
+```bash
+vx just blender-link           # symlink src/dcc_mcp_blender into Blender's addons dir
+vx just blender-link-win       # same, PowerShell (native Windows)
+vx just blender-addon-zip      # build the installable extension ZIP into dist_addon/
+vx just test file=tests/test_api.py   # run one test file
+```
+
+## Agent control path
+
+AI agent runtimes default to the shared gateway through the `dcc-mcp` skill and
+`dcc-mcp-cli` REST commands:
 
 ```bash
 dcc-mcp-cli search --query "<task>" --dcc-type blender
@@ -29,25 +47,10 @@ dcc-mcp-cli update check
 dcc-mcp-cli update apply
 ```
 
-`update apply` stages the latest CLI for the next launch; it does not replace
-a running server.
+`update apply` stages the latest CLI for the next launch; it does not replace a
+running server.
 
----
-
-## 30-Second Summary
-
-`dcc-mcp-blender` embeds a standards-compliant MCP Streamable HTTP server directly inside Blender. It exposes 200+ Blender operations as MCP tools that any AI agent (Claude, Gemini, Cursor, etc.) can call over HTTP — no external gateway, no subprocess bridge.
-
-**Current version:** 0.2.3 <!-- x-release-please-version -->
-**Core dependency:** `dcc-mcp-core>=0.20.0,<0.21.0`
-**Python:** Use Blender's bundled interpreter; Blender 4.5 uses 3.11, 5.2 uses 3.13.
-**Blender CI targets:** 4.5.13 LTS and 5.2.1 on Windows/Linux/macOS; 4.5 is the
-minimum supported host and acceptance boundaries are documented in README.md.
-**Coverage:** See [docs/capability-coverage.md](docs/capability-coverage.md).
-
----
-
-## Quick Start (3 Lines)
+## Quick start
 
 ```python
 import dcc_mcp_blender
@@ -57,79 +60,78 @@ handle = dcc_mcp_blender.start_server()
 
 Or install the Blender extension (ZIP) and the server starts automatically.
 
----
+## Quick facts
 
-## Information Layers — Pick Your Depth
+- **Target host:** Blender **4.5+** (4.5.13 LTS and 5.2.1 are the CI targets on
+  Windows/Linux/macOS). 4.5 is the minimum supported host; acceptance boundaries
+  are documented in `README.md`.
+- **Python:** use Blender's bundled interpreter — Blender 4.5 ships 3.11, 5.2
+  ships 3.13.
+- **Core dependency:** `dcc-mcp-core>=0.20.0,<0.21.0`; entry point declared in
+  `pyproject.toml` under `[project.entry-points."dcc_mcp.adapters"]`.
+- **Do not assume:** an external gateway or subprocess bridge is required — the
+  MCP Streamable HTTP server runs inside Blender.
 
-### Layer 1 — You Are a User / Operator
-*Goal: Install, configure, and connect an MCP host.*
+## Skills-first workflow
 
-- **README.md** — Installation, quick start, environment variables, bundled tools list.
-- **install.md** — Agent-facing setup entry: install pip dependencies, guide Blender add-on loading, and run a first smoke prompt.
-- **skills/dcc-mcp-blender-setup/SKILL.md** — Setup skill reference, one-command install script.
-- **skills/dcc-blender-assembly-pitfalls/SKILL.md** — Failure-mode skill: read before creating, sizing, orienting, or joining geometry through MCP.
-- **src/dcc_mcp_blender/skills/SKILLS_INDEX.md** — Staged loading guidance, task-to-skill chains, side-effect profiles for all bundled skills.
+```
+search_skills(query="render")  → find a typed skill
+load_skill("blender-animation") → expand its tools
+call blender_animation__set_keyframe
+execute_python only when no typed skill fits
+```
 
-### Layer 2 — You Are a Skill Author
-*Goal: Write new Blender automation skills and register them as MCP tools.*
+## Repo layout
 
-- **src/dcc_mcp_blender/api.py** — `@with_main_thread` decorator, `blender_success` / `blender_error` helpers, context snapshot wrappers.
-- **src/dcc_mcp_blender/capabilities.py** — Capability manifest builder; each skill registers its action list so agents can discover tools without loading the full catalog.
-- **src/dcc_mcp_blender/_scene_ops.py**, **src/dcc_mcp_blender/_mesh_ops.py**, etc. — Reference implementations for each domain skill.
-- **pyproject.toml** — `[project.entry-points."dcc_mcp.adapters"]` declares `blender = "dcc_mcp_blender:BlenderMcpServer"`.
-
-Create a new skill package under `src/dcc_mcp_blender/skills/<your-skill>/` with:
-1. `SKILL.md` — metadata, dependencies, tools yaml path
-2. `tools.yaml` — tool definitions (name, description, inputSchema)
-3. `scripts/*.py` — implementation scripts (one file per tool or group)
-
-### Layer 3 — You Are a Core Developer
-*Goal: Understand the server lifecycle, dispatcher architecture, and integration points.*
-
-- **src/dcc_mcp_blender/server.py** — `BlenderMcpServer`, builtin action registration, metrics, jobs
-- **src/dcc_mcp_blender/dispatcher/** — `BlenderUiDispatcher` (GUI mode) and `BlenderHost` (headless) dispatcher implementations
-- **src/dcc_mcp_blender/host.py** — Host adapter that abstracts Blender's main thread from MCP request threads
-- **src/dcc_mcp_blender/blender_bootstrap.py** — Headless CI/automation bootstrap entry point
-- **src/dcc_mcp_blender/context_snapshot.py** — Scene context provider (selection, frame, scene name, version)
-- **src/dcc_mcp_blender/_readiness.py** — Three-state readiness probe (process, dispatcher, dcc)
-
----
-
-## Key Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DCC_MCP_BLENDER_SEMANTIC_INDEX` | `0` | Enable hybrid BM25 + vector skill search (opt-in) |
-| `DCC_MCP_BLENDER_METRICS` | `false` | Enable Prometheus `/metrics` |
-| `DCC_MCP_BLENDER_DISABLE_EXECUTE_PYTHON` | `false` | Restrict arbitrary Python execution |
-| `DCC_MCP_BLENDER_SKILL_PATHS` | — | Additional skill search paths |
-| `DCC_MCP_BLENDER_PROJECT_TOOLS` | — | Set to `0` to opt out of project tools |
-| `DCC_MCP_BLENDER_RESOURCES` | — | Set to `0` to opt out of MCP resource publishing |
-
-See **README.md** for the full env var table.
-
----
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/dcc_mcp_blender/server.py` | `BlenderMcpServer`, builtin skill discovery, metrics, jobs |
-| `src/dcc_mcp_blender/dispatcher/__init__.py` | Thread-affinity dispatchers for GUI and headless modes |
-| `src/dcc_mcp_blender/host.py` | Host adapter (abstracts Blender main thread) |
-| `src/dcc_mcp_blender/api.py` | Skill authoring helpers |
+| Path | Role |
+|---|---|
+| `src/dcc_mcp_blender/server.py` | `BlenderMcpServer` composition root, metrics, jobs |
+| `src/dcc_mcp_blender/dispatcher/` | GUI + headless thread-affinity dispatchers |
+| `src/dcc_mcp_blender/host.py` | Host adapter abstracting Blender's main thread |
+| `src/dcc_mcp_blender/api.py` | Skill authoring helpers (`blender_success`, `with_main_thread`) |
 | `src/dcc_mcp_blender/context_snapshot.py` | Scene / selection / frame context provider |
-| `src/dcc_mcp_blender/skills/` | 25+ built-in skill packages (200+ typed MCP tools) |
-| `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` | Staged loading guide and task-to-skill maps |
-| `README.md` | Human overview |
-| `llms.txt` | One-page core reference for AI agents |
+| `src/dcc_mcp_blender/skills/` | 25+ bundled skill packages (200+ typed MCP tools) |
+| `src/dcc_mcp_blender/skills/SKILLS_INDEX.md` | Authoritative skill + tool index, staged loading |
+| `tests/` | Unit, contract, packaging and e2e tests |
+| `tools/` | Skill linter, version probe, Windows dev-link helpers |
+| `packaging/` | Addon ZIP assembly (`assemble_zip.py`) + release smoke checklist |
+| `docs/` | Capability coverage, protocol compatibility, vendor integrations |
 
----
+## Reference material (follow, do not inline)
 
-## See Also
+- **Bundled skill + tool inventory:** `src/dcc_mcp_blender/skills/SKILLS_INDEX.md`
+- **Capability coverage:** [docs/capability-coverage.md](docs/capability-coverage.md)
+- **Environment variables:** `README.md` (full `DCC_MCP_BLENDER_*` table)
+- **One-page core reference:** `llms.txt`
+- **Agent-facing install:** `install.md`
+- **Setup skill:** `skills/dcc-mcp-blender-setup/SKILL.md`
+- **Geometry pitfalls:** `skills/dcc-blender-assembly-pitfalls/SKILL.md`
 
-- [README.md](README.md) — Installation, features, all env vars
-- [CLAUDE.md](CLAUDE.md) — Claude Desktop-specific integration
-- [GEMINI.md](GEMINI.md) — Gemini-specific integration
-- [llms.txt](llms.txt) — One-page core reference for AI agents
-- [install.md](install.md) — Agent-facing setup workflow
+## Vendor integration notes
+
+- [docs/integrations/claude.md](docs/integrations/claude.md) — Claude Desktop
+  config, progressive loading, viewport + cancellation tips.
+- [docs/integrations/gemini.md](docs/integrations/gemini.md) — Gemini / Vertex
+  setup, code-first skill generation, structured result parsing.
+
+## Release
+
+- release-please drives versioning from Conventional Commits on `main`.
+- `feat:` → minor, `fix:` → patch, `chore:`/`docs:`/`ci:` → **no release**.
+- Use `chore:`/`docs:` for config and doc work so release-please does not cut a
+  valueless version.
+
+## Do / Don't
+
+- **Do** single-source agent instructions here. This is the only agent contract
+  file at the repo root.
+- **Do** keep this file a navigation map — long reference material belongs in
+  `docs/` or the skill index.
+- **Don't** add `CLAUDE.md` / `GEMINI.md` / `CURSOR.md` / `ANTHROPIC.md` /
+  `OPENAI.md` / `COPILOT.md` / `CODEBUDDY.md` / `.cursorrules` / `.clinerules` /
+  `.windsurfrules` at the root. Vendor-specific notes live under
+  `docs/integrations/`, linked from here.
+- **Don't** hardcode an exact version in tests (`assert __version__ == "X.Y.Z"`)
+  — release-please bumps will break it. Use `>=` or read package metadata.
+- **Don't** commit build artifacts to the repo root (`*.o`, `coverage.json`,
+  `audit-result.json`, `clippy_check.txt`, `commit_msg.txt`).
