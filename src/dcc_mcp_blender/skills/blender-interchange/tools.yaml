@@ -194,7 +194,17 @@ tools:
       open_world_hint: true
 
   - name: export_gltf
-    description: "Export scene or selected objects to GLTF or GLB."
+    description: >-
+      Export scene or selected objects to GLTF or GLB. Vertex counts in the exported
+      file are systematically higher than the shared-vertex count Blender reports:
+      glTF stores one vertex per unique normal + UV combination, so hard-edged or
+      flat-shaded meshes split the most (a default cube is 8 vertices in Blender and
+      24 in GLB, ~3x; a measured 3-part white-clay model was 554 -> 2200, ~4x), while
+      smooth-shaded meshes approach 1x. A vertex-count mismatch is therefore expected,
+      not an export defect. This tool returns no vertex / face / material metrics;
+      validate the result downstream by re-importing it with import_file and inspecting
+      it with get_mesh_info, or by running blender-validation checks such as
+      validate_mesh and validate_export_readiness.
     source_file: scripts/export_gltf.py
     execution: sync
     affinity: main
