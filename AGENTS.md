@@ -117,15 +117,19 @@ execute_python only when no typed skill fits
 ## Release
 
 - release-please drives versioning from Conventional Commits on `main`.
-- `feat:` → minor, `fix:` → patch. Every other prefix still lands on **patch**:
-  `DefaultVersioningStrategy.determineReleaseType()` falls back to
-  `PatchVersionUpdate` when the batch has no `feat:` and no breaking change, so
-  `chore:`/`docs:`/`ci:` are **not** “no release”.
-- What those prefixes change is the changelog: `chore:`/`ci:`/`style`/`refactor`/
-  `test`/`build` are `hidden: true` sections, while `docs:` is a **visible**
-  `Documentation` section (`release-type: python`).
-- Use `chore:` for config and doc work: it still bumps the version, but keeps
-  the changelog free of valueless entries.
+- Whether a release is cut at all is a changelog question, not a prefix question: if every
+  commit in the batch lands in a `hidden: true` section the changelog entry is empty, and
+  release-please skips the whole batch — no release pull request, **no version bump**
+  (`strategies/base.ts` logs “No user facing commits found since … - skipping” when
+  `changelogEmpty()` finds only the heading line).
+- This repo overrides `changelog-sections` in `release-please-config.json`: `feat:`, `fix:`, 
+  `perf:`, `refactor:` and `docs:` are **visible**; `style:`, `chore:`, `test:`, `ci:` and
+  `build:` are `hidden: true`. A visible `refactor:` therefore cuts a release.
+- Only once a release *is* cut does the prefix choose the bump. This repo is pre-1.0 and sets
+  `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`, so on `0.x`: breaking → minor
+  and `feat:` → **patch** — not major/minor. Anything else → patch.
+- Use `chore:` when the batch should **not** cut a release; use `docs:` when doc-only work
+  should cut a patch release.
 
 ## Do / Don't
 
