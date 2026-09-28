@@ -258,6 +258,24 @@ HDRI by Poly Haven (CC0), and
 | **blender-geometry-nodes** | `add_geometry_nodes_modifier`, `list_geometry_nodes_modifiers`, `create_geometry_node_group`, `assign_geometry_node_group`, `set_geometry_node_modifier_input`, `evaluate_geometry_nodes_info`, `inspect_geometry_node_interface`, `create_geometry_node_socket`, `update_geometry_node_socket`, `remove_geometry_node_socket` |
 | **blender-physics** | `add_rigid_body`, `set_rigid_body_properties`, `remove_rigid_body`, `list_rigid_bodies`, `set_rigid_body_world_settings`, `bake_rigid_body_simulation`, `clear_rigid_body_bake`, `add_cloth_modifier`, `set_cloth_settings`, `add_collision_modifier`, `set_collision_settings`, `add_soft_body_modifier`, `set_soft_body_settings`, `add_rigid_body_constraint`, `remove_rigid_body_constraint`, `list_rigid_body_constraints`, `add_force_field`, `remove_force_field`, `list_force_fields`, `add_particle_system`, `set_particle_system_settings`, `list_particle_systems`, `list_simulation_modifiers`, `bake_simulation`, `clear_simulation_cache`, `get_simulation_status`, `add_fluid_modifier`, `set_fluid_settings`, `add_dynamic_paint_modifier`, `set_dynamic_paint_settings`, `add_dynamic_paint_surface`, `list_dynamic_paint_surfaces`, `set_particle_hair`, `set_particle_children`, `set_particle_instance`, `bake_particle_system` |
 
+### glTF / GLB export vertex counts
+
+`export_gltf` writes a file whose vertex count is **systematically higher than the
+shared-vertex count Blender reports for the same mesh**. glTF stores one vertex per
+unique normal + UV combination, so a differing count is expected behavior, not an
+export defect.
+
+- **Rule of thumb:** hard-edged / flat-shaded meshes split the most (typically 2x-4x;
+  a default cube is 8 vertices in Blender and 24 in GLB), while smooth-shaded meshes
+  approach 1x.
+- **Measured example:** a 3-part white-clay model exported from Blender reported 554
+  vertices in-host and 2200 in GLB (~4x): cube 8 -> 24, sphere 482 -> 1984,
+  cylinder 64 -> 192.
+- **How to validate:** `export_gltf` returns no vertex / face / material metrics.
+  Re-import the asset with `import_file` and inspect it with `get_mesh_info`, run
+  `blender-validation` checks such as `validate_mesh` and `validate_export_readiness`,
+  or use an external glTF validator.
+
 See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.
 
 ---
