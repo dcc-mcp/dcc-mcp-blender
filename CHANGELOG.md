@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.12](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.11...v0.2.12) (2026-09-28)
+
+
+### Features
+
+* **lighting:** expose real IES photometric profiles on lights ([#263](https://github.com/dcc-mcp/dcc-mcp-blender/issues/263)) ([8e04977](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8e04977ce5bf0258077296e1007a5b11c4cb7aaa))
+
+
+### Documentation
+
+* **interchange:** document glTF vertex split semantics for export_gltf ([ca6d6e1](https://github.com/dcc-mcp/dcc-mcp-blender/commit/ca6d6e1d979245630b07764382eb85c18e91e9b5))
+* **interchange:** hedge the glTF vertex-split ratio guidance ([#269](https://github.com/dcc-mcp/dcc-mcp-blender/issues/269)) ([7e0b2f7](https://github.com/dcc-mcp/dcc-mcp-blender/commit/7e0b2f79356dc46c94e1f4d6d7fe6b5087302f31))
+* **skills:** add dcc-blender-assembly-pitfalls failure-mode skill ([#265](https://github.com/dcc-mcp/dcc-mcp-blender/issues/265)) ([cf520d0](https://github.com/dcc-mcp/dcc-mcp-blender/commit/cf520d0ce18c5084757e06ac704caffe94c5f344))
+
 ## [0.2.11](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.10...v0.2.11) (2026-09-25)
 
 
