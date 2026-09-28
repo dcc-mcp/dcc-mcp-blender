@@ -76,7 +76,10 @@ export defect.
   face normal. A default cube is 8 vertices in Blender and 24 in GLB (3x),
   because each of the 8 corners carries 3 hard-edge normals.
 - **Rule of thumb:** hard-edged / flat-shaded meshes multiply the most
-  (typically 2x-4x); smooth-shaded meshes approach 1x.
+  (typically 2x-4x; more for meshes with many UV islands or per-vertex
+  color/skin splits); smooth-shaded meshes approach 1x. UV seams, tangents,
+  vertex colors, skin weights and multi-material boundaries also split
+  vertices, so a smooth-shaded mesh can still land above 1x.
 - **Measured example:** a 3-part Blender white-clay model reported 554 vertices
   in-host and 2200 in GLB (~4x): cube 8 -> 24, sphere 482 -> 1984,
   cylinder 64 -> 192.
