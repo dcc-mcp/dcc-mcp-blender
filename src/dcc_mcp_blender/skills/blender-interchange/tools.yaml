@@ -199,8 +199,11 @@ tools:
       file are systematically higher than the shared-vertex count Blender reports:
       glTF stores one vertex per unique normal + UV combination, so hard-edged or
       flat-shaded meshes split the most (a default cube is 8 vertices in Blender and
-      24 in GLB, ~3x; a measured 3-part white-clay model was 554 -> 2200, ~4x), while
-      smooth-shaded meshes approach 1x. A vertex-count mismatch is therefore expected,
+      24 in GLB, ~3x; a measured 3-part white-clay model was 554 -> 2200, ~4x; more for
+      meshes with many UV islands or per-vertex color/skin splits), while smooth-shaded
+      meshes approach 1x. UV seams, tangents, vertex colors, skin weights and
+      multi-material boundaries also split vertices, so a smooth-shaded mesh can still
+      land above 1x. A vertex-count mismatch is therefore expected,
       not an export defect. This tool returns no vertex / face / material metrics;
       validate the result downstream by re-importing it with import_file and inspecting
       it with get_mesh_info, or by running blender-validation checks such as

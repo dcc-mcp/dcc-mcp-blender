@@ -265,9 +265,12 @@ shared-vertex count Blender reports for the same mesh**. glTF stores one vertex 
 unique normal + UV combination, so a differing count is expected behavior, not an
 export defect.
 
-- **Rule of thumb:** hard-edged / flat-shaded meshes split the most (typically 2x-4x;
-  a default cube is 8 vertices in Blender and 24 in GLB), while smooth-shaded meshes
-  approach 1x.
+- **Rule of thumb:** hard-edged / flat-shaded meshes split the most (typically
+  2x-4x; more for meshes with many UV islands or per-vertex color/skin splits;
+  a default cube is 8 vertices in Blender and 24 in GLB), while smooth-shaded
+  meshes approach 1x. UV seams, tangents, vertex colors, skin weights and
+  multi-material boundaries also split vertices, so a smooth-shaded mesh can
+  still land above 1x.
 - **Measured example:** a 3-part white-clay model exported from Blender reported 554
   vertices in-host and 2200 in GLB (~4x): cube 8 -> 24, sphere 482 -> 1984,
   cylinder 64 -> 192.
