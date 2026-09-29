@@ -1,6 +1,6 @@
 tools:
   - name: set_keyframe
-    description: "Insert a keyframe on an object at the current or specified frame"
+    description: "Insert a keyframe on an object at the current or specified frame, using the values the object currently holds (the playhead is not moved)"
     source_file: scripts/set_keyframe.py
     execution: sync
     affinity: main

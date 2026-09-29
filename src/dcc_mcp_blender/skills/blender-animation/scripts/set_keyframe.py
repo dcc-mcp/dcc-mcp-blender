@@ -21,7 +21,9 @@ def set_keyframe(
 
     Args:
         object_name: Name of the object to keyframe.
-        frame: Frame number. If None, uses the current scene frame.
+        frame: Frame number. If None, uses the current scene frame. The scene playhead
+            is never moved and the scene is never re-evaluated: the values written
+            to the curve are the object's current values.
         data_paths: List of data paths to keyframe, e.g. ["location", "rotation_euler", "scale"].
             Defaults to all three transform channels.
 
@@ -36,9 +38,14 @@ def set_keyframe(
             return skill_error(f"Object not found: {object_name}", f"No object named '{object_name}'.")
 
         scene = bpy.context.scene
-        if frame is not None:
-            scene.frame_set(frame)
-        actual_frame = scene.frame_current
+        # Never call ``scene.frame_set(frame)`` here. Evaluating the scene before
+        # the insert overwrites the pose the caller just set with the animation's
+        # value at ``frame``, so every new key silently stores the value of the
+        # previous key. The result is a flat curve that renders as a still frame
+        # even though ``get_keyframes`` reports keys at both ends (PIP-3582).
+        # ``keyframe_insert`` accepts the target frame directly, which writes the
+        # current property values without touching the playhead.
+        actual_frame = int(frame) if frame is not None else int(scene.frame_current)
 
         mode = interpolation.upper() if interpolation else None
         if mode not in {None, "BEZIER", "LINEAR", "CONSTANT"}:
@@ -72,7 +79,11 @@ def set_keyframe(
             frame=actual_frame,
             data_paths=inserted,
             interpolation=mode,
-            prompt="Keyframe inserted. Use set_current_frame to navigate the timeline.",
+            frame_current=int(scene.frame_current),
+            prompt=(
+                "Keyframe inserted from the object's current values. The playhead was left on "
+                f"frame {int(scene.frame_current)}; use set_current_frame to evaluate another frame."
+            ),
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")

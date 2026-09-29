@@ -38,6 +38,25 @@ current-frame changes, inserting keys, inspecting f-curves, deleting keyframes,
 and baking transform samples. Prefer `blender-rigging` for rig construction and
 `blender-pose-library` for reusable armature poses.
 
+## Keyframing: pose first, then key
+
+`set_keyframe` writes the object's **current** property values into the curve at
+the requested frame. It never moves the playhead and never re-evaluates the
+scene, so the order is always: move the playhead (optional), pose the object,
+then key it:
+
+1. `set_current_frame(frame=1)` → pose → `set_keyframe(object_name=…, frame=1)`
+2. `set_current_frame(frame=49)` → pose → `set_keyframe(object_name=…, frame=49)`
+
+Keying two different poses at two different frames produces a real curve. If you
+skip the pose (or key before posing), both keys store the same value and the
+render is a still frame even though `get_keyframes` reports keys at both ends.
+To inspect another frame, call `set_current_frame` — that is the tool that
+evaluates the animation; `set_keyframe` leaves `frame_current` where it was.
+
+`bake_animation` is the opposite: it *does* step the playhead, because it samples
+the evaluated transform at each frame and keys that value.
+
 ## NLA: arranging actions over time
 
 The keyframe tools work on one action at a time. The NLA tools arrange several

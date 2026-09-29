@@ -15,6 +15,7 @@ bpy = pytest.importorskip("bpy", reason="bpy not available — run inside Blende
 
 pytestmark = pytest.mark.e2e
 
+from dcc_mcp_blender._animation_ops import action_fcurves  # noqa: E402
 from tests.e2e.conftest import load_skill  # noqa: E402
 
 
@@ -83,6 +84,49 @@ class TestAnimationSkillsE2E:
         mod = load_skill("blender-animation", "set_keyframe")
         result = mod.set_keyframe(object_name="NonExistent_XYZ", frame=1)
         assert result["success"] is False
+
+    def test_set_keyframe_keeps_the_posed_value(self):
+        """PIP-3582: the second key must store the new pose, not the first key's value."""
+        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+        cube_name = bpy.context.active_object.name
+        obj = bpy.data.objects[cube_name]
+        mod = load_skill("blender-animation", "set_keyframe")
+
+        set_current_frame = load_skill("blender-animation", "set_current_frame")
+        set_current_frame.set_current_frame(frame=1)
+        obj.location = (0.0, 0.0, 0.0)
+        assert mod.set_keyframe(object_name=cube_name, frame=1, data_paths=["location"])["success"]
+
+        set_current_frame.set_current_frame(frame=25)
+        obj.location = (5.0, 0.0, 0.0)
+        assert mod.set_keyframe(object_name=cube_name, frame=25, data_paths=["location"])["success"]
+
+        fcurve = next(fc for _coll, fc in action_fcurves(obj) if fc.data_path == "location" and fc.array_index == 0)
+        values = {round(kp.co.x): kp.co.y for kp in fcurve.keyframe_points}
+        assert values[1] == pytest.approx(0.0)
+        assert values[25] == pytest.approx(5.0)
+
+    def test_animation_is_evaluated_at_intermediate_frames(self):
+        """PIP-3582: moving the playhead must evaluate the fcurves, not hold frame 1."""
+        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+        cube_name = bpy.context.active_object.name
+        obj = bpy.data.objects[cube_name]
+
+        set_current_frame = load_skill("blender-animation", "set_current_frame")
+        set_keyframe = load_skill("blender-animation", "set_keyframe")
+
+        set_current_frame.set_current_frame(frame=1)
+        obj.location = (0.0, 0.0, 0.0)
+        set_keyframe.set_keyframe(object_name=cube_name, frame=1, data_paths=["location"], interpolation="LINEAR")
+
+        set_current_frame.set_current_frame(frame=49)
+        obj.location = (48.0, 0.0, 0.0)
+        set_keyframe.set_keyframe(object_name=cube_name, frame=49, data_paths=["location"], interpolation="LINEAR")
+
+        for frame, expected in ((1, 0.0), (13, 12.0), (25, 24.0), (37, 36.0), (49, 48.0)):
+            set_current_frame.set_current_frame(frame=frame)
+            assert bpy.context.scene.frame_current == frame
+            assert obj.location.x == pytest.approx(expected, abs=1e-4), f"frame {frame}"
 
     def test_frame_range_invalid_order(self):
         mod = load_skill("blender-animation", "set_frame_range")
