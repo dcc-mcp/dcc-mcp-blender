@@ -77,6 +77,72 @@ class TestSetKeyframe:
         )
         assert result["success"] is False
 
+    def test_explicit_frame_does_not_reevaluate_the_scene(self):
+        """PIP-3582: evaluating before the insert overwrites the pose being keyed."""
+        bpy = make_mock_bpy()
+        obj = MagicMock()
+        bpy.data.objects.get.return_value = obj
+        bpy.context.scene.frame_current = 1
+        bpy.context.scene.frame_set = MagicMock()
+
+        result = load_and_call(
+            "blender-animation/scripts/set_keyframe.py",
+            bpy,
+            object_name="Cube",
+            frame=49,
+            data_paths=["rotation_euler"],
+        )
+
+        assert result["success"] is True
+        bpy.context.scene.frame_set.assert_not_called()
+        obj.keyframe_insert.assert_called_once_with(data_path="rotation_euler", frame=49)
+        assert result["context"]["frame"] == 49
+        assert result["context"]["frame_current"] == 1
+
+    def test_explicit_frame_keys_the_value_the_caller_just_set(self):
+        """PIP-3582 regression: a second key must not inherit the first key's value."""
+        bpy = make_mock_bpy()
+        obj = MagicMock()
+        bpy.data.objects.get.return_value = obj
+        bpy.context.scene.frame_current = 49
+
+        def _fake_frame_set(frame):
+            # What Blender really does: the fcurve at `frame` overwrites the pose.
+            obj.rotation_euler.z = 0.0
+
+        bpy.context.scene.frame_set.side_effect = _fake_frame_set
+        obj.rotation_euler.z = 6.283185307179586
+
+        result = load_and_call(
+            "blender-animation/scripts/set_keyframe.py",
+            bpy,
+            object_name="Cube",
+            frame=49,
+            data_paths=["rotation_euler"],
+        )
+
+        assert result["success"] is True
+        # The pose survived; had the scene been re-evaluated it would be 0.0.
+        assert obj.rotation_euler.z == 6.283185307179586
+
+    def test_omitted_frame_uses_the_current_frame(self):
+        bpy = make_mock_bpy()
+        obj = MagicMock()
+        bpy.data.objects.get.return_value = obj
+        bpy.context.scene.frame_current = 17
+        bpy.context.scene.frame_set = MagicMock()
+
+        result = load_and_call(
+            "blender-animation/scripts/set_keyframe.py",
+            bpy,
+            object_name="Cube",
+            data_paths=["location"],
+        )
+
+        assert result["success"] is True
+        bpy.context.scene.frame_set.assert_not_called()
+        obj.keyframe_insert.assert_called_once_with(data_path="location", frame=17)
+
 
 class TestSetFrameRange:
     def test_sets_start_and_end(self):
