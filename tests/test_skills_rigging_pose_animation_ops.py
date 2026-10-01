@@ -25,6 +25,8 @@ RIGGING_TOOLS = {
     "add_shape_key",
     "set_driver",
     "retarget_animation",
+    "inspect_armature",
+    "set_pose_bone_transforms",
 }
 
 POSE_TOOLS = {"list_poses", "save_pose", "load_pose"}

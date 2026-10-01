@@ -1,4 +1,194 @@
 tools:
+  - name: inspect_armature
+    description: Read bounded armature hierarchy, rest/pose matrices, constraints, and optional sampled skin weights.
+    source_file: scripts/inspect_armature.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [armature_name]
+      properties:
+        armature_name: {type: string, minLength: 1}
+        bone_names:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+          description: Optional explicit subset, limited by max_bones.
+        max_bones: {type: integer, minimum: 1, maximum: 1024, default: 256}
+        include_constraints: {type: boolean, default: true}
+        max_constraints_per_bone: {type: integer, minimum: 1, maximum: 128, default: 32}
+        mesh_names:
+          type: array
+          minItems: 1
+          maxItems: 16
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+          description: Explicit meshes with an Armature modifier targeting this rig.
+        max_vertices_per_mesh:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          default: 10000
+          description: Deterministic vertex-index prefix, not full coverage unless scan_complete is true.
+    output_schema:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context:
+          type: object
+          properties:
+            schema: {type: string, enum: [blender.armature-inspection.v1]}
+            armature_name: {type: string}
+            frame: {type: integer}
+            bone_count: {type: integer, minimum: 0}
+            returned_bone_count: {type: integer, minimum: 0, maximum: 1024}
+            truncated: {type: boolean}
+            bones:
+              type: array
+              maxItems: 1024
+              items:
+                type: object
+                required: [bone_name, parent, connected, use_deform, rest, pose]
+                properties:
+                  bone_name: {type: string}
+                  parent: {type: [string, "null"]}
+                  connected: {type: boolean}
+                  use_deform: {type: boolean}
+                  rest: {type: object}
+                  pose: {type: object}
+                  constraints: {type: object}
+            mesh_weight_summaries:
+              type: array
+              maxItems: 16
+              items:
+                type: object
+                required: [mesh_name, vertex_count, scanned_vertex_count, scan_complete, sampling]
+                properties:
+                  mesh_name: {type: string}
+                  vertex_count: {type: integer, minimum: 0}
+                  scanned_vertex_count: {type: integer, minimum: 0, maximum: 100000}
+                  scan_complete: {type: boolean}
+                  sampling: {type: string, enum: [vertex_index_prefix]}
+    tags: [read-only, rigging, armature, weights]
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    next-tools:
+      on-failure: [blender-scene__get_scene_info]
+    call_examples:
+      - arguments: {armature_name: CharacterRig, max_bones: 256, mesh_names: [Body], max_vertices_per_mesh: 10000}
+        note: Inspect rig and explicitly sampled deform-group coverage.
+
+  - name: set_pose_bone_transforms
+    description: Validate every bone then set bulk rest-relative local pose channels, with actual evaluated readback and failure rollback.
+    source_file: scripts/set_pose_bone_transforms.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [armature_name, transforms]
+      properties:
+        armature_name: {type: string, minLength: 1}
+        transforms:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          description: Distinct bones; at least one channel each. Rotation forms are mutually exclusive.
+          items:
+            type: object
+            additionalProperties: false
+            required: [bone_name]
+            properties:
+              bone_name: {type: string, minLength: 1}
+              location:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items: {type: number, minimum: -1000000, maximum: 1000000}
+                description: Absolute rest-relative local location in scene units.
+              scale:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items: {type: number, minimum: -1000000, maximum: 1000000}
+                description: Each component must have absolute value at least 1e-6.
+              rotation_euler:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items: {type: number, minimum: -1000000, maximum: 1000000}
+                description: Euler angles in radians, with explicit or default XYZ order.
+              rotation_quaternion:
+                type: array
+                minItems: 4
+                maxItems: 4
+                items: {type: number, minimum: -1, maximum: 1}
+                description: Unit quaternion in w,x,y,z order; selects QUATERNION mode.
+              rotation_mode:
+                type: string
+                enum: [XYZ, XZY, YXZ, YZX, ZXY, ZYX, QUATERNION]
+                description: Requires a matching explicit rotation channel.
+    output_schema:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context:
+          type: object
+          properties:
+            schema: {type: string, enum: [blender.pose-channel-update.v1]}
+            armature_name: {type: string}
+            frame: {type: integer}
+            transform_space: {type: string, enum: [rest_relative_local_channels]}
+            quaternion_order: {type: string, enum: [wxyz]}
+            updated_bone_count: {type: integer, minimum: 1, maximum: 1024}
+            transforms:
+              type: array
+              maxItems: 1024
+              items:
+                type: object
+                required: [bone_name, requested, readback]
+                properties:
+                  bone_name: {type: string}
+                  requested: {type: object}
+                  readback: {type: object}
+            rolled_back: {type: boolean}
+            rollback_errors: {type: array, items: {type: string}}
+    tags: [destructive, rigging, pose]
+    read_only: false
+    destructive: true
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
+      open_world_hint: false
+    next-tools:
+      on-failure: [blender-rigging__inspect_armature]
+    call_examples:
+      - arguments:
+          armature_name: CharacterRig
+          transforms:
+            - {bone_name: arm.L, rotation_euler: [0, 0.2, 0], rotation_mode: XYZ}
+            - {bone_name: eye.R, rotation_quaternion: [1, 0, 0, 0]}
+        note: Update local channels without changing frames or inserting keys.
+
   - name: create_armature
     description: "Create a Blender armature object."
     source_file: scripts/create_armature.py
