@@ -8,7 +8,7 @@ metadata:
     dcc: blender
     layer: domain
     stage: render
-    version: "1.0.0"
+    version: "1.0.1"
     tags: [blender, render, viewport, camera, AOV, denoise, exr, border]
     search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range"
     search-aliases: [render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status]
@@ -121,7 +121,14 @@ Multi-layer EXR is a property of the **container format**, so
 layer). `multilayer: false` drops back to `OPEN_EXR` when the container was
 multi-layer. `use_single_layer` alone only controls which layers are rendered —
 it cannot produce a multi-layer file. Both read tools report `multilayer`
-derived from `file_format`. When neither `scene_name` nor `view_layer_name` is
+derived from the output container. Blender builds exposing
+`image_settings.media_type` require `MULTI_LAYER_IMAGE` before assigning
+`OPEN_EXR_MULTILAYER`; both typed settings tools and detached render workers
+set that media type first. Returning to PNG or single-layer EXR selects
+`IMAGE` first. Older builds retain their file-format API. Workers configure
+native RNA with a bounded expression before rendering, without requiring an
+adapter installation in the detached process or changing the live scene's
+format for an explicit job override. When neither `scene_name` nor `view_layer_name` is
 given, these tools operate on `bpy.context.view_layer`.
 
 Poll using the existing `get_render_job(job_id)` and retain `job_directory`.

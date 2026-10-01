@@ -6,6 +6,8 @@ from typing import Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._image_format import set_image_format
+
 VALID_ENGINES = {"CYCLES", "BLENDER_EEVEE", "BLENDER_EEVEE_NEXT", "BLENDER_WORKBENCH"}
 
 
@@ -61,7 +63,7 @@ def set_render_settings(
         if output_path:
             render.filepath = output_path
         if file_format:
-            render.image_settings.file_format = file_format.upper()
+            set_image_format(render.image_settings, file_format.upper())
 
         if samples is not None:
             if render.engine == "CYCLES":

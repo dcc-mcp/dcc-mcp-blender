@@ -2,7 +2,7 @@
 
 These tests drive ``start_render_job`` end to end in a real Blender process:
 the job saves the scene, launches a detached ``blender --background`` worker
-with ``--render-format <FMT> --use-extension 1``, and only reports
+with native media-type/format configuration and ``--use-extension 1``, and only reports
 ``completed`` once every expected frame exists with the magic bytes of the
 resolved format. Asserting on the files that land on disk is what pins the
 format decision: a job that silently fell back to EXR writes ``.exr`` frames
@@ -18,6 +18,7 @@ bpy = pytest.importorskip("bpy")
 pytestmark = pytest.mark.e2e
 
 from dcc_mcp_blender import _render_job_ops as jobs  # noqa: E402
+from dcc_mcp_blender._image_format import set_image_format  # noqa: E402
 from dcc_mcp_blender._render_job_ops import get_render_job, start_render_job  # noqa: E402
 
 # Scene ``render.image_settings.file_format`` values a job must reproduce,
@@ -26,7 +27,7 @@ from dcc_mcp_blender._render_job_ops import get_render_job, start_render_job  # 
 # saved with it has to stay multi-layer instead of silently degrading to a
 # single-layer EXR. Hosts that no longer accept the value skip the case rather
 # than fail it; the explicit ``output_format`` argument below still reaches the
-# worker's ``--render-format`` on every host.
+# worker's native output configuration on every host.
 SCENE_FORMATS = {
     "OPEN_EXR": ".exr",
     "OPEN_EXR_MULTILAYER": ".exr",
@@ -37,24 +38,22 @@ SCENE_FORMATS = {
 def _scene_format_accepted(name: str) -> bool:
     """Report whether this host still accepts ``name`` as a scene format.
 
-    Blender 5.x keeps ``OPEN_EXR_MULTILAYER`` listed in the property's
-    ``enum_items`` but rejects the assignment with "enum ... not found in
-    (...)", so reading the enum is not a faithful gate -- only a round-trip
-    assignment is. The previous value is restored either way, so probing a
-    value costs nothing beyond the assignment itself.
+    New Blender builds filter the enum by media_type. Probe the same typed
+    transition used in production and restore the previous container.
     """
     settings = bpy.context.scene.render.image_settings
     previous = settings.file_format
     try:
-        settings.file_format = name
+        set_image_format(settings, name)
     except (TypeError, ValueError):
         return False
     finally:
-        settings.file_format = previous
+        set_image_format(settings, previous)
     return True
 
+    # Probed once at collection time using the matching media type.
 
-# Probed once at collection time: a host's answer cannot change mid-session,
+
 # and skipping a value it does not offer beats reporting a false failure.
 SCENE_FORMAT_CASES = [
     pytest.param(
@@ -132,7 +131,7 @@ def test_start_render_job_writes_scene_format(tmp_path, scene_format):
     scene = _prepare_scene(tmp_path)
     previous_format = scene.render.image_settings.file_format
     output_dir = tmp_path / "renders"
-    scene.render.image_settings.file_format = scene_format
+    set_image_format(scene.render.image_settings, scene_format)
     job_id = None
     try:
         result = start_render_job(str(output_dir / "beauty_####"), 1, 2, device=DEVICE)
@@ -154,7 +153,7 @@ def test_start_render_job_writes_scene_format(tmp_path, scene_format):
             assert path.stat().st_size > 0, path
             assert jobs._is_valid_output(path, output_format=scene_format), (path, scene_format)
     finally:
-        scene.render.image_settings.file_format = previous_format
+        set_image_format(scene.render.image_settings, previous_format)
         # Cancel before dropping the entry: ``_JOBS[job_id]["process"]`` is the
         # only handle on the detached worker, so a timeout or a failed assertion
         # above would otherwise leave a ``blender --background`` running forever.
@@ -176,7 +175,7 @@ def test_start_render_job_uses_scene_device_when_unset(tmp_path):
     scene = _prepare_scene(tmp_path)
     previous_format = scene.render.image_settings.file_format
     output_dir = tmp_path / "scene_device"
-    scene.render.image_settings.file_format = "PNG"
+    set_image_format(scene.render.image_settings, "PNG")
     scene.cycles.device = "CPU"
     job_id = None
     try:
@@ -192,7 +191,7 @@ def test_start_render_job_uses_scene_device_when_unset(tmp_path):
         written = _frame_names(output_dir)
         assert written == ["beauty_0001.png", "beauty_0002.png"], written
     finally:
-        scene.render.image_settings.file_format = previous_format
+        set_image_format(scene.render.image_settings, previous_format)
         if job_id is not None:
             jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
@@ -201,14 +200,13 @@ def test_start_render_job_uses_scene_device_when_unset(tmp_path):
 def test_start_render_job_explicit_format_overrides_scene(tmp_path):
     """An explicit ``output_format`` wins over the saved scene's format.
 
-    Also keeps ``--render-format OPEN_EXR_MULTILAYER`` exercised on every
-    Blender in the matrix: it is the job default, and Blender 5.x no longer
-    offers the value through the scene enum.
+    This also exercises multi-layer media configuration in a detached worker
+    whose saved scene starts in single-image PNG mode.
     """
     scene = _prepare_scene(tmp_path)
     previous_format = scene.render.image_settings.file_format
     output_dir = tmp_path / "explicit"
-    scene.render.image_settings.file_format = "PNG"
+    set_image_format(scene.render.image_settings, "PNG")
     job_id = None
     try:
         result = start_render_job(
@@ -226,7 +224,7 @@ def test_start_render_job_explicit_format_overrides_scene(tmp_path):
         assert written == ["beauty_0005.exr"], written
         assert jobs._is_valid_output(output_dir / written[0], output_format="OPEN_EXR_MULTILAYER")
     finally:
-        scene.render.image_settings.file_format = previous_format
+        set_image_format(scene.render.image_settings, previous_format)
         if job_id is not None:
             jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
