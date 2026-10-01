@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Tuple
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._image_format import image_format, worker_format_expression
+
 _FRAME_TOKEN = re.compile(r"#+")
 _OPENEXR_MAGIC = b"\x76\x2f\x31\x01"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -77,7 +79,7 @@ def _scene_file_format() -> str:
     import bpy  # Lazy import: requires Blender's embedded Python.
 
     settings = bpy.context.scene.render.image_settings
-    return str(getattr(settings, "file_format", "")).strip().upper()
+    return image_format(settings)
 
 
 def _resolve_output_format(output_format: str = None, scene_format: str = None) -> str:
@@ -284,8 +286,10 @@ def _build_blender_command(
             scene_path,
             "--render-output",
             output_pattern,
-            "--render-format",
-            format_name,
+            "--python-exit-code",
+            "1",
+            "--python-expr",
+            worker_format_expression(format_name),
             "--use-extension",
             "1",
         ]

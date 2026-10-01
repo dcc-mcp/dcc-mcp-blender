@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from dcc_mcp_blender import _render_job_ops as jobs
+from dcc_mcp_blender._image_format import worker_format_expression
 
 
 def _write_valid_exr(path):
@@ -40,7 +41,7 @@ def test_build_command_uses_multilayer_exr_and_exact_frames(tmp_path):
 
     assert command[:3] == ["blender", "--background", str(tmp_path / "scene.blend")]
     assert "--factory-startup" not in command
-    assert command[command.index("--render-format") + 1] == "OPEN_EXR_MULTILAYER"
+    assert command[command.index("--python-expr") + 1] == worker_format_expression("OPEN_EXR_MULTILAYER")
     assert [command[index + 1] for index, value in enumerate(command) if value == "--render-frame"] == [
         "1",
         "3",
@@ -99,7 +100,7 @@ def test_build_command_supports_png_animation_output(tmp_path):
         factory_startup=False,
     )
 
-    assert command[command.index("--render-format") + 1] == "PNG"
+    assert command[command.index("--python-expr") + 1] == worker_format_expression("PNG")
     assert jobs._expected_output_path(pattern, 2, output_format="PNG") == tmp_path / "beauty_0002.png"
 
 
@@ -197,7 +198,7 @@ def test_start_render_job_reuses_scene_png_format(monkeypatch, tmp_path):
 
     assert started["success"] is True
     assert started["context"]["output_format"] == "PNG"
-    assert created[0][created[0].index("--render-format") + 1] == "PNG"
+    assert created[0][created[0].index("--python-expr") + 1] == worker_format_expression("PNG")
     assert jobs._expected_output_path(pattern, 1, output_format="PNG") == tmp_path / "beauty_0001.png"
 
     status = jobs.get_render_job(started["context"]["job_id"])
@@ -228,7 +229,7 @@ def test_start_render_job_keeps_explicit_format_over_scene(monkeypatch, tmp_path
     )
 
     assert started["context"]["output_format"] == "OPEN_EXR_MULTILAYER"
-    assert created[0][created[0].index("--render-format") + 1] == "OPEN_EXR_MULTILAYER"
+    assert created[0][created[0].index("--python-expr") + 1] == worker_format_expression("OPEN_EXR_MULTILAYER")
 
 
 def test_start_render_job_rejects_unsupported_scene_format(monkeypatch, tmp_path):

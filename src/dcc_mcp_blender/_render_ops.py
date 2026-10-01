@@ -15,6 +15,7 @@ from typing import Any, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._image_format import image_format, set_image_format
 from dcc_mcp_blender._scene_assembly_ops import _VIEW_LAYER_PASSES
 
 # Output file formats exposed through `set_render_output`. Anything Blender
@@ -142,7 +143,7 @@ def _is_multilayer(render: Any) -> bool:
     whether all layers are rendered.
     """
     settings = getattr(render, "image_settings", None)
-    return getattr(settings, "file_format", None) == _MULTILAYER_FORMAT
+    return image_format(settings) == _MULTILAYER_FORMAT
 
 
 def _read_pass_states(layer: Any, names: Sequence[str] | None = None) -> dict:
@@ -513,7 +514,7 @@ def set_render_output(
             render.filepath = str(filepath)
             applied["filepath"] = str(filepath)
         if file_format is not None:
-            settings.file_format = str(file_format).upper()
+            set_image_format(settings, str(file_format).upper())
             applied["file_format"] = settings.file_format
         if color_mode is not None:
             settings.color_mode = str(color_mode).upper()
@@ -529,11 +530,11 @@ def set_render_output(
             # use_single_layer: use_single_layer only decides whether every
             # layer is rendered. Both have to move together.
             if bool(multilayer):
-                settings.file_format = _MULTILAYER_FORMAT
+                set_image_format(settings, _MULTILAYER_FORMAT)
                 render.use_single_layer = False
             else:
                 if _is_multilayer(render):
-                    settings.file_format = _SINGLE_LAYER_EXR_FORMAT
+                    set_image_format(settings, _SINGLE_LAYER_EXR_FORMAT)
                 render.use_single_layer = True
             applied["multilayer"] = bool(multilayer)
             applied["file_format"] = settings.file_format
