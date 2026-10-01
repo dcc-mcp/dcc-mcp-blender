@@ -232,7 +232,7 @@ HDRI by Poly Haven (CC0), and
 | **blender-mesh** | `add_modifier`, `apply_modifier`, `list_modifiers`, `get_mesh_info` |
 | **blender-mesh-ops** | Default `mesh-edit` inspection/cleanup tools plus the opt-in `modeling` group: `create_primitive`, `loft_sections`, `lathe_profile`, `extrude_faces`, `bevel_edges`, `inset`, `boolean_op`, `add_edge_loop`, `array_instances`, `mirror`, `set_pivot`, `group_parent`, `freeze_transforms`, `delete_history`, `auto_uv`, `uv_project`, `assign_material` |
 | **blender-uv-ops** | `list_uv_maps`, `create_uv_map`, `delete_uv_map`, `copy_uv_map`, `get_uv_info`, `get_uv_islands`, `project_uvs`, `unwrap_uvs`, `pack_uvs`, `normalize_uvs` |
-| **blender-rigging** | `create_armature`, `create_bone`, `mirror_bones`, `add_constraint`, `set_constraint_properties`, `bind_mesh_to_armature`, `add_shape_key`, `set_driver`, `retarget_animation` |
+| **blender-rigging** | `create_armature`, `create_bone`, `mirror_bones`, `inspect_armature`, `set_pose_bone_transforms`, `add_constraint`, `set_constraint_properties`, `bind_mesh_to_armature`, `add_shape_key`, `set_driver`, `retarget_animation` |
 | **blender-pose-library** | `list_poses`, `save_pose`, `load_pose` |
 | **blender-import-to-scene** | `import_to_scene` |
 | **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `import_usd`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
