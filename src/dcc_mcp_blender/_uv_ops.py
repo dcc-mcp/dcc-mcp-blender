@@ -190,6 +190,25 @@ def _update_mesh(mesh: Any) -> None:
         update()
 
 
+def _reacquire_uv_layer(obj: Any, name: str) -> tuple[Any, Any]:
+    """Resolve fresh mesh and named UV RNA proxies after an edit-mode operator."""
+    mesh = obj.data
+    layer = _get_uv_layer(mesh, name)
+    if layer is None:
+        raise RuntimeError(f"UV layer unavailable after operator: {name}")
+    return mesh, layer
+
+
+def _uv_operator_mode_error(obj: Any) -> dict | None:
+    if getattr(obj, "mode", "OBJECT") == "OBJECT":
+        return None
+    return skill_error(
+        "UV operator requires Object Mode",
+        "Exit the object's current mode before projecting, unwrapping or packing UVs.",
+        mutation_applied=False,
+    )
+
+
 def list_uv_maps(object_name: str) -> dict:
     """List UV maps on a mesh object."""
     try:
@@ -454,24 +473,26 @@ def project_uvs(object_name: str, method: str = "planar", axis: str = "z", margi
         obj, error = _require_mesh_object(bpy, object_name)
         if error:
             return error
+        if method_key in {"smart", "sphere", "cylinder", "view"}:
+            mode_error = _uv_operator_mode_error(obj)
+            if mode_error:
+                return mode_error
         mesh = obj.data
         before_uv = _mesh_uv_context(obj)
         layer = _ensure_uv_layer(mesh, set_active=True)
+        uv_name = layer.name
 
         if method_key in {"smart", "sphere", "cylinder", "view"}:
             operator_result = _run_projection_operator(bpy, obj, method_key, float(margin))
-            _update_mesh(mesh)
+            _update_mesh(obj.data)
             after_uv = _mesh_uv_context(obj)
             if "FINISHED" not in operator_result:
                 return _uv_operator_failed(object_name, "UV projection", operator_result, before_uv, after_uv)
-            # Edit/Object mode transitions can replace CustomData storage.
-            # Never dereference the pre-operator MeshUVLoopLayer RNA proxy.
-            layer = _get_uv_layer(obj.data)
-            if layer is None:
-                raise RuntimeError("UV layer unavailable after projection")
+            # Both mesh and UV RNA proxies can expire across mode transitions.
+            _reacquire_uv_layer(obj, uv_name)
             return skill_success(
                 f"Projected UVs on {object_name} using {method_key}",
-                uv_map=layer.name,
+                uv_map=uv_name,
                 method=method_key,
                 axis=axis_key,
                 margin=float(margin),
@@ -548,9 +569,13 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
         obj, error = _require_mesh_object(bpy, object_name)
         if error:
             return error
+        mode_error = _uv_operator_mode_error(obj)
+        if mode_error:
+            return mode_error
         mesh = obj.data
         before_uv = _mesh_uv_context(obj)
         layer = _ensure_uv_layer(mesh, set_active=True)
+        uv_name = layer.name
         if method_key == "smart":
             operator_result = _run_uv_edit_operator(
                 bpy,
@@ -567,16 +592,14 @@ def unwrap_uvs(object_name: str, method: str = "angle_based", margin: float = 0.
                 method=method_key.upper(),
                 margin=float(margin),
             )
-        _update_mesh(mesh)
+        _update_mesh(obj.data)
         after_uv = _mesh_uv_context(obj)
         if "FINISHED" not in operator_result:
             return _uv_operator_failed(object_name, "UV unwrap", operator_result, before_uv, after_uv)
-        layer = _get_uv_layer(obj.data)
-        if layer is None:
-            raise RuntimeError("UV layer unavailable after unwrap")
+        _reacquire_uv_layer(obj, uv_name)
         return skill_success(
             f"Unwrapped UVs on {object_name} using {method_key}",
-            uv_map=layer.name,
+            uv_map=uv_name,
             method=method_key,
             margin=float(margin),
             operator_result=operator_result,
@@ -598,6 +621,8 @@ def pack_uvs(
     normalize: bool = True,
 ) -> dict:
     """Pack UV islands through Blender's UV operator."""
+    obj = None
+    before_uv = None
     margin_error = _validate_margin(margin)
     if margin_error:
         return margin_error
@@ -607,10 +632,15 @@ def pack_uvs(
         obj, error = _require_mesh_object(bpy, object_name)
         if error:
             return error
+        mode_error = _uv_operator_mode_error(obj)
+        if mode_error:
+            return mode_error
         mesh = obj.data
         layer = _get_uv_layer(mesh)
         if layer is None:
             return skill_error(f"No UV maps on {object_name}", "Create or unwrap a UV map before packing islands.")
+        uv_name = layer.name
+        before_uv = _mesh_uv_context(obj)
 
         operator_result = _run_uv_edit_operator(
             bpy,
@@ -619,9 +649,10 @@ def pack_uvs(
             margin=float(margin),
             rotate=bool(rotate),
         )
-        layer = _get_uv_layer(obj.data)
-        if layer is None:
-            raise RuntimeError("UV layer unavailable after packing")
+        after_uv = _mesh_uv_context(obj)
+        if "FINISHED" not in operator_result:
+            return _uv_operator_failed(object_name, "UV packing", operator_result, before_uv, after_uv)
+        mesh, layer = _reacquire_uv_layer(obj, uv_name)
         if normalize:
             normalize_result = _normalize_layer(layer, float(margin))
         else:
@@ -629,7 +660,7 @@ def pack_uvs(
         _update_mesh(mesh)
         return skill_success(
             f"Packed UVs on {object_name}",
-            uv_map=layer.name,
+            uv_map=uv_name,
             margin=float(margin),
             rotate=bool(rotate),
             normalize=bool(normalize),
@@ -641,6 +672,8 @@ def pack_uvs(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if obj is not None and before_uv is not None:
+            return _uv_exception_receipt(obj, "UV packing", before_uv, exc)
         return skill_exception(exc, message=f"Failed to pack UVs on {object_name}")
 
 

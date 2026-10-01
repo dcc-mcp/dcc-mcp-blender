@@ -11,7 +11,7 @@ metadata:
     dcc: blender
     layer: domain
     stage: authoring
-    version: "1.0.0"
+    version: "1.0.1"
     tags: [blender, uv, texture, mesh, authoring]
     search-hint: >-
       uv map, texture coordinates, unwrap uv, smart project, planar projection,
@@ -46,6 +46,13 @@ packing, or normalization.
 Prefer `blender-mesh` for topology and modifier work, `blender-materials` for
 material slots, and `blender-shader-nodes` for shader graph edits. Use
 `blender-scripting` only after checking this typed surface.
+
+UV operator paths require Object Mode before changing UVs or selection;
+Edit Mode data are not read or normalized through mesh RNA.
+Projection, unwrap and packing operators reacquire the mesh and the original
+named UV layer after mode transitions. A missing layer or failed operator
+returns an error with a conservative mutation receipt; packing then skips
+normalization. Callers must inspect `success` before accepting the UV result.
 
 
 ## Quality and delivery
