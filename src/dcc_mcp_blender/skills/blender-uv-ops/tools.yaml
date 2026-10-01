@@ -184,7 +184,7 @@ tools:
       open_world_hint: false
 
   - name: project_uvs
-    description: "Generate UV coordinates using planar, cube, bounds, smart, sphere, cylinder, or view projection."
+    description: "Generate UV coordinates using planar, cube, bounds, smart, sphere, cylinder, or view projection. Operator projections require Object Mode."
     source_file: scripts/project_uvs.py
     execution: sync
     affinity: main
@@ -225,7 +225,7 @@ tools:
       open_world_hint: false
 
   - name: unwrap_uvs
-    description: "Unwrap selected mesh faces through Blender's smart, angle-based, or conformal UV operators."
+    description: "Unwrap all mesh faces through Blender's smart, angle-based, or conformal UV operators. Requires Object Mode."
     source_file: scripts/unwrap_uvs.py
     execution: sync
     affinity: main
@@ -261,7 +261,7 @@ tools:
       open_world_hint: false
 
   - name: pack_uvs
-    description: "Pack UV islands through Blender's UV packing operator and optionally normalize the result."
+    description: "Pack UV islands through Blender's UV packing operator and optionally normalize the original named UV layer. Requires Object Mode."
     source_file: scripts/pack_uvs.py
     execution: sync
     affinity: main

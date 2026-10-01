@@ -5,12 +5,15 @@ Requires a real Blender Python interpreter.
 
 from __future__ import annotations
 
+from math import isfinite
+
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="bpy not available - run inside Blender Python interpreter")
 
 pytestmark = pytest.mark.e2e
 
+from dcc_mcp_blender import _uv_ops  # noqa: E402
 from tests.e2e.conftest import load_skill  # noqa: E402
 
 
@@ -45,3 +48,96 @@ class TestUvOpsE2E:
         assert normalize_result["success"] is True
         assert normalize_result["context"]["bounds"]["min"] == [0.0, 0.0]
         assert normalize_result["context"]["bounds"]["max"] == [1.0, 1.0]
+
+    def test_uv_operators_preserve_named_layer_and_native_reopen(self, tmp_path):
+        bpy.ops.mesh.primitive_cube_add()
+        obj = bpy.context.active_object
+        object_name = obj.name
+        for edge in obj.data.edges:
+            edge.use_seam = True
+        original_name = obj.data.uv_layers.active.name
+        sentinel_name = "UntouchedUV"
+        obj.data.uv_layers.new(name=sentinel_name)
+        for loop in obj.data.uv_layers[sentinel_name].data:
+            loop.uv = (-2.5, 3.5)
+        obj.data.uv_layers.active = obj.data.uv_layers[original_name]
+        loop_count = len(obj.data.loops)
+
+        operations = [
+            (_uv_ops.project_uvs, {"method": "smart"}),
+            (_uv_ops.project_uvs, {"method": "sphere"}),
+            (_uv_ops.project_uvs, {"method": "cylinder"}),
+            (_uv_ops.unwrap_uvs, {"method": "smart"}),
+            (_uv_ops.unwrap_uvs, {"method": "angle_based"}),
+            (_uv_ops.unwrap_uvs, {"method": "conformal"}),
+            (_uv_ops.pack_uvs, {"margin": 0.004, "normalize": True}),
+        ]
+        for operation, arguments in operations:
+            result = operation(object_name=object_name, **arguments)
+            assert result["success"], result
+            assert result["context"]["uv_map"] == original_name
+            obj = bpy.data.objects[object_name]
+            assert obj.mode == "OBJECT"
+            coords = [tuple(loop.uv) for loop in obj.data.uv_layers[original_name].data]
+            assert len(coords) == loop_count
+            assert all(isfinite(value) for uv in coords for value in uv)
+            assert [tuple(loop.uv) for loop in obj.data.uv_layers[sentinel_name].data] == [(-2.5, 3.5)] * loop_count
+
+        assert result["context"]["normalized_coordinate_count"] == loop_count
+        assert result["context"]["bounds"]["min"] == pytest.approx([0.004, 0.004])
+        assert result["context"]["bounds"]["max"] == pytest.approx([0.996, 0.996])
+        path = str(tmp_path / "uv-operator-roundtrip.blend")
+        bpy.ops.wm.save_as_mainfile(filepath=path)
+        bpy.ops.wm.open_mainfile(filepath=path)
+        obj = bpy.data.objects[object_name]
+        reopened = [tuple(loop.uv) for loop in obj.data.uv_layers[original_name].data]
+        assert reopened == coords
+        assert [tuple(loop.uv) for loop in obj.data.uv_layers[sentinel_name].data] == [(-2.5, 3.5)] * loop_count
+
+    @pytest.mark.parametrize("operation", [_uv_ops.project_uvs, _uv_ops.unwrap_uvs, _uv_ops.pack_uvs])
+    def test_uv_operator_rejects_edit_entry_before_mutation(self, operation):
+        bpy.ops.mesh.primitive_cube_add()
+        obj = bpy.context.active_object
+        object_name = obj.name
+        uv_before = [tuple(loop.uv) for loop in obj.data.uv_layers.active.data]
+        bpy.ops.object.mode_set(mode="EDIT")
+        arguments = {"method": "smart"} if operation is not _uv_ops.pack_uvs else {}
+        result = operation(object_name=object_name, **arguments)
+        assert result["success"] is False
+        assert result["context"]["mutation_applied"] is False
+        assert obj.mode == "EDIT"
+        bpy.ops.object.mode_set(mode="OBJECT")
+        assert [tuple(loop.uv) for loop in obj.data.uv_layers.active.data] == uv_before
+
+    @pytest.mark.parametrize("sync_selection", [False, True])
+    def test_pack_new_uv_map_without_initial_uv_selection(self, sync_selection):
+        mesh = bpy.data.meshes.new("UnselectedUVSource")
+        mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
+        obj = bpy.data.objects.new("UnselectedUVSource", mesh)
+        bpy.context.collection.objects.link(obj)
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        name = mesh.uv_layers.new(name="FreshUV", do_init=False).name
+        for loop, uv in zip(mesh.uv_layers[name].data, [(2, 2), (4, 2), (4, 4), (2, 4)]):
+            loop.uv = uv
+        settings = bpy.context.scene.tool_settings
+        previous_sync = settings.use_uv_select_sync
+        try:
+            settings.use_uv_select_sync = sync_selection
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.uv.select_all(action="DESELECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+            result = _uv_ops.pack_uvs(object_name=obj.name, margin=0.004)
+
+            assert result["success"], result
+            assert result["context"]["operator_result"] == ["FINISHED"]
+            assert result["context"]["uv_map"] == name
+            assert result["context"]["normalized_coordinate_count"] == 4
+            assert result["context"]["bounds"]["min"] == pytest.approx([0.004, 0.004])
+            assert result["context"]["bounds"]["max"] == pytest.approx([0.996, 0.996])
+            assert settings.use_uv_select_sync is sync_selection
+            assert obj.mode == "OBJECT"
+        finally:
+            settings.use_uv_select_sync = previous_sync

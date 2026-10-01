@@ -131,8 +131,21 @@ def _bpy_for(obj):
     return bpy
 
 
-@pytest.mark.parametrize("tool", ["unwrap_uvs", "project_uvs", "pack_uvs"])
-def test_uv_operator_reacquires_layer_after_edit_mode_invalidates_rna(tool):
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [
+        ("unwrap_uvs", {"method": "smart"}),
+        ("unwrap_uvs", {"method": "angle_based"}),
+        ("unwrap_uvs", {"method": "conformal"}),
+        ("project_uvs", {"method": "smart"}),
+        ("project_uvs", {"method": "sphere"}),
+        ("project_uvs", {"method": "cylinder"}),
+        ("project_uvs", {"method": "view"}),
+        ("pack_uvs", {"normalize": True}),
+        ("pack_uvs", {"normalize": False}),
+    ],
+)
+def test_uv_operator_reacquires_named_layer_and_mesh_after_mode_transition(tool, arguments):
     class ExpiringLayer(FakeUVLayer):
         expired = False
 
@@ -141,25 +154,117 @@ def test_uv_operator_reacquires_layer_after_edit_mode_invalidates_rna(tool):
                 raise ReferenceError("UV RNA storage was replaced by mode transition")
             return super().__getattribute__(name)
 
-    obj = _mesh_obj()
-    old_layer = ExpiringLayer("Original", len(obj.data.loops))
-    obj.data.uv_layers = FakeUVLayers(len(obj.data.loops), [old_layer])
+    class ExpiringMesh(FakeMesh):
+        expired = False
+
+        def __getattribute__(self, name):
+            if name in {"name", "uv_layers", "loops", "update"} and self.expired:
+                raise ReferenceError("Mesh RNA storage was replaced by mode transition")
+            return super().__getattribute__(name)
+
+    old_mesh = ExpiringMesh()
+    old_layer = ExpiringLayer("Original", len(old_mesh.loops))
+    old_mesh.uv_layers = FakeUVLayers(len(old_mesh.loops), [old_layer])
+    obj = _mesh_obj(old_mesh)
+    fresh_mesh = FakeMesh()
+    fresh = FakeUVLayer("Original", 4, [(2, 2), (4, 2), (4, 4), (2, 4)])
+    other = FakeUVLayer("Other", 4, [(5, 6)] * 4)
+    fresh_mesh.uv_layers = FakeUVLayers(4, [fresh, other])
+    fresh_mesh.uv_layers.active = other
     bpy = _bpy_for(obj)
+    for operator in ("unwrap", "sphere_project", "cylinder_project", "project_from_view"):
+        getattr(bpy.ops.uv, operator).return_value = {"FINISHED"}
 
     def mode_set(mode):
         if mode == "OBJECT":
             old_layer.expired = True
-            fresh = FakeUVLayer("Fresh", len(obj.data.loops), [(2, 2), (4, 2), (4, 4), (2, 4)])
-            obj.data.uv_layers = FakeUVLayers(len(obj.data.loops), [fresh])
+            old_mesh.expired = True
+            obj.data = fresh_mesh
+        return {"FINISHED"}
+
+    bpy.ops.object.mode_set.side_effect = mode_set
+    result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), bpy, object_name=obj.name, **arguments)
+    assert result["success"], result
+    assert result["context"]["uv_map"] == "Original"
+    assert result["context"]["active_uv_map"] == "Other"
+    fresh_mesh.update.assert_called_once()
+    assert [list(loop.uv) for loop in other.data] == [[5, 6]] * 4
+    if tool == "pack_uvs":
+        assert result["context"]["normalized_coordinate_count"] == (4 if arguments["normalize"] else 0)
+        if arguments["normalize"]:
+            assert list(fresh.data[0].uv) == [0.001, 0.001]
+
+
+@pytest.mark.parametrize("tool", ["unwrap_uvs", "project_uvs", "pack_uvs"])
+def test_uv_operator_rejects_disappearing_original_layer(tool):
+    obj = _mesh_obj()
+    bpy = _bpy_for(obj)
+    other = FakeUVLayer("Other", 4, [(5, 6)] * 4)
+
+    def mode_set(mode):
+        if mode == "OBJECT":
+            obj.data = FakeMesh()
+            obj.data.uv_layers = FakeUVLayers(4, [other])
         return {"FINISHED"}
 
     bpy.ops.object.mode_set.side_effect = mode_set
     arguments = {} if tool == "pack_uvs" else {"method": "smart"}
     result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), bpy, object_name=obj.name, **arguments)
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert result["context"]["error_type"] == "RuntimeError"
+    assert result["context"]["uv_before"]["active_uv_map"] == "UVMap"
+    assert result["context"]["uv_after"]["active_uv_map"] == "Other"
+    assert [list(loop.uv) for loop in other.data] == [[5, 6]] * 4
+
+
+def test_cancelled_pack_reports_mutation_receipt_without_normalizing():
+    obj = _mesh_obj()
+    bpy = _bpy_for(obj)
+    bpy.ops.uv.pack_islands.return_value = {"CANCELLED"}
+    original = [list(loop.uv) for loop in obj.data.uv_layers.active.data]
+
+    result = load_and_call("blender-uv-ops/scripts/pack_uvs.py", bpy, object_name=obj.name)
+
+    assert result["success"] is False
+    assert result["context"]["operator_result"] == ["CANCELLED"]
+    assert result["context"]["mutation_applied"] is True
+    assert result["context"]["rollback_verified"] is False
+    assert [list(loop.uv) for loop in obj.data.uv_layers.active.data] == original
+
+
+@pytest.mark.parametrize("tool", ["unwrap_uvs", "project_uvs", "pack_uvs"])
+@pytest.mark.parametrize("mode", ["EDIT", "SCULPT"])
+def test_uv_operator_rejects_non_object_entry_without_mutation(tool, mode):
+    obj = _mesh_obj(FakeMesh(with_uv=False))
+    obj.mode = mode
+    bpy = _bpy_for(obj)
+    arguments = {} if tool == "pack_uvs" else {"method": "smart"}
+
+    result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), bpy, object_name=obj.name, **arguments)
+
+    assert result["success"] is False
+    assert result["context"]["mutation_applied"] is False
+    assert len(obj.data.uv_layers) == 0
+    bpy.ops.object.mode_set.assert_not_called()
+    bpy.ops.object.select_all.assert_not_called()
+
+
+@pytest.mark.parametrize("tool", ["unwrap_uvs", "project_uvs"])
+def test_uv_operator_reacquires_newly_created_layer(tool):
+    obj = _mesh_obj(FakeMesh(with_uv=False))
+    bpy = _bpy_for(obj)
+
+    def mode_set(mode):
+        if mode == "OBJECT":
+            obj.data = FakeMesh()
+        return {"FINISHED"}
+
+    bpy.ops.object.mode_set.side_effect = mode_set
+    result = load_and_call("blender-uv-ops/scripts/{}.py".format(tool), bpy, object_name=obj.name, method="smart")
     assert result["success"], result
-    assert result["context"]["uv_map"] == "Fresh"
-    if tool == "pack_uvs":
-        assert result["context"]["normalized_coordinate_count"] == 4
+    assert result["context"]["uv_map"] == "UVMap"
 
 
 def test_tools_yaml_declares_modern_contract():
@@ -299,6 +404,33 @@ def test_pack_and_normalize_uvs():
     assert normalized["success"] is True
     assert normalized["context"]["bounds"]["min"] == [0.0, 0.0]
     assert normalized["context"]["bounds"]["max"] == [1.0, 1.0]
+
+
+@pytest.mark.parametrize("sync_selection", [False, True])
+def test_pack_selects_uvs_before_packing_without_changing_sync_setting(sync_selection):
+    obj = _mesh_obj()
+    bpy = _bpy_for(obj)
+    bpy.context.scene.tool_settings.use_uv_select_sync = sync_selection
+    uv_selected = False
+
+    def select_uvs(action):
+        nonlocal uv_selected
+        assert action == "SELECT"
+        uv_selected = True
+        return {"FINISHED"}
+
+    def pack(**kwargs):
+        assert uv_selected, "Mesh face selection alone does not select UV vertices"
+        return {"FINISHED"}
+
+    bpy.ops.uv.select_all.side_effect = select_uvs
+    bpy.ops.uv.pack_islands.side_effect = pack
+
+    result = load_and_call("blender-uv-ops/scripts/pack_uvs.py", bpy, object_name=obj.name)
+
+    assert result["success"], result
+    bpy.ops.uv.select_all.assert_called_once_with(action="SELECT")
+    assert bpy.context.scene.tool_settings.use_uv_select_sync is sync_selection
 
 
 def test_missing_and_non_mesh_objects_return_errors():
