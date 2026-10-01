@@ -108,3 +108,36 @@ class TestUvOpsE2E:
         assert obj.mode == "EDIT"
         bpy.ops.object.mode_set(mode="OBJECT")
         assert [tuple(loop.uv) for loop in obj.data.uv_layers.active.data] == uv_before
+
+    @pytest.mark.parametrize("sync_selection", [False, True])
+    def test_pack_new_uv_map_without_initial_uv_selection(self, sync_selection):
+        mesh = bpy.data.meshes.new("UnselectedUVSource")
+        mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
+        obj = bpy.data.objects.new("UnselectedUVSource", mesh)
+        bpy.context.collection.objects.link(obj)
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        name = mesh.uv_layers.new(name="FreshUV", do_init=False).name
+        for loop, uv in zip(mesh.uv_layers[name].data, [(2, 2), (4, 2), (4, 4), (2, 4)]):
+            loop.uv = uv
+        settings = bpy.context.scene.tool_settings
+        previous_sync = settings.use_uv_select_sync
+        try:
+            settings.use_uv_select_sync = sync_selection
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.uv.select_all(action="DESELECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+            result = _uv_ops.pack_uvs(object_name=obj.name, margin=0.004)
+
+            assert result["success"], result
+            assert result["context"]["operator_result"] == ["FINISHED"]
+            assert result["context"]["uv_map"] == name
+            assert result["context"]["normalized_coordinate_count"] == 4
+            assert result["context"]["bounds"]["min"] == pytest.approx([0.004, 0.004])
+            assert result["context"]["bounds"]["max"] == pytest.approx([0.996, 0.996])
+            assert settings.use_uv_select_sync is sync_selection
+            assert obj.mode == "OBJECT"
+        finally:
+            settings.use_uv_select_sync = previous_sync

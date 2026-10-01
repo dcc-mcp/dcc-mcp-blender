@@ -750,6 +750,7 @@ def _run_uv_edit_operator(bpy: Any, obj: Any, operator_name: str, **kwargs: Any)
         if callable(select_mode):
             _call_operator(select_mode, type="FACE")
         bpy.ops.mesh.select_all(action="SELECT")
+        _call_operator(bpy.ops.uv.select_all, action="SELECT")
         operator = getattr(bpy.ops.uv, operator_name)
         result = _call_operator(operator, **kwargs)
         return sorted(str(item) for item in result) if isinstance(result, set) else [str(result)]

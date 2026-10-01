@@ -49,6 +49,8 @@ material slots, and `blender-shader-nodes` for shader graph edits. Use
 
 UV operator paths require Object Mode before changing UVs or selection;
 Edit Mode data are not read or normalized through mesh RNA.
+Operators select all mesh faces and UV vertices without changing the scene's
+UV selection sync setting, including UV maps created without initial selection.
 Projection, unwrap and packing operators reacquire the mesh and the original
 named UV layer after mode transitions. A missing layer or failed operator
 returns an error with a conservative mutation receipt; packing then skips

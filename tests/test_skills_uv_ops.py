@@ -406,6 +406,33 @@ def test_pack_and_normalize_uvs():
     assert normalized["context"]["bounds"]["max"] == [1.0, 1.0]
 
 
+@pytest.mark.parametrize("sync_selection", [False, True])
+def test_pack_selects_uvs_before_packing_without_changing_sync_setting(sync_selection):
+    obj = _mesh_obj()
+    bpy = _bpy_for(obj)
+    bpy.context.scene.tool_settings.use_uv_select_sync = sync_selection
+    uv_selected = False
+
+    def select_uvs(action):
+        nonlocal uv_selected
+        assert action == "SELECT"
+        uv_selected = True
+        return {"FINISHED"}
+
+    def pack(**kwargs):
+        assert uv_selected, "Mesh face selection alone does not select UV vertices"
+        return {"FINISHED"}
+
+    bpy.ops.uv.select_all.side_effect = select_uvs
+    bpy.ops.uv.pack_islands.side_effect = pack
+
+    result = load_and_call("blender-uv-ops/scripts/pack_uvs.py", bpy, object_name=obj.name)
+
+    assert result["success"], result
+    bpy.ops.uv.select_all.assert_called_once_with(action="SELECT")
+    assert bpy.context.scene.tool_settings.use_uv_select_sync is sync_selection
+
+
 def test_missing_and_non_mesh_objects_return_errors():
     bpy = make_mock_bpy()
     bpy.data.objects.get.return_value = None
