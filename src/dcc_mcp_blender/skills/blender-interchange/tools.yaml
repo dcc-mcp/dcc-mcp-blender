@@ -25,7 +25,7 @@ tools:
         options:
           type: object
           additionalProperties: true
-          description: Blender operator options.
+          description: Native RNA options; enum flags use JSON arrays. Unknown or invalid options fail.
     output_schema: &interchange_result_schema
       type: object
       additionalProperties: true

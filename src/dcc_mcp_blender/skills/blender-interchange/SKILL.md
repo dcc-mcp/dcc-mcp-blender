@@ -11,7 +11,7 @@ metadata:
     dcc: blender
     layer: domain
     stage: interchange
-    version: "1.0.0"
+    version: "1.0.1"
     tags: [blender, interchange, import, export, fbx, obj, usd, gltf, alembic, pipeline]
     search-hint: >-
       import file, import fbx, import obj, import usd, export gltf, export usd, export alembic,
@@ -64,6 +64,22 @@ to the same implementation.
 Prefer `blender-export-preset` for reusable export settings, `blender-shot-export`
 for camera/shot metadata, and `blender-scripting` only after checking typed
 interchange tools.
+
+## Native operator options
+
+Options use the current host's RNA names. Represent enum flags as JSON arrays,
+for example `{"object_types": ["MESH"], "bake_anim": false}` for FBX batch
+export. Scalar enums remain strings. The adapter converts enum flags to native
+sets while retaining JSON arrays in export receipts and stored presets.
+
+Unknown names, invalid values, unfinished operators and missing output files
+return failure. Requested options are never dropped or retried with defaults.
+OBJ's basic writer is used only when no native OBJ exporter exists and no
+options were requested.
+
+Typed USD `import_textures` maps to `import_textures_mode` (`IMPORT_PACK` or
+`IMPORT_NONE`). Typed `import_subdiv` maps to the host's `import_subdiv` (4.5)
+or `import_subdivision` (5.2) RNA property.
 
 ## GLTF export vertex counts
 

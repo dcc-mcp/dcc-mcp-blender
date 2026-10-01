@@ -56,3 +56,66 @@ class TestInterchangeExportE2E:
         camera_export = camera_mod.export_camera(camera_name="ShotCam", path=str(camera_json))
         assert camera_export["success"] is True
         assert camera_json.is_file()
+
+    def test_fbx_json_enum_flags_filter_actual_exported_objects(self, tmp_path):
+        bpy.ops.mesh.primitive_cube_add()
+        mesh = bpy.context.object
+        mesh.name = "FlagMesh"
+        bpy.ops.object.camera_add()
+        camera = bpy.context.object
+        camera.name = "ExcludedCamera"
+        mesh.select_set(True)
+        camera.select_set(True)
+        options = {"object_types": ["MESH"], "bake_anim": False, "global_scale": 2.0}
+        batch = load_skill("blender-interchange", "batch_export")
+        target = tmp_path / "flags.fbx"
+        result = batch.batch_export(
+            items=[
+                {
+                    "path": str(target),
+                    "format": "fbx",
+                    "object_names": [mesh.name, camera.name],
+                    "options": options,
+                }
+            ]
+        )
+        assert result["success"] is True
+        assert result["context"]["results"][0]["normalized_options"] == options
+        assert target.is_file() and target.stat().st_size > 0
+        _new_scene()
+        importer = load_skill("blender-interchange", "import_fbx")
+        imported = importer.import_fbx(path=str(target))
+        assert imported["success"] is True
+        assert [obj.type for obj in bpy.data.objects] == ["MESH"]
+        assert bpy.context.scene.objects[0].animation_data is None
+
+    @pytest.mark.parametrize(
+        "options",
+        [
+            {"unknown_option": True},
+            {"object_types": ["INVALID"]},
+            {"object_types": "MESH"},
+            {"global_scale": "invalid"},
+        ],
+    )
+    def test_native_invalid_fbx_options_do_not_write_artifacts(self, tmp_path, options):
+        bpy.ops.mesh.primitive_cube_add()
+        export = load_skill("blender-geometry", "export_fbx")
+        target = tmp_path / "invalid.fbx"
+        result = export.export_fbx(path=str(target), options=options)
+        assert result["success"] is False
+        assert not target.exists()
+
+    @pytest.mark.parametrize("textures", [True, False])
+    def test_typed_usd_import_options_match_supported_rna(self, tmp_path, textures):
+        target = tmp_path / "triangle.usda"
+        target.write_text(
+            '#usda 1.0\ndef Mesh "Triangle" {\n'
+            " point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]\n"
+            " int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0, 1, 2]\n}\n",
+            encoding="utf-8",
+        )
+        importer = load_skill("blender-interchange", "import_usd")
+        result = importer.import_usd(filepath=str(target), import_textures=textures, import_subdiv=False)
+        assert result["success"] is True
+        assert result["context"]["imported_count"] >= 1

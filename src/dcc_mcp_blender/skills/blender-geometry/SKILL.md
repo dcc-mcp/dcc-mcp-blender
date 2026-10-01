@@ -8,7 +8,7 @@ metadata:
     dcc: blender
     layer: domain
     stage: authoring
-    version: "1.0.0"
+    version: "1.0.1"
     tags: [blender, geometry, export, mesh]
     search-hint: "create sphere, save blend, export fbx, export obj, file exists"
     search-aliases: [primitive, sphere, save as, save blend file, file check, geometric primitive, basic mesh]
@@ -37,3 +37,8 @@ metadata:
 # blender-geometry
 
 Geometry tools for Blender main-thread execution and export validation.
+
+FBX/OBJ options follow the native RNA contract documented in
+`blender-interchange`: enum flags use JSON arrays; unknown or invalid options
+fail without retrying defaults. Successful exports require a finished operator
+and a non-empty output file.

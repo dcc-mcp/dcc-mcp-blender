@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -187,7 +189,8 @@ def test_import_file_supports_gltf(tmp_path):
 def test_export_obj_fallback_and_gltf_batch_export(tmp_path):
     cube = FakeObject("Cube")
     bpy = _bpy_with_scene([cube])
-    bpy.ops.wm.obj_export.side_effect = RuntimeError("operator unavailable")
+    bpy.ops.wm.obj_export = None
+    bpy.ops.export_scene.obj = None
     bpy.ops.export_scene.gltf.side_effect = _write_file_operator("gltf")
 
     obj_path = tmp_path / "mesh.obj"
@@ -318,8 +321,11 @@ def test_import_usd_reports_imported_objects_and_summary(tmp_path):
     assert summary["by_type"] == {"MESH": 1, "LIGHT": 1}
 
 
-def test_import_usd_filters_only_unsupported_operator_options(tmp_path):
-    """One unsupported Blender option must not discard the supported USD options."""
+@pytest.mark.parametrize("subdivision_option", ["import_subdiv", "import_subdivision"])
+@pytest.mark.parametrize("import_textures", [True, False])
+@pytest.mark.parametrize("native_override", [None, False])
+def test_import_usd_maps_typed_options_to_native_rna(tmp_path, subdivision_option, import_textures, native_override):
+    """Typed options must be translated to the host's actual USD properties."""
     source = tmp_path / "scene.usda"
     source.write_text("#usda 1.0\n", encoding="utf-8")
     bpy = _bpy_with_scene([])
@@ -338,7 +344,8 @@ def test_import_usd_filters_only_unsupported_operator_options(tmp_path):
                 Property("import_materials"),
                 Property("import_cameras"),
                 Property("import_lights"),
-                Property("import_subdiv"),
+                Property(subdivision_option),
+                Property("import_textures_mode"),
                 Property("scale"),
             ]
             return type("RnaType", (), {"properties": properties})()
@@ -358,9 +365,10 @@ def test_import_usd_filters_only_unsupported_operator_options(tmp_path):
         import_materials=True,
         import_cameras=True,
         import_lights=True,
-        import_textures=True,
+        import_textures=import_textures,
         import_subdiv=True,
         scale=0.5,
+        options={} if native_override is None else {subdivision_option: native_override},
     )
 
     assert result["success"] is True
@@ -370,10 +378,124 @@ def test_import_usd_filters_only_unsupported_operator_options(tmp_path):
         "import_materials": True,
         "import_cameras": True,
         "import_lights": True,
-        "import_subdiv": True,
+        subdivision_option: True if native_override is None else native_override,
+        "import_textures_mode": "IMPORT_PACK" if import_textures else "IMPORT_NONE",
         "scale": 0.5,
     }
-    assert result["context"]["warnings"] == ["Ignored unsupported options: ['import_textures']"]
+    assert result["context"]["warnings"] == []
+
+
+def _rna_operator(properties, *, status=frozenset({"FINISHED"}), exception=None):
+    operator = MagicMock(return_value=status, side_effect=exception)
+    operator.get_rna_type.return_value.properties = properties
+    return operator
+
+
+def _property(identifier, *, kind="STRING", flag=False, items=()):
+    return SimpleNamespace(
+        identifier=identifier,
+        type=kind,
+        is_enum_flag=flag,
+        enum_items=[SimpleNamespace(identifier=item) for item in items],
+    )
+
+
+def test_fbx_enum_flag_json_arrays_preserve_all_options_and_receipts(tmp_path):
+    bpy = _bpy_with_scene([FakeObject("Cube")])
+    props = [
+        _property("filepath"),
+        _property("object_types", kind="ENUM", flag=True, items=["MESH", "CAMERA"]),
+        _property("bake_anim", kind="BOOLEAN"),
+        _property("global_scale", kind="FLOAT"),
+    ]
+    operator = _rna_operator(props)
+    operator.side_effect = _write_file_operator("fbx")
+    bpy.ops.export_scene.fbx = operator
+    options = {"object_types": ["MESH"], "bake_anim": False, "global_scale": 2.0}
+    result = load_and_call(
+        "blender-interchange/scripts/batch_export.py",
+        bpy,
+        items=[{"path": str(tmp_path / "mesh.fbx"), "format": "fbx", "options": options}],
+    )
+    assert result["success"] is True
+    assert operator.call_count == 1
+    assert operator.call_args.kwargs["object_types"] == {"MESH"}
+    assert operator.call_args.kwargs["bake_anim"] is False
+    assert operator.call_args.kwargs["global_scale"] == 2.0
+    assert options["object_types"] == ["MESH"]
+    assert result["context"]["results"][0]["normalized_options"] == options
+    json.dumps(result)
+
+
+@pytest.mark.parametrize("value", ["MESH", ["UNKNOWN"], [1], None])
+def test_invalid_enum_flags_fail_before_operator(tmp_path, value):
+    bpy = _bpy_with_scene([FakeObject("Cube")])
+    operator = _rna_operator([_property("object_types", kind="ENUM", flag=True, items=["MESH"])])
+    bpy.ops.export_scene.fbx = operator
+    target = tmp_path / "mesh.fbx"
+    result = load_and_call(
+        "blender-geometry/scripts/export_fbx.py", bpy, path=str(target), options={"object_types": value}
+    )
+    assert result["success"] is False
+    operator.assert_not_called()
+    assert not target.exists()
+
+
+def test_nonflag_enums_and_arrays_keep_native_types():
+    from dcc_mcp_blender._interchange_ops import _call_with_options
+
+    operator = _rna_operator(
+        [
+            _property("axis", kind="ENUM", items=["X", "Y"]),
+            _property("vector", kind="FLOAT"),
+        ]
+    )
+    _call_with_options(operator, {}, {"axis": "Y", "vector": [1.0, 2.0, 3.0]}, [])
+    assert operator.call_args.kwargs == {"axis": "Y", "vector": [1.0, 2.0, 3.0]}
+
+
+@pytest.mark.parametrize("mode", ["unknown", "type_error", "cancelled", "running_modal"])
+@pytest.mark.parametrize("direction", ["import", "export"])
+def test_invalid_options_and_unfinished_operators_never_retry(tmp_path, mode, direction):
+    bpy = _bpy_with_scene([])
+    target = tmp_path / "mesh.fbx"
+    target.write_text("existing artifact", encoding="utf-8")
+    exception = TypeError("invalid option type") if mode == "type_error" else None
+    status = {"CANCELLED"} if mode == "cancelled" else {"RUNNING_MODAL"} if mode == "running_modal" else {"FINISHED"}
+    operator = _rna_operator([_property("bake_anim", kind="BOOLEAN")], status=status, exception=exception)
+    options = {"unknown": 1} if mode == "unknown" else {"bake_anim": "invalid" if exception else False}
+    if direction == "import":
+        bpy.ops.import_scene.fbx = operator
+        script = "blender-interchange/scripts/import_fbx.py"
+    else:
+        bpy.ops.export_scene.fbx = operator
+        script = "blender-geometry/scripts/export_fbx.py"
+    result = load_and_call(script, bpy, path=str(target), options=options)
+    assert result["success"] is False
+    assert operator.call_count == (0 if mode == "unknown" else 1)
+    assert target.read_text(encoding="utf-8") == "existing artifact"
+
+
+@pytest.mark.parametrize("status", [{"CANCELLED"}, {"FINISHED"}])
+def test_native_obj_failure_does_not_fall_back(tmp_path, status):
+    bpy = _bpy_with_scene([FakeObject("Cube")])
+    bpy.ops.wm.obj_export.return_value = status
+    target = tmp_path / "mesh.obj"
+    result = load_and_call("blender-geometry/scripts/export_obj.py", bpy, path=str(target))
+    assert result["success"] is False
+    assert not target.exists()
+    assert bpy.ops.wm.obj_export.call_count == 1
+
+
+def test_missing_obj_operator_cannot_drop_options(tmp_path):
+    bpy = _bpy_with_scene([FakeObject("Cube")])
+    bpy.ops.wm.obj_export = bpy.ops.export_scene.obj = None
+    target = tmp_path / "mesh.obj"
+    result = load_and_call(
+        "blender-geometry/scripts/export_obj.py", bpy, path=str(target), options={"global_scale": 2.0}
+    )
+    assert result["success"] is False
+    assert not target.exists()
 
 
 def test_import_usd_reports_missing_file(tmp_path):
