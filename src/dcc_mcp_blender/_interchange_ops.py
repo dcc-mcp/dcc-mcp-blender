@@ -95,40 +95,58 @@ def _select_objects(bpy: Any, object_names: Sequence[str] | None) -> tuple[bool,
     return True, [obj.name for obj in objects], None
 
 
-def _operator_property_names(operator: Any) -> set[str] | None:
-    """Return Blender RNA option names when the operator exposes them."""
+def _operator_properties(operator: Any) -> dict[str, Any] | None:
+    """Read RNA once; retain property types needed to decode JSON options."""
     get_rna_type = getattr(operator, "get_rna_type", None)
     if not callable(get_rna_type):
         return None
     try:
         properties = get_rna_type().properties
-        names = set()
+        result = {}
         for prop in properties:
             identifier = getattr(prop, "identifier", None)
             if identifier and identifier != "rna_type":
-                names.add(identifier)
+                result[identifier] = prop
     except Exception:
         return None
-    return names or None
+    return result or None
+
+
+def _native_options(operator: Any, options: dict[str, Any]) -> dict[str, Any]:
+    """Translate enum flags without changing the caller's JSON receipt."""
+    properties = _operator_properties(operator)
+    if properties is None:
+        return dict(options)
+    unknown = set(options) - properties.keys()
+    if unknown:
+        raise ValueError(f"Unsupported operator options: {sorted(unknown)}")
+    result = dict(options)
+    for key, value in options.items():
+        prop = properties[key]
+        if getattr(prop, "type", None) != "ENUM":
+            continue
+        is_flag = getattr(prop, "is_enum_flag", False)
+        if is_flag:
+            if not isinstance(value, (list, tuple, set, frozenset)) or any(not isinstance(item, str) for item in value):
+                raise ValueError(f"Option '{key}' requires an array of enum identifiers")
+            result[key] = set(value)
+            identifiers = result[key]
+        else:
+            if not isinstance(value, str):
+                raise ValueError(f"Option '{key}' requires one enum identifier")
+            identifiers = {value}
+        allowed = {item.identifier for item in prop.enum_items}
+        if allowed and not identifiers <= allowed:
+            raise ValueError(f"Invalid enum identifiers for '{key}': {sorted(identifiers - allowed)}")
+    return result
 
 
 def _call_with_options(operator: Any, base: dict[str, Any], options: dict[str, Any], warnings: list[str]) -> None:
-    supported = _operator_property_names(operator)
-    if supported is not None:
-        ignored = sorted(set(options) - supported)
-        if ignored:
-            warnings.append(f"Ignored unsupported options: {ignored}")
-        options = {key: value for key, value in options.items() if key in supported}
     payload = dict(base)
-    payload.update(options)
-    try:
-        operator(**payload)
-    except TypeError as exc:
-        if options:
-            warnings.append(f"Retried without unsupported options: {sorted(options)}")
-            operator(**base)
-        else:
-            raise exc
+    payload.update(_native_options(operator, options))
+    status = operator(**payload)
+    if status != {"FINISHED"}:
+        raise RuntimeError(f"Operator did not finish: {status!r}")
 
 
 def _has_nonempty_file(path: Path) -> bool:
@@ -246,25 +264,22 @@ def _export_by_format(
         elif format == "obj":
             wm_export = getattr(bpy.ops.wm, "obj_export", None)
             scene_export = getattr(getattr(bpy.ops, "export_scene", None), "obj", None)
-            try:
-                if callable(wm_export):
-                    _call_with_options(
-                        wm_export,
-                        {"filepath": str(target), "export_selected_objects": selected},
-                        options,
-                        warnings,
-                    )
-                elif callable(scene_export):
-                    _call_with_options(
-                        scene_export, {"filepath": str(target), "use_selection": selected}, options, warnings
-                    )
-                else:
-                    raise RuntimeError("No OBJ export operator is available")
-                if not _has_nonempty_file(target):
-                    raise RuntimeError("OBJ exporter produced no file")
-            except Exception:
+            if callable(wm_export):
+                _call_with_options(
+                    wm_export,
+                    {"filepath": str(target), "export_selected_objects": selected},
+                    options,
+                    warnings,
+                )
+            elif callable(scene_export):
+                _call_with_options(
+                    scene_export, {"filepath": str(target), "use_selection": selected}, options, warnings
+                )
+            elif not options:
                 warnings.append("Used basic OBJ fallback writer")
                 _write_basic_obj(bpy, target, selected_names if selected else None)
+            else:
+                raise RuntimeError("No OBJ export operator is available to apply the requested options")
         elif format == "gltf":
             _call_with_options(
                 bpy.ops.export_scene.gltf, {"filepath": str(target), "use_selection": selected}, options, warnings
@@ -282,8 +297,9 @@ def _export_by_format(
             return [], warnings, skill_error("Unsupported export format", f"Format '{format}' is not exportable.")
     except Exception as exc:
         return [], warnings, skill_exception(exc, message=f"Failed to export {target}")
-    written = [str(target)] if target.exists() else []
-    return written, warnings, None
+    if not _has_nonempty_file(target):
+        return [], warnings, skill_error("Export produced no file", "The exporter did not write a non-empty file.")
+    return [str(target)], warnings, None
 
 
 def _result_for_export(
@@ -427,16 +443,19 @@ def import_usd(
         "import_materials": import_materials,
         "import_cameras": import_cameras,
         "import_lights": import_lights,
-        "import_textures": import_textures,
+        "import_textures_mode": "IMPORT_PACK" if import_textures else "IMPORT_NONE",
         "import_subdiv": import_subdiv,
         "scale": float(scale),
     }
     if prim_path_mask:
         base_opts["prim_path_mask"] = str(prim_path_mask)
-    base_opts.update(opts)
     try:
         import bpy
 
+        properties = _operator_properties(bpy.ops.wm.usd_import)
+        if properties is not None and "import_subdivision" in properties:
+            base_opts["import_subdivision"] = base_opts.pop("import_subdiv")
+        base_opts.update(opts)
         imported, warnings, error = _import_by_format(bpy, target, "usd", base_opts)
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         if error:
@@ -694,7 +713,13 @@ def batch_export(items: Sequence[Mapping[str, Any]], preset_name: str | None = N
             written_files.extend(written)
             warnings.extend(item_warnings)
             results.append(
-                {"path": str(target), "format": format_key, "written_files": written, "warnings": item_warnings}
+                {
+                    "path": str(target),
+                    "format": format_key,
+                    "written_files": written,
+                    "warnings": item_warnings,
+                    "normalized_options": options,
+                }
             )
         return skill_success(
             f"Batch exported {len(results)} item(s)",
