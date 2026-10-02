@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.13](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.12...v0.2.13) (2026-10-01)
+
+
+### Features
+
+* add typed armature inspection and pose transforms ([#272](https://github.com/dcc-mcp/dcc-mcp-blender/issues/272)) ([ab76093](https://github.com/dcc-mcp/dcc-mcp-blender/commit/ab76093c50170f8f38785590d6d7d693613533d7))
+
+
+### Bug Fixes
+
+* **animation:** keep the posed value when keyframing an explicit frame ([#270](https://github.com/dcc-mcp/dcc-mcp-blender/issues/270)) ([cdf3fec](https://github.com/dcc-mcp/dcc-mcp-blender/commit/cdf3fec554bd968607741638467f1c52e88c01f2))
+* configure Blender media type before output format ([#273](https://github.com/dcc-mcp/dcc-mcp-blender/issues/273)) ([d35d026](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d35d026d7ea419a56459a07a90f76e064100416b))
+* preserve named UV data across mode changes ([#274](https://github.com/dcc-mcp/dcc-mcp-blender/issues/274)) ([6adcf29](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6adcf294f82c87ee1a4ae450cd9fcc35024d93d2))
+* preserve native interchange option contracts ([#275](https://github.com/dcc-mcp/dcc-mcp-blender/issues/275)) ([0179517](https://github.com/dcc-mcp/dcc-mcp-blender/commit/0179517cb5382624e81288b0e9b53609874e8cc7))
+
 ## [0.2.12](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.11...v0.2.12) (2026-09-28)
 
 
