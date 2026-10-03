@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.14](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.13...v0.2.14) (2026-10-03)
+
+
+### Features
+
+* add bounded data geometry and native typography ([#280](https://github.com/dcc-mcp/dcc-mcp-blender/issues/280)) ([8130d08](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8130d08dbb55b33489e72145d07eeca4576505fb))
+* **materials:** add MaterialX (.mtlx) export and import ([#276](https://github.com/dcc-mcp/dcc-mcp-blender/issues/276)) ([2075cec](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2075cec02d93f1cea4e0904a10d0a982c305106c))
+* save bounded portable native scene copies ([#279](https://github.com/dcc-mcp/dcc-mcp-blender/issues/279)) ([659b76d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/659b76d7080a1f7e13ec66a26422f7d889f92469))
+
+
+### Bug Fixes
+
+* align closed curve schema with runtime bounds ([#281](https://github.com/dcc-mcp/dcc-mcp-blender/issues/281)) ([bf618bb](https://github.com/dcc-mcp/dcc-mcp-blender/commit/bf618bbeeb873537c8a6d4c8224b249acbdfb58b))
+* request and verify USD material prims on export ([a8881ee](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a8881ee1102ac646f0facaa90c59a5d36646f5e3)), closes [#277](https://github.com/dcc-mcp/dcc-mcp-blender/issues/277)
+
 ## [0.2.13](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.12...v0.2.13) (2026-10-01)
 
 
