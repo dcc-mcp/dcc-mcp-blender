@@ -162,7 +162,9 @@ def test_typed_copy_relocated_reopen_preserves_native_state_and_render(tmp_path)
     source.unlink()
     target.unlink()
     assert load_skill("blender-scene", "open_scene").main(filepath=str(delivered))["success"]
-    assert bpy.context.scene.render.filepath == RELATIVE_RENDER
+    reopened_render = bpy.context.scene.render.filepath
+    assert reopened_render.startswith("//")
+    assert bpy.path.native_pathsep(reopened_render) == bpy.path.native_pathsep(RELATIVE_RENDER)
     assert _scene_readback() == expected
     assert _render_pixels(relocated / "image.png") == reference
 
