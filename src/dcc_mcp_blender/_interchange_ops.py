@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 _PRESET_STORE_KEY = "dcc_mcp_export_presets"
+# Operator properties that carry shading data across a USD export. Blender does
+# not guarantee their defaults, so we request the ones the running operator
+# exposes instead of inheriting whatever the build decided. Note that
+# ``generate_preview_surface`` emits materials even when ``export_materials``
+# is off, so a caller who sets one of them is left fully in control
+# (see _usd_material_options).
+_USD_MATERIAL_OPTIONS = ("export_materials", "generate_preview_surface")
 _IMPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _EXPORT_FORMATS = {"fbx", "obj", "gltf", "usd", "alembic"}
 _FORMAT_EXTENSIONS = {
@@ -141,6 +149,108 @@ def _native_options(operator: Any, options: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _usd_material_options(operator: Any, options: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Return USD options plus whether the caller left materials to us.
+
+    Omitting the material properties leaves the decision to the operator's
+    defaults, and those defaults are not stable across Blender releases: a build
+    that defaults to ``export_materials=False`` (or that stopped generating
+    preview surfaces) drops every material while the call still reports success.
+    We therefore request the properties the running operator exposes whenever the
+    caller did not express an opinion on any of them.
+
+    The check is all-or-nothing on purpose: on current Blender builds
+    ``generate_preview_surface=True`` writes materials even when
+    ``export_materials=False``, so injecting one after the caller set the other
+    would override an explicit request.
+    """
+    properties = _operator_properties(operator) or {}
+    supported = [name for name in _USD_MATERIAL_OPTIONS if name in properties]
+    caller_decided = any(name in options for name in supported)
+    merged = dict(options)
+    if not caller_decided:
+        for name in supported:
+            merged[name] = True
+    return merged, not caller_decided
+
+
+def _bound_material_names(bpy: Any, object_names: Sequence[str] | None) -> list[str]:
+    """Distinct materials bound to the objects covered by an export.
+
+    Hidden objects are skipped because the USD exporter defaults to
+    ``visible_objects_only=True``; counting them would overstate the expectation.
+    """
+    allowed = set(object_names) if object_names else None
+    names = set()
+    for obj in getattr(getattr(bpy, "data", None), "objects", None) or []:
+        if allowed is not None and getattr(obj, "name", None) not in allowed:
+            continue
+        if getattr(obj, "hide_viewport", False) or getattr(obj, "hide_render", False):
+            continue
+        for slot in getattr(obj, "material_slots", None) or []:
+            name = getattr(getattr(slot, "material", None), "name", None)
+            if name:
+                names.add(name)
+    return sorted(names)
+
+
+def _usd_material_prims(target: Path) -> int | None:
+    """Count Material prims in a written USD file, or None when undecidable.
+
+    ``None`` means "could not inspect", which callers must not read as "no
+    materials": a binary crate is only readable through the USD bindings, and
+    Blender builds ship those bindings only sometimes.
+    """
+    try:
+        from pxr import Usd, UsdShade
+    except Exception:  # noqa: BLE001 - USD python bindings are optional in-host
+        return _usd_material_prims_ascii(target)
+    try:
+        stage = Usd.Stage.Open(str(target))
+    except Exception:  # noqa: BLE001 - unreadable stage must not fail the export
+        return None
+    if stage is None:
+        return None
+    try:
+        return sum(1 for prim in stage.Traverse() if prim.IsA(UsdShade.Material))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _usd_material_prims_ascii(target: Path) -> int | None:
+    """Fallback Material-prim count for ASCII USD files when pxr is missing."""
+    try:
+        with target.open("rb") as handle:
+            if not handle.read(6).startswith(b"#usda"):
+                return None
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return None
+    return len(re.findall(r"^\s*def\s+Material\b", text, re.MULTILINE))
+
+
+def _usd_material_audit(bpy: Any, target: Path, object_names: Sequence[str] | None) -> tuple[list[str], dict]:
+    """Compare the materials bound in Blender with those written to the file.
+
+    Returns a warning list plus machine-readable counts, so a caller can see a
+    dropped material without having to inspect the file itself.
+    """
+    expected = _bound_material_names(bpy, object_names)
+    if not expected:
+        return [], {}
+    found = _usd_material_prims(target)
+    audit = {
+        "expected_material_count": len(expected),
+        "material_names": expected,
+        "exported_material_count": found,
+    }
+    if found == 0:
+        return [f"USD export wrote no Material prims; dropped material(s): {', '.join(expected)}"], audit
+    if found is not None and found < len(expected):
+        return ["USD export wrote {} of {} material(s): {}".format(found, len(expected), ", ".join(expected))], audit
+    return [], audit
+
+
 def _call_with_options(operator: Any, base: dict[str, Any], options: dict[str, Any], warnings: list[str]) -> None:
     payload = dict(base)
     payload.update(_native_options(operator, options))
@@ -251,11 +361,13 @@ def _export_by_format(
     object_names: Sequence[str] | None,
     options: dict[str, Any],
     frame_range: Sequence[int] | None = None,
-) -> tuple[list[str], list[str], dict | None]:
+) -> tuple[list[str], list[str], dict | None, dict]:
     selected, selected_names, error = _select_objects(bpy, object_names)
     if error:
-        return [], [], error
+        return [], [], error, {}
     warnings = []
+    usd_options = None
+    usd_audit_enabled = False
     try:
         if format == "fbx":
             _call_with_options(
@@ -285,8 +397,12 @@ def _export_by_format(
                 bpy.ops.export_scene.gltf, {"filepath": str(target), "use_selection": selected}, options, warnings
             )
         elif format == "usd":
+            usd_options, usd_audit_enabled = _usd_material_options(bpy.ops.wm.usd_export, options)
             _call_with_options(
-                bpy.ops.wm.usd_export, {"filepath": str(target), "selected_objects_only": selected}, options, warnings
+                bpy.ops.wm.usd_export,
+                {"filepath": str(target), "selected_objects_only": selected},
+                usd_options,
+                warnings,
             )
         elif format == "alembic":
             base = {"filepath": str(target), "selected": selected}
@@ -294,16 +410,35 @@ def _export_by_format(
                 base.update({"start": int(frame_range[0]), "end": int(frame_range[1])})
             _call_with_options(bpy.ops.wm.alembic_export, base, options, warnings)
         else:
-            return [], warnings, skill_error("Unsupported export format", f"Format '{format}' is not exportable.")
+            return (
+                [],
+                warnings,
+                skill_error("Unsupported export format", f"Format '{format}' is not exportable."),
+                {},
+            )
     except Exception as exc:
-        return [], warnings, skill_exception(exc, message=f"Failed to export {target}")
+        return [], warnings, skill_exception(exc, message=f"Failed to export {target}"), {}
     if not _has_nonempty_file(target):
-        return [], warnings, skill_error("Export produced no file", "The exporter did not write a non-empty file.")
-    return [str(target)], warnings, None
+        return (
+            [],
+            warnings,
+            skill_error("Export produced no file", "The exporter did not write a non-empty file."),
+            {},
+        )
+    audit = {}
+    if usd_audit_enabled:
+        material_warnings, audit = _usd_material_audit(bpy, target, selected_names or None)
+        warnings.extend(material_warnings)
+    return [str(target)], warnings, None, audit
 
 
 def _result_for_export(
-    label: str, target: Path, written: list[str], warnings: list[str], options: dict[str, Any]
+    label: str,
+    target: Path,
+    written: list[str],
+    warnings: list[str],
+    options: dict[str, Any],
+    audit: dict | None = None,
 ) -> dict:
     return skill_success(
         label,
@@ -311,6 +446,7 @@ def _result_for_export(
         written_files=written,
         warnings=warnings,
         normalized_options=options,
+        **(audit or {}),
         prompt="Use import_file or downstream validation tools to inspect exported data.",
     )
 
@@ -518,10 +654,10 @@ def export_file(
     try:
         import bpy
 
-        written, warnings, error = _export_by_format(bpy, target, format_key, object_names, opts, frame_range)
+        written, warnings, error, audit = _export_by_format(bpy, target, format_key, object_names, opts, frame_range)
         if error:
             return error
-        return _result_for_export(f"Exported {format_key.upper()}: {target}", target, written, warnings, opts)
+        return _result_for_export(f"Exported {format_key.upper()}: {target}", target, written, warnings, opts, audit)
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
@@ -700,7 +836,7 @@ def batch_export(items: Sequence[Mapping[str, Any]], preset_name: str | None = N
             format_key, error = _format_from_path(target, format_key)
             if error:
                 return error
-            written, item_warnings, error = _export_by_format(
+            written, item_warnings, error, item_audit = _export_by_format(
                 bpy,
                 target,
                 format_key,
@@ -719,6 +855,7 @@ def batch_export(items: Sequence[Mapping[str, Any]], preset_name: str | None = N
                     "written_files": written,
                     "warnings": item_warnings,
                     "normalized_options": options,
+                    **item_audit,
                 }
             )
         return skill_success(

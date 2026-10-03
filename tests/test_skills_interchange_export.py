@@ -228,6 +228,191 @@ def test_export_obj_fallback_and_gltf_batch_export(tmp_path):
     assert invalid["success"] is False
 
 
+class FakeMaterial:
+    def __init__(self, name):
+        self.name = name
+
+
+class FakeSlot:
+    def __init__(self, material=None):
+        self.material = material
+
+
+class FakeShadedObject(FakeObject):
+    """Mesh object carrying material slots, as USD export audits expect."""
+
+    def __init__(self, name, materials=()):
+        super().__init__(name)
+        self.material_slots = [FakeSlot(FakeMaterial(name)) for name in materials]
+        self.hide_viewport = False
+        self.hide_render = False
+
+
+_USD_WITH_MATERIAL = """#usda 1.0
+(
+    defaultPrim = "root"
+)
+
+def Xform "root"
+{
+    def Scope "_materials"
+    {
+        def Material "showcase_copper"
+        {
+        }
+    }
+}
+"""
+
+_USD_WITHOUT_MATERIAL = """#usda 1.0
+(
+    defaultPrim = "root"
+)
+
+def Xform "root"
+{
+    def Mesh "Sphere"
+    {
+    }
+}
+"""
+
+
+def _usd_export_properties(*extra):
+    return [
+        _property("filepath"),
+        _property("selected_objects_only", kind="BOOLEAN"),
+        _property("export_materials", kind="BOOLEAN"),
+        _property("generate_preview_surface", kind="BOOLEAN"),
+        *extra,
+    ]
+
+
+def _usd_writer(body):
+    def _write(filepath, **_kwargs):
+        Path(filepath).write_text(body, encoding="utf-8")
+        return {"FINISHED"}
+
+    return _write
+
+
+def _usd_export_bpy(objects, body, properties=None):
+    bpy = _bpy_with_scene(objects)
+    operator = _rna_operator(_usd_export_properties() if properties is None else properties)
+    operator.side_effect = _usd_writer(body)
+    bpy.ops.wm.usd_export = operator
+    return bpy, operator
+
+
+def test_export_usd_requests_material_prims(tmp_path):
+    """USD export must ask for materials instead of inheriting host defaults."""
+    sphere = FakeShadedObject("Sphere", ["showcase_copper"])
+    target = tmp_path / "showcase.usda"
+    bpy, operator = _usd_export_bpy([sphere], _USD_WITH_MATERIAL)
+
+    result = load_and_call("blender-interchange/scripts/export_usd.py", bpy, path=str(target), object_names=["Sphere"])
+
+    assert result["success"] is True
+    assert operator.call_args.kwargs["export_materials"] is True
+    assert operator.call_args.kwargs["generate_preview_surface"] is True
+    assert result["context"]["warnings"] == []
+    assert result["context"]["exported_material_count"] == 1
+    assert result["context"]["material_names"] == ["showcase_copper"]
+
+
+@pytest.mark.parametrize("caller_options", [{"export_materials": False}, {"generate_preview_surface": False}])
+def test_export_usd_honours_caller_material_options(tmp_path, caller_options):
+    """A caller opinion on any material option must be left completely alone.
+
+    Current Blender builds let ``generate_preview_surface`` write materials even
+    when ``export_materials`` is off, so injecting one after the caller set the
+    other would silently override an explicit request.
+    """
+    sphere = FakeShadedObject("Sphere", ["showcase_copper"])
+    target = tmp_path / "geometry_only.usda"
+    bpy, operator = _usd_export_bpy([sphere], _USD_WITHOUT_MATERIAL)
+
+    result = load_and_call(
+        "blender-interchange/scripts/export_usd.py",
+        bpy,
+        path=str(target),
+        object_names=["Sphere"],
+        options=caller_options,
+    )
+
+    assert result["success"] is True
+    assert operator.call_args.kwargs == {
+        "filepath": str(target),
+        "selected_objects_only": True,
+        **caller_options,
+    }
+    assert result["context"]["warnings"] == []
+    assert "exported_material_count" not in result["context"]
+
+
+def test_export_usd_warns_when_materials_are_dropped(tmp_path):
+    """Losing every material must surface as a warning, not a silent success."""
+    sphere = FakeShadedObject("Sphere", ["showcase_copper"])
+    target = tmp_path / "showcase.usda"
+    bpy, _operator = _usd_export_bpy([sphere], _USD_WITHOUT_MATERIAL)
+
+    result = load_and_call("blender-interchange/scripts/export_usd.py", bpy, path=str(target), object_names=["Sphere"])
+
+    assert result["success"] is True
+    assert result["context"]["expected_material_count"] == 1
+    assert result["context"]["exported_material_count"] == 0
+    assert any("no Material prims" in warning for warning in result["context"]["warnings"])
+    assert "showcase_copper" in result["context"]["warnings"][0]
+
+
+def test_export_usd_reports_partial_material_loss(tmp_path):
+    """A partially exported material set must be reported too."""
+    sphere = FakeShadedObject("Sphere", ["showcase_copper", "showcase_steel"])
+    target = tmp_path / "showcase.usda"
+    bpy, _operator = _usd_export_bpy([sphere], _USD_WITH_MATERIAL)
+
+    result = load_and_call("blender-interchange/scripts/export_usd.py", bpy, path=str(target), object_names=["Sphere"])
+
+    assert result["context"]["expected_material_count"] == 2
+    assert result["context"]["exported_material_count"] == 1
+    assert any("wrote 1 of 2 material(s)" in warning for warning in result["context"]["warnings"])
+
+
+def test_export_usd_leaves_unsupported_operators_untouched(tmp_path):
+    """Hosts without the material properties must not gain unknown options."""
+    sphere = FakeShadedObject("Sphere", ["showcase_copper"])
+    target = tmp_path / "legacy.usda"
+    bpy, operator = _usd_export_bpy(
+        [sphere],
+        _USD_WITH_MATERIAL,
+        properties=[_property("filepath"), _property("selected_objects_only", kind="BOOLEAN")],
+    )
+
+    result = load_and_call("blender-interchange/scripts/export_usd.py", bpy, path=str(target), object_names=["Sphere"])
+
+    assert result["success"] is True
+    assert set(operator.call_args.kwargs) == {"filepath", "selected_objects_only"}
+
+
+def test_export_usd_audit_skips_binary_files_without_usd_bindings(tmp_path, monkeypatch):
+    """An uninspectable crate must report unknown, never a false material loss."""
+    sphere = FakeShadedObject("Sphere", ["showcase_copper"])
+    target = tmp_path / "showcase.usdc"
+    bpy, _operator = _usd_export_bpy([sphere], _USD_WITH_MATERIAL)
+
+    def _write_binary(filepath, **_kwargs):
+        Path(filepath).write_bytes(b"PXR-USDC-unsigned-junk")
+        return {"FINISHED"}
+
+    bpy.ops.wm.usd_export.side_effect = _write_binary
+    monkeypatch.setattr("dcc_mcp_blender._interchange_ops._usd_material_prims_ascii", lambda _path: None)
+
+    result = load_and_call("blender-interchange/scripts/export_usd.py", bpy, path=str(target), object_names=["Sphere"])
+
+    assert result["context"]["exported_material_count"] is None
+    assert result["context"]["warnings"] == []
+
+
 def test_export_preset_lifecycle():
     bpy = _bpy_with_scene([])
 
