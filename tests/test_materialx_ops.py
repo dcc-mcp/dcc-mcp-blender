@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -45,6 +46,41 @@ class FakeSocket:
         self.identifier = name
         self.default_value = default_value
         self.is_linked = is_linked
+
+
+class StrictSocket:
+    """Socket whose assignment rejects mismatched types the way bpy does.
+
+    The plain :class:`FakeSocket` above accepts anything, so it cannot exercise
+    the demote-an-input path. Real Blender raises ``TypeError`` when a scalar
+    socket receives a sequence (and the reverse) and ``ValueError`` when an array
+    socket receives the wrong dimension, which is exactly what happens when a
+    document targets a different Blender generation.
+    """
+
+    def __init__(self, name, default_value, is_linked=False):
+        self.name = name
+        self.identifier = name
+        self.is_linked = is_linked
+        self._value = default_value
+
+    @property
+    def default_value(self):
+        return self._value
+
+    @default_value.setter
+    def default_value(self, value):
+        target = self._value
+        if isinstance(target, (tuple, list)):
+            if not isinstance(value, (tuple, list)):
+                raise TypeError("bpy_struct: sequences of dimension %d expected" % len(target))
+            if len(value) != len(target):
+                raise ValueError("bpy_struct: sequences of dimension %d expected, got %d" % (len(target), len(value)))
+            self._value = tuple(value)
+            return
+        if isinstance(value, (tuple, list)):
+            raise TypeError("bpy_struct: expected a float, got a sequence")
+        self._value = value
 
 
 class FakeNode:
@@ -490,7 +526,7 @@ class TestImportMaterialX:
 
 
 class TestRoundTrip:
-    def test_values_survive_export_then_import(self, bpy, tmp_path):
+    def test_values_survive_export_then_import(self, bpy, monkeypatch, tmp_path):
         add_material(
             bpy,
             "Copper",
@@ -508,9 +544,7 @@ class TestRoundTrip:
 
         # Fresh scene: the imported material must not inherit the source object.
         fresh = FakeBpy()
-        import sys
-
-        sys.modules["bpy"] = fresh
+        monkeypatch.setitem(sys.modules, "bpy", fresh)
         result = import_materialx(str(out))
 
         assert result["success"] is True
@@ -521,3 +555,144 @@ class TestRoundTrip:
         assert sockets["IOR"].default_value == 1.6
         assert sockets["Coat Weight"].default_value == 0.4
         assert sockets["Sheen Weight"].default_value == 0.15
+
+
+class TestStrictSocketImport:
+    """Import against sockets that reject mismatched types like real bpy does.
+
+    The plain FakeSocket accepts any assignment, so it cannot expose the
+    demote-an-input path; these cases can.
+    """
+
+    _DOC = """<?xml version="1.0"?>
+<materialx version="1.39">
+  <standard_surface name="SR_Probe" type="surfaceshader">
+    <input name="base_color" type="color3" value="0.2, 0.4, 0.6" />
+    <input name="specular_color" type="color3" value="1.0, 0.5, 0.0" />
+    <input name="metalness" type="float" value="0.75" />
+  </standard_surface>
+  <surfacematerial name="ProbeMat" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_Probe" />
+  </surfacematerial>
+</materialx>
+"""
+
+    def test_mismatched_socket_demotes_only_that_input(self, bpy, tmp_path):
+        """3.x Principled exposes Specular Tint as a float socket.
+
+        A color3 value must demote to unmapped_inputs and leave the batch green,
+        not fail the whole import.
+        """
+        material = bpy.data.materials.new("ProbeMat")
+        material.use_nodes = True
+        material.principled().inputs["Specular Tint"] = StrictSocket("Specular Tint", 0.5)
+        doc = write_document(self._DOC, tmp_path / "probe.mtlx")
+
+        result = import_materialx(str(doc))
+
+        assert result["success"] is True, result.get("error")
+        entry = result["context"]["materials"][0]
+        assert "specular_color" in entry["unmapped_inputs"]
+        # The compatible inputs on the same material still land.
+        assert "Base Color" in entry["applied"]
+        assert "Metallic" in entry["applied"]
+        assert any("specular_color" in warning for warning in result["context"]["warnings"])
+
+    def test_undersized_vector_demotes_only_that_input(self, bpy, tmp_path):
+        material = bpy.data.materials.new("ProbeMat")
+        material.use_nodes = True
+        material.principled().inputs["Normal"] = StrictSocket("Normal", (0.0, 0.0, 0.0))
+        doc = write_document(
+            """<?xml version="1.0"?>
+<materialx version="1.39">
+  <standard_surface name="SR_Probe" type="surfaceshader">
+    <input name="normal" type="vector3" value="0.0, 1.0" />
+    <input name="metalness" type="float" value="0.3" />
+  </standard_surface>
+  <surfacematerial name="ProbeMat" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_Probe" />
+  </surfacematerial>
+</materialx>
+""",
+            tmp_path / "probe.mtlx",
+        )
+
+        result = import_materialx(str(doc))
+
+        assert result["success"] is True, result.get("error")
+        entry = result["context"]["materials"][0]
+        assert "normal" in entry["unmapped_inputs"]
+        assert "Metallic" in entry["applied"]
+
+    def test_one_bad_material_does_not_abort_the_batch(self, bpy, tmp_path):
+        good = bpy.data.materials.new("Good")
+        good.use_nodes = True
+        bad = bpy.data.materials.new("Bad")
+        bad.use_nodes = True
+        bad.principled().inputs["Specular Tint"] = StrictSocket("Specular Tint", 0.5)
+        doc = write_document(
+            """<?xml version="1.0"?>
+<materialx version="1.39">
+  <standard_surface name="SR_Good" type="surfaceshader">
+    <input name="metalness" type="float" value="0.1" />
+  </standard_surface>
+  <standard_surface name="SR_Bad" type="surfaceshader">
+    <input name="specular_color" type="color3" value="0.1, 0.2, 0.3" />
+    <input name="metalness" type="float" value="0.9" />
+  </standard_surface>
+  <surfacematerial name="Good" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_Good" />
+  </surfacematerial>
+  <surfacematerial name="Bad" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_Bad" />
+  </surfacematerial>
+</materialx>
+""",
+            tmp_path / "two.mtlx",
+        )
+
+        result = import_materialx(str(doc))
+
+        assert result["success"] is True, result.get("error")
+        by_name = {item["material"]: item for item in result["context"]["materials"]}
+        assert "specular_color" in by_name["Bad"]["unmapped_inputs"]
+        assert by_name["Bad"]["applied"]["Metallic"] == 0.9
+        assert by_name["Good"]["applied"]["Metallic"] == 0.1
+
+    def test_interrupted_batch_reports_materials_already_created(self, bpy, tmp_path):
+        """A failure mid-batch must say what is already in the scene."""
+        doc = write_document(
+            """<?xml version="1.0"?>
+<materialx version="1.39">
+  <standard_surface name="SR_A" type="surfaceshader">
+    <input name="metalness" type="float" value="0.1" />
+  </standard_surface>
+  <standard_surface name="SR_B" type="surfaceshader">
+    <input name="metalness" type="float" value="0.2" />
+  </standard_surface>
+  <surfacematerial name="A" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_A" />
+  </surfacematerial>
+  <surfacematerial name="B" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="SR_B" />
+  </surfacematerial>
+</materialx>
+""",
+            tmp_path / "two.mtlx",
+        )
+        original_new = bpy.data.materials.new
+        calls = []
+
+        def flaky(name):
+            calls.append(name)
+            if len(calls) > 1:
+                raise RuntimeError("scene is locked")
+            return original_new(name)
+
+        bpy.data.materials.new = flaky
+
+        result = import_materialx(str(doc))
+
+        assert result["success"] is False
+        assert result["context"]["created_materials"] == ["A"]
+        assert bpy.data.materials.get("A") is not None

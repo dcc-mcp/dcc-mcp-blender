@@ -306,6 +306,50 @@ def _collect_material_elements(root: ET.Element) -> Tuple[List[ET.Element], Dict
     return materials, nodes
 
 
+def _apply_shader_values(
+    bsdf: Any, mapping: List[Tuple[str, Tuple[str, ...], str]], values: Dict[str, str]
+) -> Tuple[Dict[str, Any], List[str]]:
+    """Map MaterialX input values onto Principled BSDF sockets.
+
+    Returns ``(applied, unmapped)``. A value that cannot land on a socket is
+    demoted to ``unmapped`` rather than raised, so one incompatible input never
+    aborts the whole batch.
+
+    Blender raises ``TypeError`` when a scalar socket receives a sequence (and
+    vice versa) and ``ValueError`` when an array socket receives the wrong
+    dimension. That is the normal case when a document targets a different
+    Blender generation: ``Specular Tint`` is a float socket on 3.x and a color
+    socket on 4.x, and ``Normal`` is a 3-component vector while an imported
+    document may carry 2 components.
+    """
+    applied: Dict[str, Any] = {}
+    unmapped: List[str] = []
+    known_inputs = {entry[0] for entry in mapping}
+    for mtlx_name, socket_names, kind in mapping:
+        if mtlx_name not in values:
+            continue
+        value = _parse_value(values[mtlx_name], kind)
+        if value is None:
+            unmapped.append(mtlx_name)
+            continue
+        socket = None
+        for socket_name in socket_names:
+            socket = _get_socket(bsdf.inputs, socket_name)
+            if socket is not None:
+                break
+        if socket is None:
+            unmapped.append(mtlx_name)
+            continue
+        try:
+            applied[getattr(socket, "name", socket_names[0])] = _set_socket_value(socket, value)
+        except (ValueError, TypeError):
+            unmapped.append(mtlx_name)
+    for mtlx_name in values:
+        if mtlx_name not in known_inputs:
+            unmapped.append(mtlx_name)
+    return applied, unmapped
+
+
 def _resolve_shader(material: ET.Element, nodes: Dict[str, ET.Element]) -> Optional[ET.Element]:
     """Find the shader node a material element renders with."""
     for child in list(material):
@@ -534,6 +578,7 @@ def import_materialx(
             )
         entries = [entry for entry in entries if entry[0] in wanted]
 
+    created_materials: List[str] = []
     try:
         import bpy
 
@@ -550,6 +595,7 @@ def import_materialx(
             action = "updated"
             if material is None:
                 material = bpy.data.materials.new(name)
+                created_materials.append(getattr(material, "name", name))
                 action = "created"
             material.use_nodes = True
             node_tree = getattr(material, "node_tree", None)
@@ -561,31 +607,13 @@ def import_materialx(
                 unsupported.append({"material": name, "reason": "no Principled BSDF node"})
                 continue
 
-            applied: Dict[str, Any] = {}
-            unmapped: List[str] = []
-            known_inputs = {entry[0] for entry in mapping}
-            for mtlx_name, socket_names, kind in mapping:
-                if mtlx_name not in values:
-                    continue
-                value = _parse_value(values[mtlx_name], kind)
-                if value is None:
-                    unmapped.append(mtlx_name)
-                    continue
-                socket = None
-                for socket_name in socket_names:
-                    socket = _get_socket(bsdf.inputs, socket_name)
-                    if socket is not None:
-                        break
-                if socket is None:
-                    unmapped.append(mtlx_name)
-                    continue
-                try:
-                    applied[getattr(socket, "name", socket_names[0])] = _set_socket_value(socket, value)
-                except ValueError:
-                    unmapped.append(mtlx_name)
-            for mtlx_name in values:
-                if mtlx_name not in known_inputs:
-                    unmapped.append(mtlx_name)
+            try:
+                applied, unmapped = _apply_shader_values(bsdf, mapping, values)
+            except Exception as exc:  # noqa: BLE001
+                # One malformed material must not abort the batch; the material
+                # it already created stays in the scene and is reported below.
+                unsupported.append({"material": name, "reason": f"socket assignment failed: {exc}"})
+                continue
 
             imported.append(
                 {
@@ -600,13 +628,23 @@ def import_materialx(
 
         if not imported:
             detail = "; ".join(f"{item['material']}: {item['reason']}" for item in unsupported)
-            return skill_error(f"No MaterialX material could be imported from {source.name}", detail)
+            return skill_error(
+                f"No MaterialX material could be imported from {source.name}",
+                detail,
+                created_materials=created_materials,
+            )
 
         warnings = ["{}: {}".format(item["material"], item["reason"]) for item in unsupported]
         for item in imported:
             for mtlx_name in item["connected_inputs"]:
                 warnings.append(
                     "{}: input '{}' is a node connection and was not imported".format(item["material"], mtlx_name)
+                )
+            for mtlx_name in item["unmapped_inputs"]:
+                warnings.append(
+                    "{}: input '{}' has no Principled BSDF counterpart and was not imported".format(
+                        item["material"], mtlx_name
+                    )
                 )
         return skill_success(
             "Imported {} material(s) from {}".format(len(imported), source.name),
@@ -621,4 +659,8 @@ def import_materialx(
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
-        return skill_exception(exc, message=f"Failed to import MaterialX from {source}")
+        # Materials created before the failure stay in the scene, so the caller
+        # has to be told what is already there instead of guessing.
+        return skill_exception(
+            exc, message=f"Failed to import MaterialX from {source}", created_materials=created_materials
+        )

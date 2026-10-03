@@ -113,9 +113,12 @@ tools:
     output_schema: *materialx_result_schema
     read_only: false
     destructive: false
-    idempotent: true
+    # Not idempotent: reuse_existing=false creates a new data-block on every
+    # call (Name, Name.001, Name.002, ...), so a client retrying on the
+    # idempotent hint would stack duplicate materials.
+    idempotent: false
     annotations:
       read_only_hint: false
       destructive_hint: false
-      idempotent_hint: true
+      idempotent_hint: false
       open_world_hint: false
