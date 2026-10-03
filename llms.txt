@@ -130,7 +130,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-rigging | `create_armature`, `create_bone`, `add_constraint`, `bind_mesh_to_armature`, `retarget_animation` |
 | blender-pose-library | `list_poses`, `save_pose`, `load_pose` |
 | blender-interchange | `import_fbx/obj/usd`, `export_gltf/usd/alembic`, `batch_export` |
-| blender-materials / blender-shader-nodes | `create_material`, `create_node`, `connect_nodes`, `set_principled_input` |
+| blender-materials / blender-shader-nodes | `create_material`, `create_node`, `connect_nodes`, `set_principled_input`, `export_materialx`, `import_materialx` |
 | blender-material-library | `save/load/delete_material_preset`, `assign_texture`, `list_images`, `load_image`, `pack_image`, `unpack_image`, `image_file_status`, `list_image_tiles` |
 | blender-texture-bake | `bake_textures`, `bake_ambient_occlusion`, `transfer_maps` |
 | blender-render | `render_scene`, `set_render_settings`, `capture_viewport`, `set_view_layer_passes`, `set_render_denoise`, `set_render_output`, `set_render_region`, `get_render_status` |
