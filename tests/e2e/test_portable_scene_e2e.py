@@ -19,9 +19,25 @@ PRIVATE_BROWSER = b"/workspace/portable-copy-fixture/private-browser-directory/"
 RELATIVE_RENDER = "//renders/image.png"
 
 
+def _assert_empty_sequence_editor(editor):
+    collections = [getattr(editor, name, None) for name in ("strips", "sequences")]
+    collections = [collection for collection in collections if collection is not None]
+    assert collections, "Native SequenceEditor exposes neither supported strip collection"
+    assert all(len(collection) == 0 for collection in collections), "Fixture contains sequencer dependencies"
+
+
+def _clear_owned_empty_sequence_editors():
+    for scene in bpy.data.scenes:
+        if scene.sequence_editor is not None:
+            _assert_empty_sequence_editor(scene.sequence_editor)
+            scene.sequence_editor_clear()
+        assert scene.sequence_editor is None
+
+
 @pytest.fixture(autouse=True)
 def empty_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    _clear_owned_empty_sequence_editors()
     yield
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -109,14 +125,19 @@ def test_typed_copy_relocated_reopen_preserves_native_state_and_render(tmp_path)
     _scene_fixture()
     reference = _render_pixels(tmp_path / "reference.png")
     assert len(reference) == 32 * 32 * 4 and max(reference[::4]) > 0.0
+    # Background startup or rendering may initialize an empty editor. This
+    # positive fixture deliberately owns no sequencer data before publication.
+    _clear_owned_empty_sequence_editors()
     source = tmp_path / "source.blend"
     assert load_skill("blender-scene", "save_scene").main(filepath=str(source))["success"]
     original_bytes = source.read_bytes()
+    _clear_owned_empty_sequence_editors()
     expected = _scene_readback()
     assert len(expected["objects"]["PortableCube"]["keys"]) == 3
     target = tmp_path / "portable.blend"
     copy = load_skill("blender-portable-scene", "save_portable_scene_copy")
 
+    assert all(scene.sequence_editor is None for scene in bpy.data.scenes)
     result = copy.main(filepath=str(target), allowed_output_root=str(tmp_path), render_path=RELATIVE_RENDER)
 
     assert result["success"], result
@@ -150,13 +171,22 @@ def test_native_file_browser_buffer_is_cleared_and_logically_restored(tmp_path):
     areas = [area for screen in bpy.data.screens for area in screen.areas]
     assert areas, "Factory startup did not provide native screen areas"
     areas[0].type = "FILE_BROWSER"
-    params = areas[0].spaces.active.params
+    params = next(
+        (
+            space.params
+            for area in areas
+            for space in area.spaces
+            if space.type == "FILE_BROWSER" and space.params is not None
+        ),
+        None,
+    )
     if params is None:
-        pytest.skip("Native file-browser params are not initialized in this background host")
+        pytest.skip("Native file-browser space/params are not initialized in this background host")
     params.directory = PRIVATE_BROWSER
     bpy.context.scene.render.filepath = PRIVATE_RENDER
     target = tmp_path / "browser.blend"
 
+    _clear_owned_empty_sequence_editors()
     result = load_skill("blender-portable-scene", "save_portable_scene_copy").main(
         filepath=str(target), allowed_output_root=str(tmp_path), render_path=RELATIVE_RENDER
     )
@@ -189,3 +219,24 @@ def test_native_out_of_profile_dependency_does_not_publish(tmp_path):
     assert not target.exists() and not list(tmp_path.glob(".blend-publish-*"))
     assert bpy.context.scene.render.filepath == PRIVATE_RENDER
     assert bpy.data.texts.get(text.name) is text
+
+
+def test_native_empty_sequence_editor_remains_outside_export_profile(tmp_path):
+    scene = bpy.context.scene
+    editor = scene.sequence_editor_create()
+    assert editor is not None
+    _assert_empty_sequence_editor(editor)
+    pointer = editor.as_pointer()
+    scene.render.filepath = PRIVATE_RENDER
+    target = tmp_path / "sequencer-rejected.blend"
+
+    result = load_skill("blender-portable-scene", "save_portable_scene_copy").main(
+        filepath=str(target), allowed_output_root=str(tmp_path)
+    )
+
+    assert result["success"] is False, result
+    assert result["message"] == "Sequencer requires a separate dependency audit"
+    assert not target.exists() and not list(tmp_path.glob(".blend-publish-*"))
+    assert scene.render.filepath == PRIVATE_RENDER
+    assert scene.sequence_editor.as_pointer() == pointer
+    _assert_empty_sequence_editor(scene.sequence_editor)
