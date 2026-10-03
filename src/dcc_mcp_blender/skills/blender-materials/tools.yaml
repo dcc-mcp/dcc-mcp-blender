@@ -39,3 +39,83 @@ tools:
     read_only: false
     destructive: true
     idempotent: false
+
+  - name: export_materialx
+    description: "Export Principled BSDF materials to a MaterialX (.mtlx) document"
+    source_file: scripts/export_materialx.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          type: string
+          minLength: 1
+          description: Output .mtlx file path; the extension is appended when omitted.
+        material_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          description: Optional materials to export; every material in the file is exported when omitted.
+        overwrite:
+          type: boolean
+          description: Overwrite an existing file. Defaults to true; false fails instead of replacing.
+    output_schema: &materialx_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: import_materialx
+    description: "Import a MaterialX (.mtlx) document into Principled BSDF materials"
+    source_file: scripts/import_materialx.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          type: string
+          minLength: 1
+          description: Source .mtlx file path.
+        material_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          description: Optional MaterialX materials to import; every material in the document is imported when omitted.
+        reuse_existing:
+          type: boolean
+          description: Update a same-named material instead of creating Name.001. Defaults to true.
+    output_schema: *materialx_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false

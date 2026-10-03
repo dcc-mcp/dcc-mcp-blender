@@ -9,6 +9,9 @@ Run::
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 import pytest
 
 bpy = pytest.importorskip("bpy", reason="bpy not available — run inside Blender Python interpreter")
@@ -132,10 +135,67 @@ class TestRenderSkillsE2E:
                 continue
 
     def test_set_output_path(self):
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             mod = load_skill("blender-render", "set_render_settings")
             result = mod.set_render_settings(output_path=tmp + "/out")
             assert result["success"] is True
             assert bpy.context.scene.render.filepath == tmp + "/out"
+
+
+class TestMaterialXRoundTripE2E:
+    """MaterialX export/import against a real Blender Principled BSDF node."""
+
+    def setup_method(self):
+        _new_scene()
+
+    def _copper_material(self):
+        create_mod = load_skill("blender-materials", "create_material")
+        result = create_mod.create_material(name="E2ECopper")
+        assert result["success"] is True
+        material = bpy.data.materials["E2ECopper"]
+        bsdf = material.node_tree.nodes.get("Principled BSDF")
+        bsdf.inputs["Base Color"].default_value = (0.72, 0.45, 0.2, 1.0)
+        bsdf.inputs["Metallic"].default_value = 0.94
+        bsdf.inputs["Roughness"].default_value = 0.28
+        return material
+
+    def test_export_writes_mtlx_file(self):
+        self._copper_material()
+        export_mod = load_skill("blender-materials", "export_materialx")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "copper.mtlx")
+            result = export_mod.export_materialx(path=target, material_names=["E2ECopper"])
+
+            assert result["success"] is True, result.get("error")
+            assert os.path.isfile(target)
+            assert os.path.getsize(target) > 0
+            with open(target, encoding="utf-8") as handle:
+                document = handle.read()
+            assert "standard_surface" in document
+            assert "surfacematerial" in document
+
+    def test_round_trip_preserves_pbr_values(self):
+        self._copper_material()
+        export_mod = load_skill("blender-materials", "export_materialx")
+        import_mod = load_skill("blender-materials", "import_materialx")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "copper.mtlx")
+            assert export_mod.export_materialx(path=target)["success"] is True
+
+            # Drop the source material so the import cannot inherit its values.
+            source = bpy.data.materials.get("E2ECopper")
+            bpy.data.materials.remove(source)
+
+            result = import_mod.import_materialx(path=target)
+            assert result["success"] is True, result.get("error")
+
+            material = bpy.data.materials["E2ECopper"]
+            bsdf = material.node_tree.nodes.get("Principled BSDF")
+            color = bsdf.inputs["Base Color"].default_value
+            assert abs(color[0] - 0.72) < 1e-4
+            assert abs(color[1] - 0.45) < 1e-4
+            assert abs(color[2] - 0.2) < 1e-4
+            assert abs(bsdf.inputs["Metallic"].default_value - 0.94) < 1e-4
+            assert abs(bsdf.inputs["Roughness"].default_value - 0.28) < 1e-4
