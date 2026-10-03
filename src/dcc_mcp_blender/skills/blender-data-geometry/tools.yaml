@@ -146,7 +146,23 @@
           "name",
           "splines"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "if": {
+          "properties": {
+            "closed": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "splines": {
+              "items": {
+                "minItems": 3
+              }
+            }
+          }
+        }
       },
       "output_schema": {
         "type": "object",
