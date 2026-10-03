@@ -1,0 +1,13 @@
+{
+  "_data_geometry.py": {
+    "pr_sha256": "9f3d533e7d863fa3c3e0e8b022755ee1182bcc8997ee9a9087d679d1b1dcac73",
+    "native_sha256": "9f3d533e7d863fa3c3e0e8b022755ee1182bcc8997ee9a9087d679d1b1dcac73",
+    "parsed_ast_equal": true
+  },
+  "_text_geometry.py": {
+    "pr_sha256": "925d42115ecc725a5b3626f5d5726df50eae6bda36db21afed084e46c3ed6a05",
+    "native_sha256": "925d42115ecc725a5b3626f5d5726df50eae6bda36db21afed084e46c3ed6a05",
+    "parsed_ast_equal": true
+  },
+  "_qualification_scope": "Historical handoff byte/AST comparisons for the Blender 4.3.2 source snapshot; these hashes do not claim equality to publication review font-slot guards or later formatting."
+}
