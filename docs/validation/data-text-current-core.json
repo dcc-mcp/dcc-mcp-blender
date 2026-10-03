@@ -1,0 +1,1706 @@
+{
+  "runtime": {
+    "versions": {
+      "dcc-mcp-core": "0.20.41",
+      "dcc-mcp-server": "0.20.41"
+    },
+    "gateway_port": 0,
+    "enable_gateway_failover": false
+  },
+  "validation": {
+    "status": "PASS",
+    "core": "0.20.41",
+    "server": "0.20.41",
+    "host": "Blender4.3.2 compatible integration",
+    "actual_mcp_events": 32,
+    "mesh_float32_positions_and_topology_exact": true,
+    "native_mesh_curve_text_saved_reopened_equal": true,
+    "translated_native_world_matrix_exact": true,
+    "rejected_without_object_count_mutation": [
+      "duplicate_mesh",
+      "bad_face_index",
+      "nonplanar_2d",
+      "duplicate_text"
+    ],
+    "scene_sha256": "0b1d25839bac62337e4e149d4970e01c3fd21b9b5d24df29def75b93b5f055d8",
+    "geometry": {
+      "NumericFixture": {
+        "object_name": "NumericFixture",
+        "type": "MESH",
+        "location": [
+          2.0,
+          3.0,
+          4.0
+        ],
+        "matrix_world": [
+          [
+            1.0,
+            0.0,
+            0.0,
+            2.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0,
+            3.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0,
+            4.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "matrix_parent_inverse": [
+          [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "parent": null,
+        "dimensions_local": [
+          2.0,
+          1.0,
+          1.0
+        ],
+        "materials": [],
+        "vertex_count": 5,
+        "edge_count": 8,
+        "face_count": 5,
+        "position_float32_sha256": "354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c",
+        "topology_sha256": "571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28"
+      },
+      "TwoRingFixture": {
+        "object_name": "TwoRingFixture",
+        "type": "CURVE",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "matrix_world": [
+          [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "matrix_parent_inverse": [
+          [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "parent": null,
+        "dimensions_local": [
+          4.0,
+          4.0,
+          0.20000000298023224
+        ],
+        "materials": [],
+        "spline_count": 2,
+        "control_point_count": 8,
+        "position_float32_sha256": "6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39",
+        "cyclic": [
+          true,
+          true
+        ],
+        "dimensions": "2D",
+        "extrude_per_side": 0.10000000149011612,
+        "bevel_depth": 0.0
+      }
+    },
+    "text": {
+      "object_name": "FixtureLabel",
+      "type": "FONT",
+      "text": "NATIVE GEOMETRY / 01",
+      "size": 0.20000000298023224,
+      "extrude": 0.004999999888241291,
+      "align_x": "CENTER",
+      "font": "Bfont Regular",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dimensions": [
+        2.0806002616882324,
+        0.14000001549720764,
+        0.009999999776482582
+      ],
+      "materials": []
+    },
+    "scope": "Native capability fixture, not an artwork or current-main4.5+host qualification"
+  },
+  "cleanup": {
+    "owned_host_stopped": true
+  },
+  "source_trace_sha256": "67b5e8009b8c6ee37d83d5b1616958d41a0133cebc2c4e1ab14c3d0aff3107fa",
+  "selected_actual_mcp_requests": [
+    {
+      "tool": "search_skills",
+      "arguments": {
+        "query": "blender bounded data geometry text scene"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"total\":20,\"skill_total\":20,\"skipped_count\":0,\"query\":\"blender bounded data geometry text scene\",\"skills\":[{\"name\":\"blender-data-geometry\",\"description\":\"Create bounded native meshes and editable poly curves from explicit numeric buffers. Use for GIS contours, scientific interchange, and procedural authoring before raw scripting.\",\"tools\":5,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"geometry\",\"data\",\"curve\",\"mesh\",\"interchange\"],\"search_hint\":\"create mesh vertices faces curve poly splines GIS contour scientific data bounded native geometry\"},{\"name\":\"blender-pipeline\",\"description\":\"Blender local asset metadata, project context, publish manifests, and package prep\",\"tools\":6,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"pipeline\",\"metadata\",\"publish\",\"manifest\",\"asset\"],\"search_hint\":\"asset metadata, project context, publish manifest, prepare publish package, local pipeline\"},{\"name\":\"blender-portable-scene\",\"description\":\"Save a new self-contained native scene copy with relative render output and file-browser path metadata audited for publication. Use only for an explicitly authorized task-owned scene.\",\"tools\":1,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"publish\",\"native\",\"paths\",\"portable\"],\"search_hint\":\"publish portable self-contained native blend copy private path metadata\"},{\"name\":\"blender-geometry\",\"description\":\"Blender geometry creation and export tools for real bpy workflows\",\"tools\":5,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"geometry\",\"export\",\"mesh\"],\"search_hint\":\"create sphere, save blend, export fbx, export obj, file exists\"},{\"name\":\"blender-material-library\",\"description\":\"Blender material presets, shader assignments, texture images, and color-management helpers\",\"tools\":12,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"material\",\"lookdev\",\"texture\",\"color-management\",\"preset\"],\"search_hint\":\"material presets, assign texture, material connections, shader assignment, color management, images\"},{\"name\":\"blender-mesh-ops\",\"description\":\"Blender authoring skill for polygon mesh inspection, cleanup, topology mutations, mesh extraction, mirroring, and material-based face selection. Use this before falling back to blender-scripting whenever a workflow edits mesh topology directly.\",\"tools\":9,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"mesh\",\"polygon\",\"topology\",\"modeling\"],\"search_hint\":\"mesh topology, polygon count, cleanup mesh, triangulate, combine meshes, separate mesh, merge vertices, extract faces, mirror mesh, select by material\"},{\"name\":\"blender-node-graph\",\"description\":\"Blender node graph introspection — compositor nodes, cross-graph discovery (material, geometry, compositor)\",\"tools\":3,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"node-graph\",\"compositor\",\"nodes\",\"shader\",\"geometry-nodes\"],\"search_hint\":\"node graph, compositor nodes, material nodes, geometry nodes, all node graphs, node tree discovery\"},{\"name\":\"blender-objects\",\"description\":\"Blender object manipulation — create, delete, move, rotate, scale and duplicate objects\",\"tools\":18,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"objects\",\"transform\"],\"search_hint\":\"create object, delete, move, rotate, scale, duplicate, select, rename, parent, hide, bounds\"},{\"name\":\"blender-render\",\"description\":\"Blender rendering — render scenes, run observable background animation jobs, capture viewport images, and configure output\",\"tools\":7,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"render\",\"viewport\",\"camera\"],\"search_hint\":\"render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview\"},{\"name\":\"blender-scene-assembly\",\"description\":\"Blender scene assembly — merge .blend files, append/link data blocks, manage view layers and external references\",\"tools\":9,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"scene-assembly\",\"merge\",\"append\",\"link\",\"view-layers\",\"references\"],\"search_hint\":\"merge scene, append blend, link blend, view layer, external reference, library linking, scene assembly\"},{\"name\":\"blender-shader-nodes\",\"description\":\"Blender shader and shared node graph editing tools\",\"tools\":15,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"shader-nodes\",\"geometry-nodes\",\"node-graph\",\"sockets\",\"links\",\"materials\",\"procedural\"],\"search_hint\":\"shader nodes, material nodes, node graph, sockets, links, principled bsdf, texture node, geometry node tree\"},{\"name\":\"blender-validation\",\"description\":\"Blender scene, mesh, material, animation, and export readiness validation\",\"tools\":6,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"validation\",\"pipeline\",\"scene-checks\",\"export-readiness\"],\"search_hint\":\"validate scene, validate mesh, material validation, animation validation, export readiness, severity report\"},{\"name\":\"blender-animation\",\"description\":\"Blender animation — keyframes, frame ranges, curve inspection, key deletion, and baking\",\"tools\":7,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"animation\",\"keyframes\",\"curves\",\"baking\",\"timeline\"],\"search_hint\":\"keyframe, animation, frame range, action, timeline, fcurve, delete keyframes, bake animation\"},{\"name\":\"blender-attributes\",\"description\":\"Blender custom property CRUD — get, set, list, delete, and rename custom attributes on objects\",\"tools\":5,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"attributes\",\"custom-properties\",\"object-data\"],\"search_hint\":\"custom property, attribute, object data, custom attribute, id property, metadata\"},{\"name\":\"blender-camera\",\"description\":\"Blender camera management — create, configure and set active cameras\",\"tools\":4,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"camera\",\"viewport\"],\"search_hint\":\"camera, lens, focal length, active camera, perspective, create camera, list cameras\"},{\"name\":\"blender-collection\",\"description\":\"Blender collection management — create, link objects, and organize scene hierarchy\",\"tools\":3,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"collection\",\"hierarchy\",\"organization\"],\"search_hint\":\"collection, group, organize, hierarchy, link object, list collections\"},{\"name\":\"blender-dev\",\"description\":\"Blender add-on development diagnostics, reloads, UI metadata, and environment checks\",\"tools\":13,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"development\",\"diagnostics\",\"addon\",\"reload\",\"ui\",\"debug\"],\"search_hint\":\"addon diagnostics, reload modules, run check, development, debug server, UI snapshot, Python environment\"},{\"name\":\"blender-export-preset\",\"description\":\"Blender export preset skill for saving, loading, listing, and deleting reusable scene-stored export options for interchange workflows.\",\"tools\":4,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"export\",\"preset\",\"interchange\",\"pipeline\"],\"search_hint\":\"export preset, save export options, list export presets, load export preset, delete export preset, repeatable export settings\"},{\"name\":\"blender-expressions\",\"description\":\"Blender driver and expression system — add/edit/remove drivers, manage driver variables, evaluate expressions\",\"tools\":7,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"driver\",\"expression\",\"animation\",\"rigging\",\"constraints\"],\"search_hint\":\"driver, expression, fcurve driver, scripted expression, driver variable, evaluate driver, add driver, remove driver\"},{\"name\":\"blender-geometry-nodes\",\"description\":\"Blender Geometry Nodes group, modifier, and exposed input tools\",\"tools\":6,\"loaded\":false,\"dcc\":\"blender\",\"scope\":\"repo\",\"tags\":[\"blender\",\"geometry-nodes\",\"node-graph\",\"sockets\",\"links\",\"procedural\",\"modifiers\"],\"search_hint\":\"geometry nodes modifier, procedural nodes, node group, modifier input, assign geometry node group\"}],\"skipped\":[]}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "load_skill",
+      "arguments": {
+        "skill_name": "blender-scene"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"loaded\": true,\n  \"partial\": false,\n  \"registered_tools\": [\n    \"blender_scene__new_scene\",\n    \"blender_scene__save_scene\",\n    \"blender_scene__open_scene\",\n    \"blender_scene__list_objects\",\n    \"blender_scene__get_scene_info\",\n    \"blender_scene__get_session_info\"\n  ],\n  \"tool_count\": 6,\n  \"newly_loaded\": [\n    \"blender-scene\"\n  ],\n  \"already_loaded\": [],\n  \"available_groups\": [],\n  \"activated_groups\": [],\n  \"tools\": [\n    {\n      \"name\": \"blender_scene__get_session_info\",\n      \"description\": \"Return Blender version, scene path, and basic session statistics\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_scene__save_scene\",\n      \"description\": \"Save the current Blender scene\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_scene__new_scene\",\n      \"description\": \"Create a new empty Blender scene\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_scene__list_objects\",\n      \"description\": \"List all objects in the current Blender scene\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_scene__get_scene_info\",\n      \"description\": \"Return a hierarchical description of the current scene\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_scene__open_scene\",\n      \"description\": \"Open a Blender scene file (.blend) from disk\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-scene\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    }\n  ]\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "load_skill",
+      "arguments": {
+        "skill_name": "blender-objects"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"loaded\": true,\n  \"partial\": false,\n  \"registered_tools\": [\n    \"blender_objects__create_object\",\n    \"blender_objects__delete_object\",\n    \"blender_objects__duplicate_object\",\n    \"blender_objects__move_object\",\n    \"blender_objects__rotate_object\",\n    \"blender_objects__scale_object\",\n    \"blender_objects__get_object_info\",\n    \"blender_objects__get_selection\",\n    \"blender_objects__set_selection\",\n    \"blender_objects__select_by_type\",\n    \"blender_objects__find_by_pattern\",\n    \"blender_objects__rename_object\",\n    \"blender_objects__parent_object\",\n    \"blender_objects__group_objects\",\n    \"blender_objects__set_visibility\",\n    \"blender_objects__get_bounding_box\",\n    \"blender_objects__center_origin\",\n    \"blender_objects__freeze_transforms\"\n  ],\n  \"tool_count\": 18,\n  \"newly_loaded\": [\n    \"blender-objects\"\n  ],\n  \"already_loaded\": [],\n  \"available_groups\": [],\n  \"activated_groups\": [],\n  \"tools\": [\n    {\n      \"name\": \"blender_objects__create_object\",\n      \"description\": \"Create a new Blender object (mesh primitive, empty, etc.)\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"object_type\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"cube\",\n              \"sphere\",\n              \"ico_sphere\",\n              \"cylinder\",\n              \"cone\",\n              \"torus\",\n              \"plane\",\n              \"circle\",\n              \"empty\"\n            ],\n            \"default\": \"cube\",\n            \"description\": \"Primitive type to create.\"\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional object name.\"\n          },\n          \"location\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 3,\n            \"items\": {\n              \"type\": \"number\"\n            },\n            \"description\": \"XYZ location.\"\n          },\n          \"rotation\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 3,\n            \"items\": {\n              \"type\": \"number\"\n            },\n            \"description\": \"XYZ Euler rotation in degrees.\"\n          },\n          \"scale\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 3,\n            \"items\": {\n              \"type\": \"number\"\n            },\n            \"description\": \"XYZ scale factors.\"\n          },\n          \"size\": {\n            \"type\": \"number\",\n            \"exclusiveMinimum\": 0,\n            \"default\": 1.0,\n            \"description\": \"Primitive size.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__group_objects\",\n      \"description\": \"Link objects into a named collection, creating the collection if needed.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_names\"\n        ],\n        \"properties\": {\n          \"object_names\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"description\": \"Object names to link into the collection.\"\n          },\n          \"collection_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional target collection name.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__duplicate_object\",\n      \"description\": \"Duplicate an existing object\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__set_visibility\",\n      \"description\": \"Set viewport and/or render visibility for a Blender object.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\",\n          \"visible\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"visible\": {\n            \"type\": \"boolean\",\n            \"description\": \"Desired visible state.\"\n          },\n          \"viewport\": {\n            \"type\": \"boolean\",\n            \"default\": true,\n            \"description\": \"Update viewport visibility.\"\n          },\n          \"render\": {\n            \"type\": \"boolean\",\n            \"default\": true,\n            \"description\": \"Update render visibility.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__find_by_pattern\",\n      \"description\": \"Find objects by shell-style name pattern and optional Blender object type.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"pattern\"\n        ],\n        \"properties\": {\n          \"pattern\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Shell-style pattern, such as mcp_* or Cube.???.\"\n          },\n          \"type\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional Blender object type filter.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__get_object_info\",\n      \"description\": \"Get detailed information about an object\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__set_selection\",\n      \"description\": \"Replace, add, remove, or toggle Blender object selection by object name.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_names\"\n        ],\n        \"properties\": {\n          \"object_names\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"description\": \"Object names to select or adjust.\"\n          },\n          \"mode\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"replace\",\n              \"add\",\n              \"remove\",\n              \"toggle\"\n            ],\n            \"default\": \"replace\",\n            \"description\": \"Selection update mode.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__freeze_transforms\",\n      \"description\": \"Apply location, rotation, and/or scale into object data.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"location\": {\n            \"type\": \"boolean\",\n            \"default\": false,\n            \"description\": \"Apply location transforms.\"\n          },\n          \"rotation\": {\n            \"type\": \"boolean\",\n            \"default\": true,\n            \"description\": \"Apply rotation transforms.\"\n          },\n          \"scale\": {\n            \"type\": \"boolean\",\n            \"default\": true,\n            \"description\": \"Apply scale transforms.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": true,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__get_selection\",\n      \"description\": \"Return the current Blender object selection and active object.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {}\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__rotate_object\",\n      \"description\": \"Rotate an object by Euler angles (degrees)\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__rename_object\",\n      \"description\": \"Rename a Blender object and matching object-data block when appropriate.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\",\n          \"new_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Existing object name.\"\n          },\n          \"new_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"New object name.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__center_origin\",\n      \"description\": \"Move an object's origin using Blender's origin-set operator.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"mode\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"geometry\",\n              \"bounds\",\n              \"cursor\",\n              \"center_of_mass\",\n              \"volume\"\n            ],\n            \"default\": \"geometry\",\n            \"description\": \"Origin mode.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__scale_object\",\n      \"description\": \"Scale an object\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__parent_object\",\n      \"description\": \"Parent or unparent an object while preserving its world transform when possible.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"child_name\"\n        ],\n        \"properties\": {\n          \"child_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Child object name.\"\n          },\n          \"parent_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional parent object name; omit to unparent.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__get_bounding_box\",\n      \"description\": \"Return local or world-space object bounding-box corners, min/max, center, and size.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"world_space\": {\n            \"type\": \"boolean\",\n            \"default\": true,\n            \"description\": \"Return world-space bounds when true.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__move_object\",\n      \"description\": \"Move an object to a specified location\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__delete_object\",\n      \"description\": \"Delete an object from the scene\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_objects__select_by_type\",\n      \"description\": \"Select all objects whose Blender object type matches the requested type.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"type\"\n        ],\n        \"properties\": {\n          \"type\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Blender object type, such as MESH, LIGHT, CAMERA, or EMPTY.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-objects\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    }\n  ]\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "load_skill",
+      "arguments": {
+        "skill_name": "blender-data-geometry"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"loaded\": true,\n  \"partial\": false,\n  \"registered_tools\": [\n    \"blender_data_geometry__create_mesh_from_data\",\n    \"blender_data_geometry__create_curve_from_points\",\n    \"blender_data_geometry__inspect_data_geometry\",\n    \"blender_data_geometry__create_text\",\n    \"blender_data_geometry__inspect_text\"\n  ],\n  \"tool_count\": 5,\n  \"newly_loaded\": [\n    \"blender-data-geometry\"\n  ],\n  \"already_loaded\": [],\n  \"available_groups\": [],\n  \"activated_groups\": [],\n  \"tools\": [\n    {\n      \"name\": \"blender_data_geometry__create_curve_from_points\",\n      \"description\": \"Create bounded native geometry from explicit numeric data and verify its readback; reject existing names.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          },\n          \"splines\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"maxItems\": 1024,\n            \"items\": {\n              \"type\": \"array\",\n              \"minItems\": 2,\n              \"maxItems\": 30000,\n              \"items\": {\n                \"type\": \"array\",\n                \"minItems\": 3,\n                \"maxItems\": 3,\n                \"items\": {\n                  \"type\": \"number\",\n                  \"minimum\": -1000000,\n                  \"maximum\": 1000000\n                }\n              }\n            }\n          },\n          \"closed\": {\n            \"type\": \"boolean\",\n            \"default\": true\n          },\n          \"dimensions\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"2D\",\n              \"3D\"\n            ],\n            \"default\": \"2D\"\n          },\n          \"extrude\": {\n            \"type\": \"number\",\n            \"minimum\": 0,\n            \"maximum\": 1000,\n            \"default\": 0\n          },\n          \"bevel_depth\": {\n            \"type\": \"number\",\n            \"minimum\": 0,\n            \"maximum\": 1000,\n            \"default\": 0\n          },\n          \"bevel_resolution\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"maximum\": 4,\n            \"default\": 0\n          },\n          \"material_name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          }\n        },\n        \"required\": [\n          \"name\",\n          \"splines\"\n        ],\n        \"additionalProperties\": false\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"additionalProperties\": true\n      },\n      \"skill_name\": \"blender-data-geometry\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 60,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_data_geometry__create_mesh_from_data\",\n      \"description\": \"Create bounded native geometry from explicit numeric data and verify its readback; reject existing names.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          },\n          \"vertices\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 30000,\n            \"items\": {\n              \"type\": \"array\",\n              \"minItems\": 3,\n              \"maxItems\": 3,\n              \"items\": {\n                \"type\": \"number\",\n                \"minimum\": -1000000,\n                \"maximum\": 1000000\n              }\n            }\n          },\n          \"faces\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"maxItems\": 50000,\n            \"items\": {\n              \"type\": \"array\",\n              \"minItems\": 3,\n              \"maxItems\": 128,\n              \"uniqueItems\": true,\n              \"items\": {\n                \"type\": \"integer\",\n                \"minimum\": 0,\n                \"maximum\": 29999\n              }\n            }\n          }\n        },\n        \"required\": [\n          \"name\",\n          \"vertices\",\n          \"faces\"\n        ],\n        \"additionalProperties\": false\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"additionalProperties\": true\n      },\n      \"skill_name\": \"blender-data-geometry\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 60,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_data_geometry__inspect_text\",\n      \"description\": \"Read bounded native built-in-font text without mutation\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          }\n        },\n        \"required\": [\n          \"name\"\n        ],\n        \"additionalProperties\": false\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [\n          \"success\"\n        ],\n        \"additionalProperties\": true\n      },\n      \"skill_name\": \"blender-data-geometry\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 30,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_data_geometry__create_text\",\n      \"description\": \"Create bounded editable built-in-font text with native readback\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          },\n          \"text\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"maxLength\": 160\n          },\n          \"size\": {\n            \"type\": \"number\",\n            \"minimum\": 0.001,\n            \"maximum\": 10,\n            \"default\": 0.2\n          },\n          \"extrude\": {\n            \"type\": \"number\",\n            \"minimum\": 0,\n            \"maximum\": 0.1,\n            \"default\": 0\n          },\n          \"align_x\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"LEFT\",\n              \"CENTER\",\n              \"RIGHT\"\n            ],\n            \"default\": \"LEFT\"\n          },\n          \"material_name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          }\n        },\n        \"required\": [\n          \"name\",\n          \"text\"\n        ],\n        \"additionalProperties\": false\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [\n          \"success\"\n        ],\n        \"additionalProperties\": true\n      },\n      \"skill_name\": \"blender-data-geometry\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 30,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_data_geometry__inspect_data_geometry\",\n      \"description\": \"Read bounded mesh or POLY-curve positions/topology fingerprints, counts, transforms and materials without changing the host.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"name\"\n        ],\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[A-Za-z][A-Za-z0-9_.-]{0,62}$\"\n          }\n        },\n        \"additionalProperties\": false\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"additionalProperties\": true\n      },\n      \"skill_name\": \"blender-data-geometry\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 60,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    }\n  ]\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "load_skill",
+      "arguments": {
+        "skill_name": "blender-animation"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"loaded\": true,\n  \"partial\": false,\n  \"registered_tools\": [\n    \"blender_animation__set_keyframe\",\n    \"blender_animation__set_frame_range\",\n    \"blender_animation__get_frame_range\",\n    \"blender_animation__set_current_frame\",\n    \"blender_animation__get_keyframes\",\n    \"blender_animation__delete_keyframes\",\n    \"blender_animation__bake_animation\"\n  ],\n  \"tool_count\": 7,\n  \"newly_loaded\": [\n    \"blender-animation\"\n  ],\n  \"already_loaded\": [],\n  \"available_groups\": [],\n  \"activated_groups\": [],\n  \"tools\": [\n    {\n      \"name\": \"blender_animation__set_current_frame\",\n      \"description\": \"Set the current animation frame\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__get_frame_range\",\n      \"description\": \"Get the current animation frame range\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__delete_keyframes\",\n      \"description\": \"Delete keyframes on an object, optionally filtered by frame range and data path.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"frame_range\": {\n            \"type\": \"array\",\n            \"minItems\": 2,\n            \"maxItems\": 2,\n            \"items\": {\n              \"type\": \"number\"\n            },\n            \"description\": \"Optional [start, end] frame range to delete.\"\n          },\n          \"data_path\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional f-curve data path filter.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": true,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__set_keyframe\",\n      \"description\": \"Insert a keyframe on an object at the current or specified frame\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"frame\": {\n            \"type\": \"integer\"\n          },\n          \"data_paths\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"enum\": [\n                \"location\",\n                \"rotation_euler\",\n                \"scale\",\n                \"hide_viewport\",\n                \"hide_render\"\n              ]\n            }\n          },\n          \"interpolation\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"BEZIER\",\n              \"LINEAR\",\n              \"CONSTANT\"\n            ]\n          }\n        }\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__bake_animation\",\n      \"description\": \"Sample objects over a frame range by inserting explicit keyframes.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_names\",\n          \"frame_start\",\n          \"frame_end\"\n        ],\n        \"properties\": {\n          \"object_names\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"description\": \"Objects to bake.\"\n          },\n          \"frame_start\": {\n            \"type\": \"integer\",\n            \"description\": \"First frame to sample.\"\n          },\n          \"frame_end\": {\n            \"type\": \"integer\",\n            \"description\": \"Last frame to sample.\"\n          },\n          \"step\": {\n            \"type\": \"integer\",\n            \"minimum\": 1,\n            \"default\": 1,\n            \"description\": \"Sampling step in frames.\"\n          },\n          \"data_paths\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"description\": \"Optional data paths to key; defaults to transforms.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {\n        \"read_only_hint\": false,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": false,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__get_keyframes\",\n      \"description\": \"Return keyframe times grouped by f-curve for an object.\",\n      \"inputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\n          \"object_name\"\n        ],\n        \"properties\": {\n          \"object_name\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Object name.\"\n          },\n          \"data_path\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Optional f-curve data path filter.\"\n          }\n        }\n      },\n      \"outputSchema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"required\": [\n          \"success\"\n        ],\n        \"properties\": {\n          \"success\": {\n            \"type\": \"boolean\"\n          },\n          \"message\": {\n            \"type\": \"string\"\n          },\n          \"context\": {\n            \"type\": \"object\"\n          }\n        }\n      },\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {\n        \"read_only_hint\": true,\n        \"destructive_hint\": false,\n        \"idempotent_hint\": true,\n        \"open_world_hint\": false\n      },\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": 0,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    },\n    {\n      \"name\": \"blender_animation__set_frame_range\",\n      \"description\": \"Set the animation frame range (start and end frames)\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      },\n      \"outputSchema\": null,\n      \"skill_name\": \"blender-animation\",\n      \"annotations\": {},\n      \"metadata\": {\n        \"dcc\": {\n          \"affinity\": \"main\",\n          \"execution\": \"sync\",\n          \"timeoutHintSecs\": null,\n          \"jobStrategy\": \"monolithic\",\n          \"enforceThreadAffinity\": true\n        }\n      }\n    }\n  ]\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_mesh_from_data",
+      "arguments": {
+        "name": "NumericFixture",
+        "vertices": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            0
+          ],
+          [
+            2,
+            1,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0.5,
+            0.5,
+            1
+          ]
+        ],
+        "faces": [
+          [
+            0,
+            3,
+            2,
+            1
+          ],
+          [
+            0,
+            1,
+            4
+          ],
+          [
+            1,
+            2,
+            4
+          ],
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            3,
+            0,
+            4
+          ]
+        ]
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native mesh created and read back\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"NumericFixture\",\"vertex_count\":5,\"edge_count\":8,\"face_count\":5,\"position_float32_sha256\":\"354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c\",\"topology_sha256\":\"571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28\",\"dimensions_local\":[2.0,1.0,1.0],\"selection_preserved\":true,\"not_claimed\":[\"manifoldness\",\"engineering validity\",\"UVs\",\"material assignment\"]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native mesh created and read back",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "NumericFixture",
+            "vertex_count": 5,
+            "edge_count": 8,
+            "face_count": 5,
+            "position_float32_sha256": "354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c",
+            "topology_sha256": "571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28",
+            "dimensions_local": [
+              2.0,
+              1.0,
+              1.0
+            ],
+            "selection_preserved": true,
+            "not_claimed": [
+              "manifoldness",
+              "engineering validity",
+              "UVs",
+              "material assignment"
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_curve_from_points",
+      "arguments": {
+        "name": "TwoRingFixture",
+        "splines": [
+          [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              4,
+              4,
+              0
+            ],
+            [
+              0,
+              4,
+              0
+            ]
+          ],
+          [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              1,
+              3,
+              0
+            ],
+            [
+              3,
+              3,
+              0
+            ],
+            [
+              3,
+              1,
+              0
+            ]
+          ]
+        ],
+        "dimensions": "2D",
+        "closed": true,
+        "extrude": 0.1,
+        "bevel_depth": 0
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native poly curve created and read back\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"TwoRingFixture\",\"spline_count\":2,\"control_point_count\":8,\"position_float32_sha256\":\"6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39\",\"material_name\":null,\"closed\":true,\"dimensions\":\"2D\",\"extrude_per_side\":0.10000000149011612,\"bevel_depth\":0.0,\"bevel_resolution\":0,\"selection_preserved\":true,\"not_claimed\":[\"nonintersecting fill\",\"engineering validity\",\"UVs\"]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native poly curve created and read back",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "TwoRingFixture",
+            "spline_count": 2,
+            "control_point_count": 8,
+            "position_float32_sha256": "6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39",
+            "material_name": null,
+            "closed": true,
+            "dimensions": "2D",
+            "extrude_per_side": 0.10000000149011612,
+            "bevel_depth": 0.0,
+            "bevel_resolution": 0,
+            "selection_preserved": true,
+            "not_claimed": [
+              "nonintersecting fill",
+              "engineering validity",
+              "UVs"
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_text",
+      "arguments": {
+        "name": "FixtureLabel",
+        "text": "NATIVE GEOMETRY / 01",
+        "size": 0.2,
+        "extrude": 0.005,
+        "align_x": "CENTER"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Editable native text created and read back\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"FixtureLabel\",\"type\":\"FONT\",\"text\":\"NATIVE GEOMETRY / 01\",\"size\":0.20000000298023224,\"extrude\":0.004999999888241291,\"align_x\":\"CENTER\",\"font\":\"Bfont Regular\",\"location\":[0.0,0.0,0.0],\"dimensions\":[2.0806002616882324,0.14000001549720764,0.009999999776482582],\"materials\":[]},\"postcondition\":{\"method\":\"native_font_readback\",\"verified\":true}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Editable native text created and read back",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "FixtureLabel",
+            "type": "FONT",
+            "text": "NATIVE GEOMETRY / 01",
+            "size": 0.20000000298023224,
+            "extrude": 0.004999999888241291,
+            "align_x": "CENTER",
+            "font": "Bfont Regular",
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "dimensions": [
+              2.0806002616882324,
+              0.14000001549720764,
+              0.009999999776482582
+            ],
+            "materials": []
+          },
+          "postcondition": {
+            "method": "native_font_readback",
+            "verified": true
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "move_object",
+      "arguments": {
+        "name": "NumericFixture",
+        "location": [
+          2,
+          3,
+          4
+        ]
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Moved NumericFixture to [2, 3, 4]\",\"error\":null,\"prompt\":\"Object moved. Use get_object_info to verify the new position.\",\"context\":{\"object_name\":\"NumericFixture\",\"location\":[2.0,3.0,4.0]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Moved NumericFixture to [2, 3, 4]",
+          "error": null,
+          "prompt": "Object moved. Use get_object_info to verify the new position.",
+          "context": {
+            "object_name": "NumericFixture",
+            "location": [
+              2.0,
+              3.0,
+              4.0
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "set_current_frame",
+      "arguments": {
+        "frame": 1
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Current frame set to 1\",\"error\":null,\"prompt\":\"Frame set. Use set_keyframe to insert keyframes at this position.\",\"context\":{\"frame_current\":1}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Current frame set to 1",
+          "error": null,
+          "prompt": "Frame set. Use set_keyframe to insert keyframes at this position.",
+          "context": {
+            "frame_current": 1
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_data_geometry",
+      "arguments": {
+        "name": "NumericFixture"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native geometry inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"NumericFixture\",\"type\":\"MESH\",\"location\":[2.0,3.0,4.0],\"matrix_world\":[[1.0,0.0,0.0,2.0],[0.0,1.0,0.0,3.0],[0.0,0.0,1.0,4.0],[0.0,0.0,0.0,1.0]],\"matrix_parent_inverse\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"parent\":null,\"dimensions_local\":[2.0,1.0,1.0],\"materials\":[],\"vertex_count\":5,\"edge_count\":8,\"face_count\":5,\"position_float32_sha256\":\"354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c\",\"topology_sha256\":\"571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native geometry inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "NumericFixture",
+            "type": "MESH",
+            "location": [
+              2.0,
+              3.0,
+              4.0
+            ],
+            "matrix_world": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                2.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                3.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                4.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "matrix_parent_inverse": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "parent": null,
+            "dimensions_local": [
+              2.0,
+              1.0,
+              1.0
+            ],
+            "materials": [],
+            "vertex_count": 5,
+            "edge_count": 8,
+            "face_count": 5,
+            "position_float32_sha256": "354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c",
+            "topology_sha256": "571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_data_geometry",
+      "arguments": {
+        "name": "TwoRingFixture"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native geometry inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"TwoRingFixture\",\"type\":\"CURVE\",\"location\":[0.0,0.0,0.0],\"matrix_world\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"matrix_parent_inverse\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"parent\":null,\"dimensions_local\":[4.0,4.0,0.20000000298023224],\"materials\":[],\"spline_count\":2,\"control_point_count\":8,\"position_float32_sha256\":\"6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39\",\"cyclic\":[true,true],\"dimensions\":\"2D\",\"extrude_per_side\":0.10000000149011612,\"bevel_depth\":0.0}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native geometry inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "TwoRingFixture",
+            "type": "CURVE",
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "matrix_world": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "matrix_parent_inverse": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "parent": null,
+            "dimensions_local": [
+              4.0,
+              4.0,
+              0.20000000298023224
+            ],
+            "materials": [],
+            "spline_count": 2,
+            "control_point_count": 8,
+            "position_float32_sha256": "6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39",
+            "cyclic": [
+              true,
+              true
+            ],
+            "dimensions": "2D",
+            "extrude_per_side": 0.10000000149011612,
+            "bevel_depth": 0.0
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_text",
+      "arguments": {
+        "name": "FixtureLabel"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native text inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"FixtureLabel\",\"type\":\"FONT\",\"text\":\"NATIVE GEOMETRY / 01\",\"size\":0.20000000298023224,\"extrude\":0.004999999888241291,\"align_x\":\"CENTER\",\"font\":\"Bfont Regular\",\"location\":[0.0,0.0,0.0],\"dimensions\":[2.0806002616882324,0.14000001549720764,0.009999999776482582],\"materials\":[]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native text inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "FixtureLabel",
+            "type": "FONT",
+            "text": "NATIVE GEOMETRY / 01",
+            "size": 0.20000000298023224,
+            "extrude": 0.004999999888241291,
+            "align_x": "CENTER",
+            "font": "Bfont Regular",
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "dimensions": [
+              2.0806002616882324,
+              0.14000001549720764,
+              0.009999999776482582
+            ],
+            "materials": []
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "get_scene_info",
+      "arguments": {},
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene info retrieved\",\"error\":null,\"prompt\":\"Use list_objects to see all objects or blender-objects skill to manipulate them.\",\"context\":{\"scene_name\":\"Scene\",\"frame_current\":1,\"frame_range\":[1,250],\"fps\":24,\"active_camera\":\"Camera\",\"total_objects\":6,\"objects_by_type\":{\"MESH\":2,\"CURVE\":1,\"FONT\":1,\"LIGHT\":1,\"CAMERA\":1},\"collections\":{\"name\":\"Scene Collection\",\"objects\":[\"NumericFixture\",\"TwoRingFixture\",\"FixtureLabel\"],\"children\":[{\"name\":\"Collection\",\"objects\":[\"Cube\",\"Light\",\"Camera\"],\"children\":[]}]}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene info retrieved",
+          "error": null,
+          "prompt": "Use list_objects to see all objects or blender-objects skill to manipulate them.",
+          "context": {
+            "scene_name": "Scene",
+            "frame_current": 1,
+            "frame_range": [
+              1,
+              250
+            ],
+            "fps": 24,
+            "active_camera": "Camera",
+            "total_objects": 6,
+            "objects_by_type": {
+              "MESH": 2,
+              "CURVE": 1,
+              "FONT": 1,
+              "LIGHT": 1,
+              "CAMERA": 1
+            },
+            "collections": {
+              "name": "Scene Collection",
+              "objects": [
+                "NumericFixture",
+                "TwoRingFixture",
+                "FixtureLabel"
+              ],
+              "children": [
+                {
+                  "name": "Collection",
+                  "objects": [
+                    "Cube",
+                    "Light",
+                    "Camera"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_mesh_from_data",
+      "arguments": {
+        "name": "NumericFixture",
+        "vertices": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            0
+          ],
+          [
+            2,
+            1,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0.5,
+            0.5,
+            1
+          ]
+        ],
+        "faces": [
+          [
+            0,
+            3,
+            2,
+            1
+          ],
+          [
+            0,
+            1,
+            4
+          ],
+          [
+            1,
+            2,
+            4
+          ],
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            3,
+            0,
+            4
+          ]
+        ]
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":false,\"message\":\"Name already exists\",\"error\":\"Choose a new object/data name; nothing was changed\",\"prompt\":\"Check the error details and try again.\",\"context\":{}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": false,
+          "message": "Name already exists",
+          "error": "Choose a new object/data name; nothing was changed",
+          "prompt": "Check the error details and try again.",
+          "context": {}
+        },
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "get_scene_info",
+      "arguments": {},
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene info retrieved\",\"error\":null,\"prompt\":\"Use list_objects to see all objects or blender-objects skill to manipulate them.\",\"context\":{\"scene_name\":\"Scene\",\"frame_current\":1,\"frame_range\":[1,250],\"fps\":24,\"active_camera\":\"Camera\",\"total_objects\":6,\"objects_by_type\":{\"MESH\":2,\"CURVE\":1,\"FONT\":1,\"LIGHT\":1,\"CAMERA\":1},\"collections\":{\"name\":\"Scene Collection\",\"objects\":[\"NumericFixture\",\"TwoRingFixture\",\"FixtureLabel\"],\"children\":[{\"name\":\"Collection\",\"objects\":[\"Cube\",\"Light\",\"Camera\"],\"children\":[]}]}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene info retrieved",
+          "error": null,
+          "prompt": "Use list_objects to see all objects or blender-objects skill to manipulate them.",
+          "context": {
+            "scene_name": "Scene",
+            "frame_current": 1,
+            "frame_range": [
+              1,
+              250
+            ],
+            "fps": 24,
+            "active_camera": "Camera",
+            "total_objects": 6,
+            "objects_by_type": {
+              "MESH": 2,
+              "CURVE": 1,
+              "FONT": 1,
+              "LIGHT": 1,
+              "CAMERA": 1
+            },
+            "collections": {
+              "name": "Scene Collection",
+              "objects": [
+                "NumericFixture",
+                "TwoRingFixture",
+                "FixtureLabel"
+              ],
+              "children": [
+                {
+                  "name": "Collection",
+                  "objects": [
+                    "Cube",
+                    "Light",
+                    "Camera"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_mesh_from_data",
+      "arguments": {
+        "name": "BadIndex",
+        "vertices": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            0
+          ],
+          [
+            2,
+            1,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0.5,
+            0.5,
+            1
+          ]
+        ],
+        "faces": [
+          [
+            0,
+            1,
+            9
+          ]
+        ]
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":false,\"message\":\"Mesh creation rejected; no existing object was changed\",\"error\":\"ValueError\",\"prompt\":\"Check the error details and try again.\",\"context\":{\"error_type\":\"ValueError\"},\"_meta\":{\"dcc.error\":{\"type\":\"ValueError\",\"message\":\"Face indices must address the supplied vertices\"}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": false,
+          "message": "Mesh creation rejected; no existing object was changed",
+          "error": "ValueError",
+          "prompt": "Check the error details and try again.",
+          "context": {
+            "error_type": "ValueError"
+          },
+          "_meta": {
+            "dcc.error": {
+              "type": "ValueError",
+              "message": "Face indices must address the supplied vertices"
+            }
+          }
+        },
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "get_scene_info",
+      "arguments": {},
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene info retrieved\",\"error\":null,\"prompt\":\"Use list_objects to see all objects or blender-objects skill to manipulate them.\",\"context\":{\"scene_name\":\"Scene\",\"frame_current\":1,\"frame_range\":[1,250],\"fps\":24,\"active_camera\":\"Camera\",\"total_objects\":6,\"objects_by_type\":{\"MESH\":2,\"CURVE\":1,\"FONT\":1,\"LIGHT\":1,\"CAMERA\":1},\"collections\":{\"name\":\"Scene Collection\",\"objects\":[\"NumericFixture\",\"TwoRingFixture\",\"FixtureLabel\"],\"children\":[{\"name\":\"Collection\",\"objects\":[\"Cube\",\"Light\",\"Camera\"],\"children\":[]}]}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene info retrieved",
+          "error": null,
+          "prompt": "Use list_objects to see all objects or blender-objects skill to manipulate them.",
+          "context": {
+            "scene_name": "Scene",
+            "frame_current": 1,
+            "frame_range": [
+              1,
+              250
+            ],
+            "fps": 24,
+            "active_camera": "Camera",
+            "total_objects": 6,
+            "objects_by_type": {
+              "MESH": 2,
+              "CURVE": 1,
+              "FONT": 1,
+              "LIGHT": 1,
+              "CAMERA": 1
+            },
+            "collections": {
+              "name": "Scene Collection",
+              "objects": [
+                "NumericFixture",
+                "TwoRingFixture",
+                "FixtureLabel"
+              ],
+              "children": [
+                {
+                  "name": "Collection",
+                  "objects": [
+                    "Cube",
+                    "Light",
+                    "Camera"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_curve_from_points",
+      "arguments": {
+        "name": "BadCurve",
+        "splines": [
+          [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ]
+        ],
+        "dimensions": "2D"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":false,\"message\":\"Curve creation rejected; no existing object was changed\",\"error\":\"ValueError\",\"prompt\":\"Check the error details and try again.\",\"context\":{\"error_type\":\"ValueError\"},\"_meta\":{\"dcc.error\":{\"type\":\"ValueError\",\"message\":\"2D spline input must lie in its local XY plane; position the object afterward\"}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": false,
+          "message": "Curve creation rejected; no existing object was changed",
+          "error": "ValueError",
+          "prompt": "Check the error details and try again.",
+          "context": {
+            "error_type": "ValueError"
+          },
+          "_meta": {
+            "dcc.error": {
+              "type": "ValueError",
+              "message": "2D spline input must lie in its local XY plane; position the object afterward"
+            }
+          }
+        },
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "get_scene_info",
+      "arguments": {},
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene info retrieved\",\"error\":null,\"prompt\":\"Use list_objects to see all objects or blender-objects skill to manipulate them.\",\"context\":{\"scene_name\":\"Scene\",\"frame_current\":1,\"frame_range\":[1,250],\"fps\":24,\"active_camera\":\"Camera\",\"total_objects\":6,\"objects_by_type\":{\"MESH\":2,\"CURVE\":1,\"FONT\":1,\"LIGHT\":1,\"CAMERA\":1},\"collections\":{\"name\":\"Scene Collection\",\"objects\":[\"NumericFixture\",\"TwoRingFixture\",\"FixtureLabel\"],\"children\":[{\"name\":\"Collection\",\"objects\":[\"Cube\",\"Light\",\"Camera\"],\"children\":[]}]}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene info retrieved",
+          "error": null,
+          "prompt": "Use list_objects to see all objects or blender-objects skill to manipulate them.",
+          "context": {
+            "scene_name": "Scene",
+            "frame_current": 1,
+            "frame_range": [
+              1,
+              250
+            ],
+            "fps": 24,
+            "active_camera": "Camera",
+            "total_objects": 6,
+            "objects_by_type": {
+              "MESH": 2,
+              "CURVE": 1,
+              "FONT": 1,
+              "LIGHT": 1,
+              "CAMERA": 1
+            },
+            "collections": {
+              "name": "Scene Collection",
+              "objects": [
+                "NumericFixture",
+                "TwoRingFixture",
+                "FixtureLabel"
+              ],
+              "children": [
+                {
+                  "name": "Collection",
+                  "objects": [
+                    "Cube",
+                    "Light",
+                    "Camera"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "create_text",
+      "arguments": {
+        "name": "FixtureLabel",
+        "text": "Must not replace",
+        "size": 0.1
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":false,\"message\":\"Name already exists\",\"error\":\"Use a fresh object/data name\",\"prompt\":\"Check the error details and try again.\",\"context\":{}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": false,
+          "message": "Name already exists",
+          "error": "Use a fresh object/data name",
+          "prompt": "Check the error details and try again.",
+          "context": {}
+        },
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "get_scene_info",
+      "arguments": {},
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene info retrieved\",\"error\":null,\"prompt\":\"Use list_objects to see all objects or blender-objects skill to manipulate them.\",\"context\":{\"scene_name\":\"Scene\",\"frame_current\":1,\"frame_range\":[1,250],\"fps\":24,\"active_camera\":\"Camera\",\"total_objects\":6,\"objects_by_type\":{\"MESH\":2,\"CURVE\":1,\"FONT\":1,\"LIGHT\":1,\"CAMERA\":1},\"collections\":{\"name\":\"Scene Collection\",\"objects\":[\"NumericFixture\",\"TwoRingFixture\",\"FixtureLabel\"],\"children\":[{\"name\":\"Collection\",\"objects\":[\"Cube\",\"Light\",\"Camera\"],\"children\":[]}]}}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene info retrieved",
+          "error": null,
+          "prompt": "Use list_objects to see all objects or blender-objects skill to manipulate them.",
+          "context": {
+            "scene_name": "Scene",
+            "frame_current": 1,
+            "frame_range": [
+              1,
+              250
+            ],
+            "fps": 24,
+            "active_camera": "Camera",
+            "total_objects": 6,
+            "objects_by_type": {
+              "MESH": 2,
+              "CURVE": 1,
+              "FONT": 1,
+              "LIGHT": 1,
+              "CAMERA": 1
+            },
+            "collections": {
+              "name": "Scene Collection",
+              "objects": [
+                "NumericFixture",
+                "TwoRingFixture",
+                "FixtureLabel"
+              ],
+              "children": [
+                {
+                  "name": "Collection",
+                  "objects": [
+                    "Cube",
+                    "Light",
+                    "Camera"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "save_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene saved to CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend\",\"error\":null,\"prompt\":\"Scene saved successfully.\",\"context\":{\"filepath\":\"CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene saved to CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend",
+          "error": null,
+          "prompt": "Scene saved successfully.",
+          "context": {
+            "filepath": "CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/runtime/blender-data-core2041-02/geometry-fixture.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_data_geometry",
+      "arguments": {
+        "name": "NumericFixture"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native geometry inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"NumericFixture\",\"type\":\"MESH\",\"location\":[2.0,3.0,4.0],\"matrix_world\":[[1.0,0.0,0.0,2.0],[0.0,1.0,0.0,3.0],[0.0,0.0,1.0,4.0],[0.0,0.0,0.0,1.0]],\"matrix_parent_inverse\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"parent\":null,\"dimensions_local\":[2.0,1.0,1.0],\"materials\":[],\"vertex_count\":5,\"edge_count\":8,\"face_count\":5,\"position_float32_sha256\":\"354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c\",\"topology_sha256\":\"571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native geometry inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "NumericFixture",
+            "type": "MESH",
+            "location": [
+              2.0,
+              3.0,
+              4.0
+            ],
+            "matrix_world": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                2.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                3.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                4.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "matrix_parent_inverse": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "parent": null,
+            "dimensions_local": [
+              2.0,
+              1.0,
+              1.0
+            ],
+            "materials": [],
+            "vertex_count": 5,
+            "edge_count": 8,
+            "face_count": 5,
+            "position_float32_sha256": "354a603e6a621bd9a95589c3dd60a052d0be65fb2ee19ffebb41bf416504ae2c",
+            "topology_sha256": "571434025e292a72e7de17b7162b9ef2e34e872d5c08df3411d735b4c220cd28"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_data_geometry",
+      "arguments": {
+        "name": "TwoRingFixture"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native geometry inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"TwoRingFixture\",\"type\":\"CURVE\",\"location\":[0.0,0.0,0.0],\"matrix_world\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"matrix_parent_inverse\":[[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]],\"parent\":null,\"dimensions_local\":[4.0,4.0,0.20000000298023224],\"materials\":[],\"spline_count\":2,\"control_point_count\":8,\"position_float32_sha256\":\"6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39\",\"cyclic\":[true,true],\"dimensions\":\"2D\",\"extrude_per_side\":0.10000000149011612,\"bevel_depth\":0.0}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native geometry inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "TwoRingFixture",
+            "type": "CURVE",
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "matrix_world": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "matrix_parent_inverse": [
+              [
+                1.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "parent": null,
+            "dimensions_local": [
+              4.0,
+              4.0,
+              0.20000000298023224
+            ],
+            "materials": [],
+            "spline_count": 2,
+            "control_point_count": 8,
+            "position_float32_sha256": "6d323a5006a47991a0ce5332d9f7034ea23141aad2d2701bb55e36ce44180a39",
+            "cyclic": [
+              true,
+              true
+            ],
+            "dimensions": "2D",
+            "extrude_per_side": 0.10000000149011612,
+            "bevel_depth": 0.0
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "inspect_text",
+      "arguments": {
+        "name": "FixtureLabel"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Native text inspected\",\"error\":null,\"prompt\":null,\"context\":{\"object_name\":\"FixtureLabel\",\"type\":\"FONT\",\"text\":\"NATIVE GEOMETRY / 01\",\"size\":0.20000000298023224,\"extrude\":0.004999999888241291,\"align_x\":\"CENTER\",\"font\":\"Bfont Regular\",\"location\":[0.0,0.0,0.0],\"dimensions\":[2.0806002616882324,0.14000001549720764,0.009999999776482582],\"materials\":[]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Native text inspected",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "object_name": "FixtureLabel",
+            "type": "FONT",
+            "text": "NATIVE GEOMETRY / 01",
+            "size": 0.20000000298023224,
+            "extrude": 0.004999999888241291,
+            "align_x": "CENTER",
+            "font": "Bfont Regular",
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "dimensions": [
+              2.0806002616882324,
+              0.14000001549720764,
+              0.009999999776482582
+            ],
+            "materials": []
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    }
+  ],
+  "redaction": "Task workspace/home and host runtime prefixes replaced by CASE_ROOT/WORKSPACE/HOST_RUNTIME; eight duplicate traceback fields omitted from structured and JSON-encoded malformed-input results, with formatting adjusted only in those encoded results. Native values and measurements otherwise preserved. Full original trace remains private.",
+  "selection": "Selected actual request/results; discovery and tool catalogs retained; unselected initialization/boilerplate events omitted.",
+  "publication_excerpt_scope": {
+    "source_snapshot": "Handed-off Blender 4.3.2 compatible integration on Core/server 0.20.41; subsequent font-slot guards require final-head supported native CI.",
+    "selection": "27 selected actual requests from 32 original events, including discovery and four loaded-skill catalogs; boilerplate events omitted.",
+    "transformation": "Eight duplicate detailed traceback fields omitted consistently from structured and JSON-encoded malformed-input results. Semantic native measurements and original trace hashes retained."
+  }
+}
