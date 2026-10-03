@@ -1,0 +1,511 @@
+{
+  "runtime": {
+    "versions": {
+      "dcc-mcp-core": "0.20.41",
+      "dcc-mcp-server": "0.20.41"
+    },
+    "gateway_port": 0,
+    "enable_gateway_failover": false
+  },
+  "validation": {
+    "status": "PASS",
+    "core": "0.20.41",
+    "server": "0.20.41",
+    "cases": [
+      {
+        "case": "hero",
+        "native_sha256": "12cd08f813dff5382e3a7ef0b5ff08080cb554b5f403e1c4cbc7adc7945f5e67",
+        "raw_task_fragments_absent": true,
+        "geometry_objects": 22,
+        "text_objects": 2,
+        "animation_objects": 5,
+        "keyframe_values": 1455,
+        "native_geometry_text_camera_keys_exact": true,
+        "source_and_clean_source_unavailable_during_relocated_render": true,
+        "full_production_reference_rgba_exact": true,
+        "rgba_sha256": "b7563f0920ccbf750c7382c1a953f7f887e63030196087172cd629224819501d",
+        "saved": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/hero/brass-hero.blend",
+            "bytes": 2141244,
+            "sha256": "12cd08f813dff5382e3a7ef0b5ff08080cb554b5f403e1c4cbc7adc7945f5e67",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        }
+      },
+      {
+        "case": "plan",
+        "native_sha256": "f4522c8f49f6e3f1b764a375ff6184be8faaf9c899e7a676e0027f7e3f354102",
+        "raw_task_fragments_absent": true,
+        "geometry_objects": 22,
+        "text_objects": 2,
+        "animation_objects": 5,
+        "keyframe_values": 1455,
+        "native_geometry_text_camera_keys_exact": true,
+        "source_and_clean_source_unavailable_during_relocated_render": true,
+        "full_production_reference_rgba_exact": true,
+        "rgba_sha256": "5b96b3c4f89b815157463225647b2b948b167499fa1323f1b0b051ff2a47f770",
+        "saved": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/plan/brass-plan.blend",
+            "bytes": 2141244,
+            "sha256": "f4522c8f49f6e3f1b764a375ff6184be8faaf9c899e7a676e0027f7e3f354102",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        }
+      },
+      {
+        "case": "animation",
+        "native_sha256": "ceaad41190a19678e2491524f230038202b75818a2b032e96471fa73f4adfdc5",
+        "raw_task_fragments_absent": true,
+        "geometry_objects": 22,
+        "text_objects": 2,
+        "animation_objects": 5,
+        "keyframe_values": 1455,
+        "native_geometry_text_camera_keys_exact": true,
+        "source_and_clean_source_unavailable_during_relocated_render": true,
+        "full_production_reference_rgba_exact": true,
+        "rgba_sha256": "5991c62e3bd1163a9947a4e3f517d4e016617ed86226d985564120a1acbf51af",
+        "saved": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/animation/brass-animation.blend",
+            "bytes": 2141244,
+            "sha256": "ceaad41190a19678e2491524f230038202b75818a2b032e96471fa73f4adfdc5",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        }
+      }
+    ],
+    "actual_mcp_events": 205
+  },
+  "cleanup": {
+    "owned_host_stopped": true
+  },
+  "source_trace_sha256": "d99a9c4570ff8e6935115959b3e060148652af5a7b5bf8af351560216beb1fe0",
+  "redaction": "Absolute task workspace/home prefixes replaced by CASE_ROOT/WORKSPACE/HOST_HOME; actual tool arguments and returns otherwise retained",
+  "selected_actual_mcp_requests": [
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-hero-private.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-hero-private.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/final-native-01/native/brass-hero-private.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-hero-private.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-hero-private.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "save_portable_scene_copy",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/hero/brass-hero.blend",
+        "allowed_output_root": "CASE_ROOT/brass-relay/native-core2041-01/hero",
+        "render_path": "//renders/image.png"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"New native scene copy saved and path-audited\",\"error\":null,\"prompt\":null,\"context\":{\"path\":\"CASE_ROOT/brass-relay/native-core2041-01/hero/brass-hero.blend\",\"bytes\":2141244,\"sha256\":\"12cd08f813dff5382e3a7ef0b5ff08080cb554b5f403e1c4cbc7adc7945f5e67\",\"browser_directories_sanitized\":1,\"render_path\":\"//renders/image.png\",\"scope\":\"Self-contained scene; render path and file-browser directory metadata\",\"not_claimed\":[\"comprehensive secret detection\",\"arbitrary scene sanitization\",\"native reopen or render acceptance\"]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/hero/brass-hero.blend",
+            "bytes": 2141244,
+            "sha256": "12cd08f813dff5382e3a7ef0b5ff08080cb554b5f403e1c4cbc7adc7945f5e67",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/brass-hero.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/brass-hero.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/brass-hero.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/brass-hero.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/brass-hero.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "render_scene",
+      "arguments": {
+        "output_path": "CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/image.png",
+        "write_still": true
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene rendered\",\"error\":null,\"prompt\":\"Render complete. The image has been saved to the output path.\",\"context\":{\"output_path\":\"CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/image.png\",\"write_still\":true}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene rendered",
+          "error": null,
+          "prompt": "Render complete. The image has been saved to the output path.",
+          "context": {
+            "output_path": "CASE_ROOT/brass-relay/native-core2041-01/hero/relocated/image.png",
+            "write_still": true
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-plan-private.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-plan-private.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/final-native-01/native/brass-plan-private.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-plan-private.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-plan-private.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "save_portable_scene_copy",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/plan/brass-plan.blend",
+        "allowed_output_root": "CASE_ROOT/brass-relay/native-core2041-01/plan",
+        "render_path": "//renders/image.png"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"New native scene copy saved and path-audited\",\"error\":null,\"prompt\":null,\"context\":{\"path\":\"CASE_ROOT/brass-relay/native-core2041-01/plan/brass-plan.blend\",\"bytes\":2141244,\"sha256\":\"f4522c8f49f6e3f1b764a375ff6184be8faaf9c899e7a676e0027f7e3f354102\",\"browser_directories_sanitized\":1,\"render_path\":\"//renders/image.png\",\"scope\":\"Self-contained scene; render path and file-browser directory metadata\",\"not_claimed\":[\"comprehensive secret detection\",\"arbitrary scene sanitization\",\"native reopen or render acceptance\"]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/plan/brass-plan.blend",
+            "bytes": 2141244,
+            "sha256": "f4522c8f49f6e3f1b764a375ff6184be8faaf9c899e7a676e0027f7e3f354102",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/brass-plan.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/brass-plan.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/brass-plan.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/brass-plan.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/brass-plan.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "render_scene",
+      "arguments": {
+        "output_path": "CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/image.png",
+        "write_still": true
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene rendered\",\"error\":null,\"prompt\":\"Render complete. The image has been saved to the output path.\",\"context\":{\"output_path\":\"CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/image.png\",\"write_still\":true}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene rendered",
+          "error": null,
+          "prompt": "Render complete. The image has been saved to the output path.",
+          "context": {
+            "output_path": "CASE_ROOT/brass-relay/native-core2041-01/plan/relocated/image.png",
+            "write_still": true
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-animation-private.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-animation-private.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/final-native-01/native/brass-animation-private.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/final-native-01/native/brass-animation-private.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/final-native-01/native/brass-animation-private.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "save_portable_scene_copy",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/animation/brass-animation.blend",
+        "allowed_output_root": "CASE_ROOT/brass-relay/native-core2041-01/animation",
+        "render_path": "//renders/image.png"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"New native scene copy saved and path-audited\",\"error\":null,\"prompt\":null,\"context\":{\"path\":\"CASE_ROOT/brass-relay/native-core2041-01/animation/brass-animation.blend\",\"bytes\":2141244,\"sha256\":\"ceaad41190a19678e2491524f230038202b75818a2b032e96471fa73f4adfdc5\",\"browser_directories_sanitized\":1,\"render_path\":\"//renders/image.png\",\"scope\":\"Self-contained scene; render path and file-browser directory metadata\",\"not_claimed\":[\"comprehensive secret detection\",\"arbitrary scene sanitization\",\"native reopen or render acceptance\"]}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "New native scene copy saved and path-audited",
+          "error": null,
+          "prompt": null,
+          "context": {
+            "path": "CASE_ROOT/brass-relay/native-core2041-01/animation/brass-animation.blend",
+            "bytes": 2141244,
+            "sha256": "ceaad41190a19678e2491524f230038202b75818a2b032e96471fa73f4adfdc5",
+            "browser_directories_sanitized": 1,
+            "render_path": "//renders/image.png",
+            "scope": "Self-contained scene; render path and file-browser directory metadata",
+            "not_claimed": [
+              "comprehensive secret detection",
+              "arbitrary scene sanitization",
+              "native reopen or render acceptance"
+            ]
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "open_scene",
+      "arguments": {
+        "filepath": "CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/brass-animation.blend"
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Opened scene: CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/brass-animation.blend\",\"error\":null,\"prompt\":\"Scene opened. Use list_objects to see the scene contents.\",\"context\":{\"filepath\":\"CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/brass-animation.blend\",\"scene_name\":\"Scene\"}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Opened scene: CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/brass-animation.blend",
+          "error": null,
+          "prompt": "Scene opened. Use list_objects to see the scene contents.",
+          "context": {
+            "filepath": "CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/brass-animation.blend",
+            "scene_name": "Scene"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "tool": "render_scene",
+      "arguments": {
+        "output_path": "CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/image.png",
+        "write_still": true
+      },
+      "response": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\":true,\"message\":\"Scene rendered\",\"error\":null,\"prompt\":\"Render complete. The image has been saved to the output path.\",\"context\":{\"output_path\":\"CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/image.png\",\"write_still\":true}}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "success": true,
+          "message": "Scene rendered",
+          "error": null,
+          "prompt": "Render complete. The image has been saved to the output path.",
+          "context": {
+            "output_path": "CASE_ROOT/brass-relay/native-core2041-01/animation/relocated/image.png",
+            "write_still": true
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    }
+  ],
+  "selection": "Native open/save/render requests; complete geometry/text/camera/key readback equality is recorded in validation. Full raw trace retained privately.",
+  "native_host": "Blender4.3.2 with official adapter0.1.43-compatible integration; current-main4.5+ host gate remains separate",
+  "implementation_sha256": "a738e0cabdeccd66cdd482e7e33018d5a3d0bc92d33e313edba7bd58ddaca4e3",
+  "pr_implementation_sha256": "6a23924bd70ac92933efccf69ad98b5a08448e68d8ea39c3b6946786e383e458",
+  "native_to_pr_source": "Only formatter line wrapping differs; complete parsed AST matches exactly",
+  "parsed_ast_equal": true
+}

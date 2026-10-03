@@ -1,0 +1,57 @@
+{
+  "tools": [
+    {
+      "name": "save_portable_scene_copy",
+      "description": "Save a new bounded self-contained .blend copy with relative render output and file-browser path metadata audit. Reopen/render validation remains separate.",
+      "source_file": "scripts/save_portable_scene_copy.py",
+      "execution": "sync",
+      "affinity": "main",
+      "enforce_thread_affinity": true,
+      "timeout_hint_secs": 120,
+      "read_only": false,
+      "destructive": false,
+      "idempotent": false,
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "filepath",
+          "allowed_output_root"
+        ],
+        "properties": {
+          "filepath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "allowed_output_root": {
+            "type": "string",
+            "minLength": 1
+          },
+          "render_path": {
+            "type": "string",
+            "maxLength": 240,
+            "default": "//renders/hero.png"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "idempotent_hint": false,
+        "open_world_hint": false
+      }
+    }
+  ]
+}
