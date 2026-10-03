@@ -36,6 +36,9 @@ def _call(stem, **kwargs):
     result = load_skill("blender-data-geometry", stem).main(**kwargs)
     assert result["success"] is True, result
     json.dumps(result, allow_nan=False)
+    if stem == "create_text":
+        assert result["postcondition"]["verified"] is True
+        assert result["postcondition"]["method"] == "native_font_readback"
     return result["context"]
 
 
@@ -193,7 +196,6 @@ def test_builtin_text_native_formatting_and_boundary_readback(size, extrude, ali
     assert obj.data.materials[0] == paint
     assert obj.dimensions.x > 0 and obj.dimensions.y > 0
     assert obj.dimensions.z == pytest.approx(2 * extrude, abs=1e-6)
-    assert created["verified"] is True
     assert created["font"] == obj.data.font.name
     before = _host_state()
     inspected = _call("inspect_text", name=obj.name)
