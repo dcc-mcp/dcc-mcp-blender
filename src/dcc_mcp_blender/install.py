@@ -29,15 +29,20 @@ except ImportError:
 
 from .__version__ import __version__
 
+try:
+    from dcc_mcp_core.deployment import install_sop_report_schema_version
+except ImportError:  # Core older than 0.20.40
+    install_sop_report_schema_version = None
+
 # Last-resort value for the report's own ``schema_version`` field, used only when
 # Core's schema document cannot be read at all. See ``report_schema_version()``.
 #
-# This is deliberately NOT Core's ``INSTALL_SOP_SCHEMA_VERSION``. That constant is
-# the revision of the published schema *artifact* (``-vN``); Core documents it as
-# separate from the report field, which stays at 1 because v2 only adds the
-# optional ``catalog`` object. The two values coincided at 1 through Core 0.20.33,
-# which is why copying the constant into the report looked correct right up until
-# 0.20.34 republished the artifact as ``-v2``.
+# This is deliberately NOT the revision of Core's published schema *artifact* (the
+# ``-vN`` suffix, named ``INSTALL_SOP_SCHEMA_REVISION`` from Core 0.20.40). Core
+# documents that counter as separate from the report field, which stays at 1
+# because v2 only adds the optional ``catalog`` object. The two values coincided
+# at 1 through Core 0.20.33, which is why copying the artifact revision into the
+# report looked correct right up until 0.20.34 republished it as ``-v2``.
 FALLBACK_REPORT_SCHEMA_VERSION = 1
 
 try:
@@ -49,12 +54,10 @@ try:
         INSTALL_EXIT_PREFLIGHT,
         INSTALL_EXIT_REQUIRES_RESTART,
         INSTALL_EXIT_VERIFY,
-        INSTALL_SOP_SCHEMA_VERSION,
         load_install_sop_schema,
     )
 except ImportError:
     # Remove this compatibility boundary after dcc-mcp-core#2320 is released.
-    INSTALL_SOP_SCHEMA_VERSION = FALLBACK_REPORT_SCHEMA_VERSION
     INSTALL_EXIT_OK = 0
     INSTALL_EXIT_PREFLIGHT = 10
     INSTALL_EXIT_ACQUIRE = 20
@@ -130,21 +133,53 @@ def report_schema_version():
     authoritative source -- emitting anything else produces reports Core's own
     validator rejects.
 
-    Core's exported ``INSTALL_SOP_SCHEMA_VERSION`` is deliberately NOT used.
-    It is the revision of the published schema *artifact* (``-vN``), a separate
-    quantity from the report's own field; the two merely happened to agree
-    while both were 1. Populating the report from that constant is the defect
-    this function exists to avoid.
+    The revision of the published schema *artifact* (``-vN``) is deliberately NOT
+    used. It is a separate quantity from the report's own field; the two merely
+    happened to agree while both were 1. Populating the report from that counter
+    is the defect this function exists to avoid, so this module does not import
+    it at all.
 
-    If the document cannot be read -- see ``_published_schema_or_none()`` --
-    the value falls back to ``FALLBACK_REPORT_SCHEMA_VERSION`` rather than
-    propagating, because this CLI's job is to keep emitting a preflight report
-    precisely when the installation is broken.
+    Core 0.20.40 and later answer this question directly through
+    ``install_sop_report_schema_version()``; prefer that and keep the local read
+    below as the fallback for older cores in the declared range.
+
+    If neither Core nor the document can answer -- see
+    ``_published_schema_or_none()`` -- the value falls back to
+    ``FALLBACK_REPORT_SCHEMA_VERSION`` rather than propagating, because this
+    CLI's job is to keep emitting a preflight report precisely when the
+    installation is broken.
     """
+    answer = _core_report_schema_version()
+    if answer is not None:
+        return answer
     published = _published_schema_version(_published_schema_or_none())
     if published is not None:
         return published
     return FALLBACK_REPORT_SCHEMA_VERSION
+
+
+def _core_report_schema_version():
+    # type: () -> Optional[int]
+    """Return Core's own answer to the report's ``schema_version``, if it has one.
+
+    Core 0.20.40 added ``install_sop_report_schema_version()``, which reads the
+    same ``const`` this module walks to by hand. Preferring it keeps the adapter
+    correct if Core ever publishes a revision that moves the const, instead of
+    duplicating that knowledge in every adapter.
+
+    Returns ``None`` when the resolved Core predates the API, or when Core can
+    name the function but cannot read its own schema document, so the caller
+    falls back to the local read.
+    """
+    if install_sop_report_schema_version is None:
+        return None
+    try:
+        value = install_sop_report_schema_version()
+    except (RuntimeError, OSError, ValueError):
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _native_report_validator():
@@ -1356,7 +1391,6 @@ __all__ = [
     "INSTALL_EXIT_PREFLIGHT",
     "INSTALL_EXIT_REQUIRES_RESTART",
     "INSTALL_EXIT_VERIFY",
-    "INSTALL_SOP_SCHEMA_VERSION",
     "LIFECYCLE_COMMANDS",
     "load_install_sop_schema",
     "loads_public_report",

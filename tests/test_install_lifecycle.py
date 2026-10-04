@@ -371,36 +371,75 @@ def _schema_document(const):
     return {"properties": {"schema_version": {"const": const, "type": "integer"}}}
 
 
+def _published_artifact_revision():
+    """The ``-vN`` revision of the schema artifact Core serves, or ``None``.
+
+    Read from the artifact's canonical ``$id`` rather than imported from Core, so
+    the assertion holds across the whole supported Core range instead of
+    depending on a symbol Core has already renamed once.
+    """
+    from dcc_mcp_blender import install
+
+    try:
+        schema = install._published_schema_or_none()
+    except (ImportError, RuntimeError, OSError, ValueError):
+        return None
+    if not isinstance(schema, dict):
+        return None
+    identifier = schema.get("$id")
+    if not isinstance(identifier, str) or "-v" not in identifier:
+        return None
+    try:
+        return int(identifier.rsplit("-v", 1)[-1].split(".", 1)[0])
+    except ValueError:
+        return None
+
+
 def test_report_schema_version_follows_published_document(monkeypatch):
     """The report field comes from the ``const`` Core's validator enforces."""
     from dcc_mcp_blender import install
 
+    # Force the local branch first: on a Core new enough to answer, the local
+    # read is bypassed entirely, so patching only it would assert against a
+    # value the adapter no longer consults.
+    monkeypatch.setattr(install, "install_sop_report_schema_version", None)
     monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(7))
 
     assert install.report_schema_version() == 7
 
 
 def test_report_schema_version_ignores_cores_artifact_revision(monkeypatch):
-    """Core's exported constant is the artifact revision, not the report field.
+    """The report field is the document const, not the artifact revision.
 
-    Core 0.20.34 exports ``INSTALL_SOP_SCHEMA_VERSION = 2`` (the ``-v2`` artifact
-    revision) while the report field must stay at the document's ``const`` of 1,
-    because v2 only adds an optional ``catalog`` object. These are separate
-    quantities that merely agreed while both were 1, so the constant must never
-    reach the report.
+    The schema artifact revision is the ``-vN`` suffix of the published file (2
+    since Core 0.20.34) while the report field must stay at the document's
+    ``const`` of 1, because v2 only adds an optional ``catalog`` object. These
+    are separate quantities that merely agreed while both were 1, so the
+    artifact revision must never reach the report.
+
+    The guard is an assertion on the emitted value rather than a monkeypatched
+    module attribute: the adapter no longer holds an artifact-revision binding,
+    so there is nothing to substitute. Reading the revision from the served
+    schema keeps the test meaningful across the whole supported Core range.
     """
     from dcc_mcp_blender import install
 
     monkeypatch.setattr(install, "_published_schema", lambda: _schema_document(1))
-    monkeypatch.setattr(install, "INSTALL_SOP_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(install, "install_sop_report_schema_version", None)
 
+    artifact_revision = _published_artifact_revision()
     assert install.report_schema_version() == 1
+    if artifact_revision is not None and artifact_revision != 1:
+        assert install.report_schema_version() != artifact_revision
 
 
 def test_report_schema_version_falls_back_when_document_is_unreadable(monkeypatch):
     """A Core with no readable schema document still yields a usable report."""
     from dcc_mcp_blender import install
 
+    # Neutralise Core's own answer so this exercises the fallback branch it is
+    # named after rather than a value Core produced.
+    monkeypatch.setattr(install, "install_sop_report_schema_version", None)
     monkeypatch.setattr(install, "_published_schema", lambda: None)
 
     assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
@@ -427,6 +466,8 @@ def test_report_schema_version_survives_schema_read_failure(monkeypatch, error):
     def _raise():
         raise error
 
+    # Core's own answer would short-circuit the failing read this test is about.
+    monkeypatch.setattr(install, "install_sop_report_schema_version", None)
     monkeypatch.setattr(install, "_published_schema", _raise)
 
     assert install.report_schema_version() == install.FALLBACK_REPORT_SCHEMA_VERSION
