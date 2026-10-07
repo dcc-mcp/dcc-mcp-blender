@@ -208,8 +208,16 @@ class BlenderMcpServer(DccServerBase):
                     from .dispatcher import create_dispatcher
 
                     dispatcher = create_dispatcher(ui_mode=not self.is_background())
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("[%s] Failed to create default dispatcher: %s", _DCC_NAME, exc)
+                except Exception:  # noqa: BLE001
+                    # Do not swallow this quietly. With no dispatcher, no
+                    # in-process executor is registered and every main-affinity
+                    # tool fails to load — a total GUI outage that otherwise
+                    # looks like a healthy install.
+                    logger.warning(
+                        "[%s] Failed to create the default dispatcher; main-thread tools will fail to load",
+                        _DCC_NAME,
+                        exc_info=True,
+                    )
 
             options = BlenderServerOptions(
                 port=port,
@@ -227,6 +235,17 @@ class BlenderMcpServer(DccServerBase):
                 dispatcher=dispatcher,
                 execution_bridge=execution_bridge,
             )
+
+        # The adapter-owned dispatcher is the object that holds the host timer
+        # pump (``bpy.app.timers``). Core replaces the server's own dispatcher
+        # reference with an inline bridge wrapper that exposes no
+        # ``start()``/``start_pump()``, so keep the original here and drive it
+        # from :meth:`start`. Without that pump, main-thread work is queued and
+        # never drained and every ``affinity='main'`` call hangs.
+        if dispatcher is not None:
+            self._pump_dispatcher: Optional[Any] = dispatcher
+        else:
+            self._pump_dispatcher = getattr(options, "dispatcher", None)
 
         super().__init__(options=options.to_core_options())
 
@@ -296,6 +315,24 @@ class BlenderMcpServer(DccServerBase):
         if self._semantic is not None:
             logger.info("[%s] semantic skill recall enabled (embedder=%s)", _DCC_NAME, self._semantic.embedder_kind)
 
+    # ── Host mode ──────────────────────────────────────────────────────────────
+
+    def is_background(self) -> bool:
+        """Return whether Blender is running in background mode.
+
+        ``BlenderMcpServer`` derives from ``DccServerBase`` rather than from
+        ``HostAdapter``, so it does not inherit this from the host adapter even
+        though ``__init__`` relies on it to choose a UI or standalone dispatcher.
+        That call happens before ``super().__init__()``, so this must not depend
+        on any state set there.
+        """
+        try:
+            import bpy  # noqa: PLC0415
+        except ImportError:
+            # No Blender host: treat as non-interactive.
+            return True
+        return bool(getattr(bpy.app, "background", False))
+
     # ── Blender version detection ──────────────────────────────────────────────
 
     def _version_string(self) -> str:
@@ -342,8 +379,12 @@ class BlenderMcpServer(DccServerBase):
         Returns *self* for chaining.
         """
         super().start(install_atexit_hook=install_atexit_hook)
-        if self._blender_dispatcher is not None:
-            start_fn = getattr(self._blender_dispatcher, "start", None)
+        # Prefer the retained adapter dispatcher: it owns the host timer pump
+        # that drains queued main-thread work. ``self._blender_dispatcher`` is
+        # core's inline bridge wrapper, which exposes no ``start()``.
+        pump_owner = getattr(self, "_pump_dispatcher", None) or self._blender_dispatcher
+        if pump_owner is not None:
+            start_fn = getattr(pump_owner, "start", None)
             if callable(start_fn):
                 start_fn()
         return self
@@ -358,8 +399,9 @@ class BlenderMcpServer(DccServerBase):
 
         super().stop()
 
-        if self._blender_dispatcher is not None:
-            stop_fn = getattr(self._blender_dispatcher, "stop", None)
+        pump_owner = getattr(self, "_pump_dispatcher", None) or self._blender_dispatcher
+        if pump_owner is not None:
+            stop_fn = getattr(pump_owner, "stop", None)
             if callable(stop_fn):
                 stop_fn()
 
