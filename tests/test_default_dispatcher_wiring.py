@@ -17,6 +17,12 @@ inside Blender's GUI, while headless kept working:
 The end-to-end proof (a real GUI Blender serving ``load_skill`` +
 ``list_objects``) lives in the e2e suite; these tests pin the contracts that
 broke, so the regressions cannot return unnoticed.
+
+CI has no GUI lane — every ``"$BLENDER_BIN"`` invocation in
+``.github/workflows/e2e.yml`` passes ``--background`` — so the timer-pump path
+is only ever exercised here: :class:`TestPumpLifecycle` drives the real
+``BlenderMcpServer.start()`` / ``stop()`` against a stub ``bpy.app.timers``
+rather than pinning the wiring by inspection.
 """
 
 from __future__ import annotations
@@ -24,6 +30,8 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from dcc_mcp_core.server_base import DccServerBase
 
 from dcc_mcp_blender.host import BlenderInlineCallableDispatcher, BlenderUiDispatcher
 from dcc_mcp_blender.server import BlenderMcpServer
@@ -87,3 +95,65 @@ class TestPumpOwnerContract:
         pump_owner = getattr(server, "_pump_dispatcher", None) or server._blender_dispatcher
         assert pump_owner is ui_dispatcher
         assert callable(getattr(pump_owner, "start", None))
+
+
+class _FakeTimers:
+    """Stand-in for ``bpy.app.timers`` that records what the pump registers."""
+
+    def __init__(self) -> None:
+        self.registered = []
+
+    def register(self, fn, first_interval: float = 0.0, persistent: bool = False) -> None:
+        self.registered.append(fn)
+
+    def unregister(self, fn) -> bool:
+        if fn in self.registered:
+            self.registered.remove(fn)
+            return True
+        return False
+
+    def is_registered(self, fn) -> bool:
+        return fn in self.registered
+
+
+class TestPumpLifecycle:
+    """Defect 2, end to end: ``start()`` must install the pump on Blender's timer API.
+
+    This is the assertion the original patch was missing. Reverting ``start()`` to
+    drive ``self._blender_dispatcher`` (core's inline wrapper, which exposes no
+    ``start()``) or dropping the retained ``_pump_dispatcher`` from ``__init__``
+    leaves this test failing with 0 registered timers, so both regressions are
+    caught even though no CI lane runs a GUI Blender.
+    """
+
+    def test_start_installs_the_host_timer_pump(self):
+        timers = _FakeTimers()
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="4.2.0", timers=timers))
+
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            # Interactive mode, so __init__ builds the UI dispatcher itself.
+            server = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+
+            # Core swapped its inline wrapper in; the retained pump owner must
+            # not be that wrapper, otherwise the assertions below prove nothing.
+            assert type(server._blender_dispatcher).__name__ == "BlenderInlineCallableDispatcher"
+            assert server._pump_dispatcher is not server._blender_dispatcher
+
+            pump = server._pump_dispatcher.pump
+            assert pump.is_installed is False
+
+            # Patch only core's lifecycle so no HTTP server is bound and no
+            # atexit hook is installed; the adapter's own start()/stop() — the
+            # code under test — runs for real.
+            with patch.object(DccServerBase, "start", lambda self, *args, **kwargs: None), patch.object(
+                DccServerBase, "stop", lambda self, *args, **kwargs: None
+            ):
+                server.start(install_atexit_hook=False)
+                try:
+                    assert len(timers.registered) == 1, "start() registered no Blender timer"
+                    assert pump.is_installed is True
+                finally:
+                    server.stop()
+
+            assert timers.registered == []
+            assert pump.is_installed is False
