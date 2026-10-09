@@ -12,18 +12,19 @@ owns the *wiring*:
 * ``dispatcher`` — flipped as soon as the binder runs (the execution bridge
   is wired during ``__init__``). ``main_thread_executor`` is deferred
   until the dcc probe verifies the main-thread pump is functional.
-* ``dcc``        — flipped after a no-op is marshalled onto Blender's main
-  thread (via the attached host dispatcher / ``bpy.app.timers`` pump), or
-  immediately in background (``--background``) / standalone mode where the
-  HTTP worker thread *is* the pump.
+* ``dcc``        — flipped only after a callback runs on the attached host
+  dispatcher's pump, including background mode.
 
-Every step degrades gracefully: a missing ``ReadinessProbe`` API or a
-dispatcher without async submission still produces a usable binder.
+Scheduling never installs a Blender timer or runs a fallback inline. Missing
+or failed dispatch routes remain unready, and callbacks from an older binding
+cannot revive a stopped or revalidated server.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
+from collections.abc import Mapping
 from typing import Any, Callable, Optional
 
 from dcc_mcp_core.readiness import AdapterReadinessBinder
@@ -44,34 +45,83 @@ def resolve_readiness_timeout_secs(readiness_timeout_secs: Optional[int] = None)
 
 
 def _default_probe_scheduler(dispatcher: Any, on_done: Callable[[], None]) -> bool:
-    """Schedule a dcc-ready probe on *dispatcher*.
+    """Queue a probe without touching Blender's native timer API."""
+    host_dispatcher = getattr(dispatcher, "host_dispatcher", None)
+    queue = host_dispatcher if host_dispatcher is not None else dispatcher
+    post = getattr(queue, "post", None)
+    if callable(post) and callable(getattr(queue, "tick", None)):
+        try:
+            is_shutdown = getattr(queue, "is_shutdown", False)
+            if is_shutdown() if callable(is_shutdown) else is_shutdown:
+                return False
+            post(on_done)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[blender] readiness: queue post failed: %s", exc)
+            return False
 
-    Prefers ``submit_async_callable`` (core UI dispatchers) so the no-op
-    runs on Blender's main thread; falls back to an immediate ``on_done()``
-    when no async path exists (post/tick-style dispatchers).
-    """
     submit_async = getattr(dispatcher, "submit_async_callable", None)
     if callable(submit_async):
+        state_lock = threading.Lock()
+        executed = completed = accepted = False
 
-        def _on_complete(_result: Any) -> None:
-            on_done()
+        def _task() -> None:
+            nonlocal executed
+            with state_lock:
+                executed = True
+
+        def _on_complete(result: Any) -> None:
+            nonlocal completed
+            with state_lock:
+                completed = executed and _successful_outcome(result)
+                notify = accepted and completed
+            if notify:
+                on_done()
 
         try:
-            submit_async(
+            result = submit_async(
                 request_id=READINESS_PROBE_REQUEST_ID,
-                task=lambda: None,
+                task=_task,
                 affinity="main",
                 timeout_ms=5_000,
                 on_complete=_on_complete,
             )
-            return True
+            with state_lock:
+                accepted = _successful_outcome(result)
+                notify = accepted and completed
+            if notify:
+                on_done()
+            return accepted
         except Exception as exc:  # noqa: BLE001
             logger.debug("[blender] readiness: submit_async_callable failed: %s", exc)
+    return False
 
-    # No async path available — flip the bit immediately so a usable
-    # dispatcher never leaves ``dcc`` permanently red.
-    on_done()
-    return True
+
+def _successful_outcome(result: Any) -> bool:
+    """Require Core's explicit success envelope, excluding terminal failures."""
+    return (
+        isinstance(result, Mapping)
+        and result.get("success") is True
+        and result.get("status") not in {"failed", "interrupted", "cancelled", "canceled", "expired", "timeout"}
+    )
+
+
+def _probe_dispatcher(server: Any) -> Any:
+    """Verify the bridge's HTTP queue, falling back to its retained pump owner."""
+    bridge = getattr(server, "_execution_bridge", None)
+    if bridge is not None:
+        try:
+            resolver = getattr(bridge, "resolve_host_dispatcher", None)
+            dispatcher = resolver() if callable(resolver) else getattr(bridge, "host_dispatcher", None)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[blender] readiness: host dispatcher resolution failed: %s", exc)
+            return None
+        if dispatcher is not None:
+            return dispatcher
+    dispatcher = getattr(server, "_pump_dispatcher", None)
+    if dispatcher is not None:
+        return dispatcher
+    return getattr(server, "_blender_dispatcher", None)
 
 
 class ReadinessBinder:
@@ -92,6 +142,9 @@ class ReadinessBinder:
         self.bound_server: Any = None
         self.bound_dispatcher: Any = None
         self.dcc_scheduled: bool = False
+        self._lock = threading.RLock()
+        self._generation = 0
+        self._active = False
 
     @property
     def published_to_server(self) -> bool:
@@ -108,34 +161,48 @@ class ReadinessBinder:
 
     def bind(self, server: Any) -> bool:
         """Wire the probe into *server*."""
-        if self.bound_server is server:
-            return self.dcc_scheduled
-        self.bound_server = server
+        with self._lock:
+            if self.bound_server is server and self._active:
+                return self.dcc_scheduled
+            self._generation += 1
+            self._active = True
+            self.bound_server = server
+            self._adapter_binder = AdapterReadinessBinder(server, probe=self.probe, publish=True)
+            self.bound_dispatcher = _probe_dispatcher(server)
+            present = self.bound_dispatcher is not None
+            self._adapter_binder.mark_dispatcher_ready(
+                present,
+                host_execution_bridge_ready=present,
+                main_thread_executor_ready=False,
+                dcc_ready=False,
+            )
+        return self._schedule_probe()
 
-        self._adapter_binder = AdapterReadinessBinder(server, probe=self.probe, publish=True)
-        # Dispatcher + bridge are wired during init (True). Main-thread executor
-        # stays False until the dcc probe callback verifies the pump can drain.
-        self._adapter_binder.mark_dispatcher_ready(
-            True,
-            host_execution_bridge_ready=True,
-            main_thread_executor_ready=False,
-        )
+    def _schedule_probe(self) -> bool:
+        with self._lock:
+            generation = self._generation
+            dispatcher = self.bound_dispatcher
+            self.dcc_scheduled = False
+            if not self._active or dispatcher is None:
+                return False
 
-        dispatcher = getattr(server, "_blender_dispatcher", None)
-        if dispatcher is None:
-            self.bound_dispatcher = None
-            self._adapter_binder.mark_inline_ready()
-            self.dcc_scheduled = True
-            return True
+        def _on_done() -> None:
+            with self._lock:
+                if self._active and generation == self._generation:
+                    self.mark_dcc_ready()
 
-        self.bound_dispatcher = dispatcher
         try:
-            self.dcc_scheduled = bool(self.probe_scheduler(dispatcher, self.mark_dcc_ready))
+            scheduled = bool(self.probe_scheduler(dispatcher, _on_done))
         except Exception as exc:  # noqa: BLE001
             logger.debug("[blender] readiness: probe scheduler raised: %s", exc)
-            self.mark_dcc_ready()
-            self.dcc_scheduled = True
-        return self.dcc_scheduled
+            scheduled = False
+        with self._lock:
+            if not self._active or generation != self._generation:
+                return False
+            self.dcc_scheduled = scheduled
+            if not scheduled:
+                self.mark_dcc_ready(False)
+            return scheduled
 
     def mark_dispatcher_ready(self, value: bool = True) -> None:
         """Flip the ``dispatcher`` bit."""
@@ -146,16 +213,15 @@ class ReadinessBinder:
 
     def mark_dcc_ready(self, value: bool = True) -> None:
         """Flip the ``dcc`` bit (and ``main_thread_executor`` once verified)."""
-        try:
-            self.probe.set_dcc_ready(value)
-            if value:
-                # Main-thread executor is verified by the dcc probe; flip it
-                # together with dcc so /v1/readyz only shows green when the
-                # pump has actually drained a callback.
-                self.probe.set_main_thread_executor_ready(True)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("[blender] readiness: set_dcc_ready failed: %s", exc)
-            return
+        with self._lock:
+            if value and not self._active:
+                return
+            try:
+                self.probe.set_dcc_ready(value)
+                self.probe.set_main_thread_executor_ready(value)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[blender] readiness: set_dcc_ready failed: %s", exc)
+                return
         if value:
             logger.info("[blender] readiness: dcc-ready — main thread is pumping")
 
@@ -169,17 +235,24 @@ class ReadinessBinder:
         Returns:
             ``True`` if a probe was scheduled, ``False`` if no dispatcher is bound.
         """
-        if self.bound_dispatcher is None:
-            return False
-        # Mark dcc as not ready until the new probe completes.
-        self.mark_dcc_ready(False)
-        try:
-            self.dcc_scheduled = bool(self.probe_scheduler(self.bound_dispatcher, self.mark_dcc_ready))
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("[blender] readiness: revalidate probe scheduler raised: %s", exc)
-            self.mark_dcc_ready()
-            self.dcc_scheduled = True
-        return self.dcc_scheduled
+        with self._lock:
+            self._generation += 1
+            self.mark_dcc_ready(False)
+            if not self._active:
+                self.dcc_scheduled = False
+                return False
+            self.bound_dispatcher = _probe_dispatcher(self.bound_server)
+        return self._schedule_probe()
+
+    def invalidate(self) -> None:
+        """Reject pending probe callbacks when the owning server stops."""
+        with self._lock:
+            self._generation += 1
+            self._active = False
+            self.dcc_scheduled = False
+            self.mark_dcc_ready(False)
+            if self._adapter_binder is not None:
+                self._adapter_binder.mark_dispatcher_ready(False, host_execution_bridge_ready=False)
 
 
 def install_readiness(
