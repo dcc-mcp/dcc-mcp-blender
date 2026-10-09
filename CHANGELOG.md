@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.16](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.15...v0.2.16) (2026-10-09)
+
+
+### Bug Fixes
+
+* enforce Blender executor and gateway contracts ([#289](https://github.com/dcc-mcp/dcc-mcp-blender/issues/289)) ([9bb0c95](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9bb0c95ba9141bb339a21e799d73f7f951ba6a01))
+
+
+### Documentation
+
+* refresh the generated DCC-MCP host matrix pointer ([28dcb34](https://github.com/dcc-mcp/dcc-mcp-blender/commit/28dcb34cecdfee90deffb53a267d733cc49069d6))
+
 ## [0.2.15](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.14...v0.2.15) (2026-10-08)
 
 
