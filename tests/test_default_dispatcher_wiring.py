@@ -14,9 +14,8 @@ inside Blender's GUI, while headless kept working:
    Blender timer pump was never installed, and queued main-thread work was never
    drained — calls hung until they timed out.
 
-The end-to-end proof (a real GUI Blender serving ``load_skill`` +
-``list_objects``) lives in the e2e suite; these tests pin the contracts that
-broke, so the regressions cannot return unnoticed.
+These tests use a stub Blender API and Core's actual registration/queue
+contracts. Real GUI Blender acceptance must be run separately on the candidate.
 
 CI has no GUI lane — every ``"$BLENDER_BIN"`` invocation in
 ``.github/workflows/e2e.yml`` passes ``--background`` — so the timer-pump path
@@ -31,10 +30,11 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from dcc_mcp_core.server_base import DccServerBase
 
 from dcc_mcp_blender.host import BlenderInlineCallableDispatcher, BlenderUiDispatcher
-from dcc_mcp_blender.server import BlenderMcpServer
+from dcc_mcp_blender.server import BlenderMcpServer, BlenderServerOptions
 
 
 def _fake_bpy(background: bool) -> SimpleNamespace:
@@ -157,3 +157,114 @@ class TestPumpLifecycle:
 
             assert timers.registered == []
             assert pump.is_installed is False
+
+    def test_options_build_executor_before_registering_main_affinity_skill(self):
+        timers = _FakeTimers()
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="5.1.1", timers=timers))
+        options = BlenderServerOptions(port=0, gateway_port=0, enable_gateway_failover=False)
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            server = BlenderMcpServer(options=options)
+            try:
+                assert options.dispatcher is None
+                assert isinstance(server._pump_dispatcher, BlenderUiDispatcher)
+                # Use Core's actual skill registration and executor check, with no HTTP/GUI.
+                server.register_builtin_actions(include_bundled=False)
+                assert server.load_skill("blender-scripting") is True
+                info = server.get_skill_info("blender-scripting")
+                assert info["state"] == "loaded"
+                assert "blender_scripting__execute_script_file" in info["registered_tools"]
+            finally:
+                server.stop()
+
+    def test_dispatcher_creation_failure_rejects_server(self):
+        with patch("dcc_mcp_blender.dispatcher.create_dispatcher", side_effect=ValueError("broken factory")):
+            with pytest.raises(RuntimeError, match="dispatcher initialization failed") as error:
+                BlenderMcpServer(options=BlenderServerOptions(port=0))
+        assert isinstance(error.value.__cause__, ValueError)
+
+    def test_rejected_core_executor_binding_rejects_server(self):
+        from dcc_mcp_core._server.execution_bridge import ExecutionBridgeBinder
+
+        with patch.object(ExecutionBridgeBinder, "register_host_execution_bridge"):
+            with pytest.raises(RuntimeError, match="executor registration failed"):
+                BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+
+    @pytest.mark.parametrize("shared_queue", [False, True])
+    def test_explicit_bridge_pumps_and_probes_its_actual_queue(self, shared_queue):
+        from dcc_mcp_core import HostExecutionBridge
+
+        timers = _FakeTimers()
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="5.1.1", timers=timers))
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            effective = BlenderUiDispatcher()
+            supplied = effective if shared_queue else BlenderUiDispatcher()
+            bridge = HostExecutionBridge(
+                dispatcher=BlenderInlineCallableDispatcher(effective.host_dispatcher),
+                host_dispatcher=effective.host_dispatcher,
+            )
+            # A bridge containing the UI dispatcher can also own its lifecycle.
+            if not shared_queue:
+                bridge = HostExecutionBridge(dispatcher=effective)
+            server = BlenderMcpServer(
+                options=BlenderServerOptions(port=0, dispatcher=supplied, execution_bridge=bridge)
+            )
+            with patch.object(DccServerBase, "start"), patch.object(DccServerBase, "stop"):
+                try:
+                    assert server._pump_dispatcher is effective
+                    server.start(install_atexit_hook=False)
+                    assert len(timers.registered) == 1
+                    if not shared_queue:
+                        supplied.host_dispatcher.tick(16)
+                        assert not server.readiness.is_ready()
+                        effective.host_dispatcher.tick(16)
+                        assert not server.readiness.is_ready()
+                    timers.registered[0]()
+                    assert server.readiness.is_ready()
+                finally:
+                    server.stop()
+
+    def test_pump_is_installed_before_http_start_and_cleaned_up_on_failure(self):
+        timers = _FakeTimers()
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="5.1.1", timers=timers))
+
+        def fail_http_start(_server, **_kwargs):
+            assert len(timers.registered) == 1
+            raise RuntimeError("HTTP bind failed")
+
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            server = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+            with patch.object(DccServerBase, "start", fail_http_start), patch.object(DccServerBase, "stop"):
+                with pytest.raises(RuntimeError, match="HTTP bind failed"):
+                    server.start(install_atexit_hook=False)
+            assert timers.registered == []
+            assert server._pump_dispatcher.is_shutdown
+            assert server.readiness.is_ready() is False
+            with pytest.raises(RuntimeError, match="closed"):
+                server.start()
+
+    def test_failed_timer_install_does_not_publish_http(self):
+        timers = _FakeTimers()
+        timers.register = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("timer unavailable"))
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="5.1.1", timers=timers))
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            server = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+            with patch.object(DccServerBase, "start") as http_start, patch.object(DccServerBase, "stop"):
+                with pytest.raises(RuntimeError, match="timer unavailable"):
+                    server.start(install_atexit_hook=False)
+            http_start.assert_not_called()
+            assert not server._pump_dispatcher.pump.is_installed
+
+    def test_core_stop_failure_still_invalidates_and_detaches_pump(self):
+        timers = _FakeTimers()
+        fake_bpy = SimpleNamespace(app=SimpleNamespace(background=False, version_string="5.1.1", timers=timers))
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            server = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
+            with patch.object(DccServerBase, "start"), patch.object(
+                DccServerBase, "stop", side_effect=RuntimeError("core stop failed")
+            ):
+                server.start(install_atexit_hook=False)
+                with pytest.raises(RuntimeError, match="core stop failed"):
+                    server.stop()
+            assert timers.registered == []
+            assert server._pump_dispatcher.is_shutdown
+            assert server.readiness.is_ready() is False

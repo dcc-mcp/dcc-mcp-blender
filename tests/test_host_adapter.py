@@ -110,6 +110,9 @@ def test_blender_ui_dispatcher_uses_core_queue_and_timer_pump():
     with patch.dict(sys.modules, {"bpy": bpy}):
         dispatcher = BlenderUiDispatcher(timeout_ms=1000, idle_interval_secs=0.25)
         assert isinstance(dispatcher, HostUiDispatcherBase)
+        dispatcher.start()
+        queued = threading.Event()
+        dispatcher.on_job_queued = lambda _job: queued.set()
 
         result = []
 
@@ -119,11 +122,8 @@ def test_blender_ui_dispatcher_uses_core_queue_and_timer_pump():
         thread = threading.Thread(target=worker)
         thread.start()
 
-        for _ in range(50):
-            if registered:
-                break
-            time.sleep(0.01)
-
+        assert queued.wait(timeout=5), "worker did not enqueue its main-thread request"
+        assert dispatcher.pending_count() == 1
         assert len(registered) == 1
         tick_fn, kwargs = registered[0]
         assert kwargs == {"first_interval": 0.0, "persistent": True}
@@ -147,6 +147,7 @@ def test_blender_ui_dispatcher_shutdown_unblocks_pending_main_thread_work():
     bpy, registered = _mock_bpy(background=False)
     with patch.dict(sys.modules, {"bpy": bpy}):
         dispatcher = BlenderUiDispatcher(timeout_ms=5000)
+        dispatcher.start()
         errors = []
 
         def worker():

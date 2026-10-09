@@ -22,8 +22,10 @@ Usage (inside Blender Python console or startup script)::
 
 from __future__ import annotations
 
+import inspect
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -104,9 +106,44 @@ class BlenderServerOptions:
     # Execution options (new in 0.17+)
     dispatcher: Optional[Any] = None  # BaseDccCallableDispatcher
     execution_bridge: Optional[Any] = None  # HostExecutionBridge
+    gateway_remote_host: Optional[str] = None
+    gateway_remote_port: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.gateway_remote_port is not None and (
+            type(self.gateway_remote_port) is not int or not 0 <= self.gateway_remote_port <= 65535
+        ):
+            raise ValueError("gateway_remote_port must be an integer between 0 and 65535 or None")
+        if self.gateway_remote_host is not None and (
+            not isinstance(self.gateway_remote_host, str) or not self.gateway_remote_host.strip()
+        ):
+            raise ValueError("gateway_remote_host must be a nonempty bind address or None")
 
     def to_core_options(self) -> DccServerOptions:
         """Convert to core DccServerOptions using from_env()."""
+        remote_kwargs = {
+            name: value
+            for name, value in (
+                ("gateway_remote_host", self.gateway_remote_host),
+                ("gateway_remote_port", self.gateway_remote_port),
+            )
+            if value is not None
+        }
+        if self.gateway_remote_host is None and "DCC_MCP_GATEWAY_REMOTE_HOST" in os.environ:
+            remote_kwargs["gateway_remote_host"] = None
+        if self.gateway_remote_port is None and "DCC_MCP_GATEWAY_REMOTE_PORT" in os.environ:
+            remote_kwargs["gateway_remote_port"] = None
+        if remote_kwargs:
+            try:
+                parameters = inspect.signature(DccServerOptions.from_env).parameters
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("Cannot verify dcc-mcp-core's public remote gateway options") from exc
+            if not remote_kwargs.keys() <= parameters.keys():
+                raise RuntimeError(
+                    "Installed dcc-mcp-core lacks public remote gateway options; "
+                    "upgrade Core before configuring gateway_remote_host or gateway_remote_port"
+                )
+
         dispatcher = self.dispatcher
         execution_bridge = self.execution_bridge
         if execution_bridge is None and dispatcher is not None:
@@ -147,6 +184,7 @@ class BlenderServerOptions:
             # Execution kwargs (new in 0.17+)
             dispatcher=dispatcher,
             execution_bridge=execution_bridge,
+            **remote_kwargs,
         )
 
 
@@ -199,26 +237,13 @@ class BlenderMcpServer(DccServerBase):
         dispatcher: Optional[Any] = None,
         execution_bridge: Optional[Any] = None,
         options: Optional[BlenderServerOptions] = None,
+        *,
+        gateway_remote_host: Optional[str] = None,
+        gateway_remote_port: Optional[int] = None,
     ) -> None:
+        if options is not None and (gateway_remote_host is not None or gateway_remote_port is not None):
+            raise ValueError("Pass remote gateway settings inside BlenderServerOptions when options is provided")
         if options is None:
-            if dispatcher is None and execution_bridge is None:
-                # Default to a UI or standalone dispatcher if none provided
-                # (essential for workers started via CLI)
-                try:
-                    from .dispatcher import create_dispatcher
-
-                    dispatcher = create_dispatcher(ui_mode=not self.is_background())
-                except Exception:  # noqa: BLE001
-                    # Do not swallow this quietly. With no dispatcher, no
-                    # in-process executor is registered and every main-affinity
-                    # tool fails to load — a total GUI outage that otherwise
-                    # looks like a healthy install.
-                    logger.warning(
-                        "[%s] Failed to create the default dispatcher; main-thread tools will fail to load",
-                        _DCC_NAME,
-                        exc_info=True,
-                    )
-
             options = BlenderServerOptions(
                 port=port,
                 extra_skill_paths=extra_skill_paths,
@@ -234,7 +259,19 @@ class BlenderMcpServer(DccServerBase):
                 enable_workflows=enable_workflows,
                 dispatcher=dispatcher,
                 execution_bridge=execution_bridge,
+                gateway_remote_host=gateway_remote_host,
+                gateway_remote_port=gateway_remote_port,
             )
+
+        if options.dispatcher is None and options.execution_bridge is None:
+            from .dispatcher import create_dispatcher
+
+            try:
+                default_dispatcher = create_dispatcher(ui_mode=not self.is_background())
+            except Exception as exc:
+                raise RuntimeError("Blender main-thread dispatcher initialization failed") from exc
+            # Do not mutate caller-owned options, which may be reused for another server.
+            options = replace(options, dispatcher=default_dispatcher)
 
         # The adapter-owned dispatcher is the object that holds the host timer
         # pump (``bpy.app.timers``). Core replaces the server's own dispatcher
@@ -242,12 +279,21 @@ class BlenderMcpServer(DccServerBase):
         # ``start()``/``start_pump()``, so keep the original here and drive it
         # from :meth:`start`. Without that pump, main-thread work is queued and
         # never drained and every ``affinity='main'`` call hangs.
-        if dispatcher is not None:
-            self._pump_dispatcher: Optional[Any] = dispatcher
-        else:
-            self._pump_dispatcher = getattr(options, "dispatcher", None)
+        self._pump_dispatcher: Optional[Any] = options.dispatcher
+        if options.execution_bridge is not None:
+            bridge = options.execution_bridge
+            host_dispatcher = bridge.resolve_host_dispatcher()
+            # An explicit bridge is authoritative. Never pump or validate an
+            # unrelated dispatcher supplied alongside it.
+            candidate = bridge.dispatcher
+            self._pump_dispatcher = candidate if callable(getattr(candidate, "start", None)) else None
+            if host_dispatcher is not None and _host_dispatcher_from(options.dispatcher) is host_dispatcher:
+                self._pump_dispatcher = options.dispatcher
+        self._closed = False
 
         super().__init__(options=options.to_core_options())
+        if not self._inprocess_executor_registered:
+            raise RuntimeError("Blender main-thread in-process executor registration failed")
 
         self._extra_skill_paths: List[str] = list(options.extra_skill_paths or [])
 
@@ -378,32 +424,46 @@ class BlenderMcpServer(DccServerBase):
 
         Returns *self* for chaining.
         """
-        super().start(install_atexit_hook=install_atexit_hook)
+        if self._closed:
+            raise RuntimeError("Blender server is closed; create a new instance")
         # Prefer the retained adapter dispatcher: it owns the host timer pump
         # that drains queued main-thread work. ``self._blender_dispatcher`` is
         # core's inline bridge wrapper, which exposes no ``start()``.
         pump_owner = getattr(self, "_pump_dispatcher", None) or self._blender_dispatcher
-        if pump_owner is not None:
-            start_fn = getattr(pump_owner, "start", None)
-            if callable(start_fn):
-                start_fn()
+        try:
+            if pump_owner is not None:
+                start_fn = getattr(pump_owner, "start", None)
+                if callable(start_fn):
+                    start_fn()
+            # Never advertise a GUI server before its native timer is installed.
+            super().start(install_atexit_hook=install_atexit_hook)
+        except Exception:
+            try:
+                self.stop()
+            except Exception:
+                logger.exception("[%s] Failed to clean up server startup", _DCC_NAME)
+            raise
         return self
 
     def stop(self) -> None:
         """Detach MCP resource handlers, stop the HTTP server and the dispatcher."""
+        self._closed = True
+        if self.readiness is not None:
+            self.readiness.invalidate()
         if self._resources is not None:
             try:
                 self._resources.unbind()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("[%s] resources.unbind failed: %s", _DCC_NAME, exc)
 
-        super().stop()
-
         pump_owner = getattr(self, "_pump_dispatcher", None) or self._blender_dispatcher
-        if pump_owner is not None:
-            stop_fn = getattr(pump_owner, "stop", None)
-            if callable(stop_fn):
-                stop_fn()
+        try:
+            super().stop()
+        finally:
+            if pump_owner is not None:
+                stop_fn = getattr(pump_owner, "stop", None)
+                if callable(stop_fn):
+                    stop_fn()
 
     # ── Builtin action registration + core integrations ────────────────────────
 
@@ -697,6 +757,9 @@ def start_server(
     enable_workflows: Optional[bool] = None,
     dispatcher: Optional[Any] = None,
     execution_bridge: Optional[Any] = None,
+    *,
+    gateway_remote_host: Optional[str] = None,
+    gateway_remote_port: Optional[int] = None,
 ) -> BlenderMcpServer:
     """Start the Blender MCP server (creates a process-level singleton).
 
@@ -723,12 +786,16 @@ def start_server(
         enable_workflows: Enable workflow MCP tools (``None`` = env).
         dispatcher: Optional host dispatcher for main-thread execution.
         execution_bridge: Optional execution bridge supplied by dcc-mcp-core.
+        gateway_remote_host: Embedded gateway's second listener bind address (``None`` = Core default/env).
+        gateway_remote_port: Embedded second listener port (``0`` disables it; ``None`` = Core default/env).
 
     Returns:
         The running :class:`BlenderMcpServer` instance.
     """
     global _server_instance  # noqa: PLW0603
     if _server_instance is not None and _server_instance.is_running:
+        if gateway_remote_host is not None or gateway_remote_port is not None:
+            raise RuntimeError("Stop the running Blender server before configuring remote gateway options")
         return _server_instance
 
     _server_instance = BlenderMcpServer(
@@ -744,6 +811,8 @@ def start_server(
         enable_workflows=enable_workflows,
         dispatcher=dispatcher,
         execution_bridge=execution_bridge,
+        gateway_remote_host=gateway_remote_host,
+        gateway_remote_port=gateway_remote_port,
     )
     if register_builtins:
         _server_instance.register_builtin_actions(include_bundled=include_bundled)
