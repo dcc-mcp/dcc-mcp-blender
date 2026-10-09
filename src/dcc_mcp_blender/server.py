@@ -22,7 +22,9 @@ Usage (inside Blender Python console or startup script)::
 
 from __future__ import annotations
 
+import inspect
 import logging
+import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -104,9 +106,44 @@ class BlenderServerOptions:
     # Execution options (new in 0.17+)
     dispatcher: Optional[Any] = None  # BaseDccCallableDispatcher
     execution_bridge: Optional[Any] = None  # HostExecutionBridge
+    gateway_remote_host: Optional[str] = None
+    gateway_remote_port: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.gateway_remote_port is not None and (
+            type(self.gateway_remote_port) is not int or not 0 <= self.gateway_remote_port <= 65535
+        ):
+            raise ValueError("gateway_remote_port must be an integer between 0 and 65535 or None")
+        if self.gateway_remote_host is not None and (
+            not isinstance(self.gateway_remote_host, str) or not self.gateway_remote_host.strip()
+        ):
+            raise ValueError("gateway_remote_host must be a nonempty bind address or None")
 
     def to_core_options(self) -> DccServerOptions:
         """Convert to core DccServerOptions using from_env()."""
+        remote_kwargs = {
+            name: value
+            for name, value in (
+                ("gateway_remote_host", self.gateway_remote_host),
+                ("gateway_remote_port", self.gateway_remote_port),
+            )
+            if value is not None
+        }
+        if self.gateway_remote_host is None and "DCC_MCP_GATEWAY_REMOTE_HOST" in os.environ:
+            remote_kwargs["gateway_remote_host"] = None
+        if self.gateway_remote_port is None and "DCC_MCP_GATEWAY_REMOTE_PORT" in os.environ:
+            remote_kwargs["gateway_remote_port"] = None
+        if remote_kwargs:
+            try:
+                parameters = inspect.signature(DccServerOptions.from_env).parameters
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("Cannot verify dcc-mcp-core's public remote gateway options") from exc
+            if not remote_kwargs.keys() <= parameters.keys():
+                raise RuntimeError(
+                    "Installed dcc-mcp-core lacks public remote gateway options; "
+                    "upgrade Core before configuring gateway_remote_host or gateway_remote_port"
+                )
+
         dispatcher = self.dispatcher
         execution_bridge = self.execution_bridge
         if execution_bridge is None and dispatcher is not None:
@@ -147,6 +184,7 @@ class BlenderServerOptions:
             # Execution kwargs (new in 0.17+)
             dispatcher=dispatcher,
             execution_bridge=execution_bridge,
+            **remote_kwargs,
         )
 
 
@@ -199,7 +237,12 @@ class BlenderMcpServer(DccServerBase):
         dispatcher: Optional[Any] = None,
         execution_bridge: Optional[Any] = None,
         options: Optional[BlenderServerOptions] = None,
+        *,
+        gateway_remote_host: Optional[str] = None,
+        gateway_remote_port: Optional[int] = None,
     ) -> None:
+        if options is not None and (gateway_remote_host is not None or gateway_remote_port is not None):
+            raise ValueError("Pass remote gateway settings inside BlenderServerOptions when options is provided")
         if options is None:
             options = BlenderServerOptions(
                 port=port,
@@ -216,6 +259,8 @@ class BlenderMcpServer(DccServerBase):
                 enable_workflows=enable_workflows,
                 dispatcher=dispatcher,
                 execution_bridge=execution_bridge,
+                gateway_remote_host=gateway_remote_host,
+                gateway_remote_port=gateway_remote_port,
             )
 
         if options.dispatcher is None and options.execution_bridge is None:
@@ -712,6 +757,9 @@ def start_server(
     enable_workflows: Optional[bool] = None,
     dispatcher: Optional[Any] = None,
     execution_bridge: Optional[Any] = None,
+    *,
+    gateway_remote_host: Optional[str] = None,
+    gateway_remote_port: Optional[int] = None,
 ) -> BlenderMcpServer:
     """Start the Blender MCP server (creates a process-level singleton).
 
@@ -738,12 +786,16 @@ def start_server(
         enable_workflows: Enable workflow MCP tools (``None`` = env).
         dispatcher: Optional host dispatcher for main-thread execution.
         execution_bridge: Optional execution bridge supplied by dcc-mcp-core.
+        gateway_remote_host: Embedded gateway's second listener bind address (``None`` = Core default/env).
+        gateway_remote_port: Embedded second listener port (``0`` disables it; ``None`` = Core default/env).
 
     Returns:
         The running :class:`BlenderMcpServer` instance.
     """
     global _server_instance  # noqa: PLW0603
     if _server_instance is not None and _server_instance.is_running:
+        if gateway_remote_host is not None or gateway_remote_port is not None:
+            raise RuntimeError("Stop the running Blender server before configuring remote gateway options")
         return _server_instance
 
     _server_instance = BlenderMcpServer(
@@ -759,6 +811,8 @@ def start_server(
         enable_workflows=enable_workflows,
         dispatcher=dispatcher,
         execution_bridge=execution_bridge,
+        gateway_remote_host=gateway_remote_host,
+        gateway_remote_port=gateway_remote_port,
     )
     if register_builtins:
         _server_instance.register_builtin_actions(include_bundled=include_bundled)

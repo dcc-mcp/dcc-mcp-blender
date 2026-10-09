@@ -20,9 +20,10 @@
 
 ```python
 import dcc_mcp_blender
-handle = dcc_mcp_blender.start_server()
-# Direct MCP host → handle.mcp_url() (OS-assigned); gateway → http://127.0.0.1:9765/mcp
-handle.shutdown()
+server = dcc_mcp_blender.start_server()
+# Direct MCP host endpoint (OS-assigned); local gateway → http://127.0.0.1:9765/mcp
+print(server.mcp_url)
+dcc_mcp_blender.stop_server()
 ```
 
 Headless bootstrap:
@@ -39,12 +40,24 @@ blender --background --python src/dcc_mcp_blender/blender_bootstrap.py
 ```python
 start_server(
     port: Optional[int] = None,
-    server_name: str = "blender-mcp",
-    register_builtins: bool = True,
     extra_skill_paths: Optional[List[str]] = None,
+    register_builtins: bool = True,
     include_bundled: bool = True,
-    enable_gateway_failover: bool = True,
-) -> McpServerHandle
+    enable_hot_reload: bool = False,
+    gateway_port: Optional[int] = None,
+    registry_dir: Optional[str] = None,
+    dcc_version: Optional[str] = None,
+    scene: Optional[str] = None,
+    enable_gateway_failover: Optional[bool] = None,
+    metrics_enabled: Optional[bool] = None,
+    job_storage_path: Optional[str] = None,
+    enable_workflows: Optional[bool] = None,
+    dispatcher: Optional[Any] = None,
+    execution_bridge: Optional[Any] = None,
+    *,
+    gateway_remote_host: Optional[str] = None,
+    gateway_remote_port: Optional[int] = None,
+) -> BlenderMcpServer
 
 stop_server() -> None
 ```
@@ -54,13 +67,39 @@ stop_server() -> None
 ```python
 BlenderMcpServer(
     port: Optional[int] = None,
-    server_name: str = "blender-mcp",
-    server_version: str = "0.1.20",  # x-release-please-version
-    enable_gateway_failover: bool = True,
+    extra_skill_paths: Optional[List[str]] = None,
+    server_name: str = SERVER_NAME,
+    server_version: str = SERVER_VERSION,
+    gateway_port: Optional[int] = None,
+    registry_dir: Optional[str] = None,
+    dcc_version: Optional[str] = None,
+    scene: Optional[str] = None,
+    enable_gateway_failover: Optional[bool] = None,
     metrics_enabled: Optional[bool] = None,     # env: DCC_MCP_BLENDER_METRICS=1
     job_storage_path: Optional[str] = None,     # env: DCC_MCP_BLENDER_JOB_STORAGE
+    enable_workflows: Optional[bool] = None,
+    dispatcher: Optional[Any] = None,
+    execution_bridge: Optional[Any] = None,
+    options: Optional[BlenderServerOptions] = None,
+    *,
+    gateway_remote_host: Optional[str] = None,
+    gateway_remote_port: Optional[int] = None,
 )
 ```
+
+Remote gateway options are also fields on `BlenderServerOptions`; when passing
+`options=...`, put remote settings in that object. `None` preserves Core's
+defaults/environment and existing LAN listener behavior. `gateway_remote_port=0`
+disables only the embedded gateway's additional remote listener, while a nonzero
+`gateway_port` retains local gateway registration. Disabling automatic failover
+does not disable that listener. A supplied host must be a nonblank string; a port
+must be an integer from 0 to 65535 (not a boolean).
+
+Explicit remote arguments and Core's `DCC_MCP_GATEWAY_REMOTE_HOST` /
+`DCC_MCP_GATEWAY_REMOTE_PORT` environment overrides require its public remote
+gateway options; unsupported Core builds raise `RuntimeError`. A running
+singleton rejects explicit remote arguments, and environment changes do not
+reconfigure it: call `stop_server()` before starting with new remote settings.
 
 Key methods: `register_builtin_actions()`, `start()`, `stop()`, `build_capability_manifest(loaded_only=False)`.
 

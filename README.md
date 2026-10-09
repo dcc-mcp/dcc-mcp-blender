@@ -419,11 +419,40 @@ Make sure the Blender addon is enabled and the server is running, then restart C
 import dcc_mcp_blender
 
 # Start the server on an OS-assigned instance port
-dcc_mcp_blender.start_server()
+server = dcc_mcp_blender.start_server()
+print(server.mcp_url)
 
 # Stop the server
 dcc_mcp_blender.stop_server()
 ```
+
+To keep a private local gateway while disabling its additional remote listener,
+start a fresh server with explicit options:
+
+```python
+server = dcc_mcp_blender.start_server(
+    port=0,
+    gateway_port=19765,
+    gateway_remote_port=0,
+    enable_gateway_failover=False,
+    registry_dir="./private-dcc-mcp-registry",
+)
+```
+
+`gateway_remote_host` and `gateway_remote_port` are keyword-only options on
+`start_server()` and `BlenderMcpServer`, and fields on `BlenderServerOptions`.
+`None` preserves Core's defaults and environment configuration, including the
+existing LAN listener behavior. `gateway_remote_port=0` disables only the
+embedded gateway's additional remote listener; the nonzero `gateway_port` still
+enables local gateway registration. `enable_gateway_failover=False` controls
+automatic failover separately and does not disable the remote listener.
+
+Explicit remote arguments and the Core environment overrides
+`DCC_MCP_GATEWAY_REMOTE_HOST` / `DCC_MCP_GATEWAY_REMOTE_PORT` require a Core build
+exposing the public remote gateway options; unsupported builds raise
+`RuntimeError`. Stop an existing singleton with `stop_server()` before changing
+remote settings. Explicit remote arguments are rejected on a running singleton;
+changing environment variables does not reconfigure it.
 
 ---
 
