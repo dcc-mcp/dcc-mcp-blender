@@ -38,6 +38,8 @@ class BlenderTimerPump:
         self._tick_fn: Optional[TickFn] = None
         self._registered_fn: Optional[TickFn] = None
         self._tick_thread_ident: Optional[int] = None
+        self._owner_thread_ident = threading.get_ident()
+        self._generation = 0
 
     @property
     def tick_thread_ident(self) -> Optional[int]:
@@ -57,24 +59,34 @@ class BlenderTimerPump:
         ``bpy.app.timers.is_registered`` directly so health checks can distinguish
         "port open but dispatcher dead" from fully functional.
         """
+        self._require_owner_thread()
         tick_fn = self._registered_fn
         if tick_fn is None:
             return False
         import bpy
 
-        return bpy.app.timers.is_registered(tick_fn)
+        if bpy.app.timers.is_registered(tick_fn):
+            return True
+        self._invalidate()
+        return False
 
     def install(self, tick_fn: TickFn) -> None:
         """Register ``tick_fn`` with Blender's timer API."""
+        self._require_owner_thread()
         if self._registered_fn is not None:
             self._tick_fn = tick_fn
             return
 
         import bpy
 
+        self._generation += 1
+        generation = self._generation
         self._tick_fn = tick_fn
 
         def _tick_wrapper() -> Optional[float]:
+            if generation != self._generation or self._registered_fn is not _tick_wrapper:
+                return None
+            self._require_owner_thread()
             self._tick_thread_ident = threading.get_ident()
             start = time.monotonic()
             try:
@@ -88,22 +100,36 @@ class BlenderTimerPump:
                 if elapsed_ms > self.budget_ms:
                     self.stats.overrun_cycles += 1
 
+        try:
+            bpy.app.timers.register(_tick_wrapper, first_interval=0.0, persistent=True)
+        except Exception:
+            self._invalidate()
+            raise
         self._registered_fn = _tick_wrapper
-        bpy.app.timers.register(_tick_wrapper, first_interval=0.0, persistent=True)
 
     def uninstall(self) -> None:
         """Unregister the Blender timer callback if it is still registered."""
+        self._require_owner_thread()
         tick_fn = self._registered_fn
+        # Fence retained callbacks before consulting Blender: even failed native
+        # teardown must never allow an old timer to drain a later generation.
+        self._invalidate()
         if tick_fn is None:
-            self._tick_fn = None
             return
 
         import bpy
 
-        if tick_fn is not None and bpy.app.timers.is_registered(tick_fn):
+        if bpy.app.timers.is_registered(tick_fn):
             bpy.app.timers.unregister(tick_fn)
+
+    def _invalidate(self) -> None:
+        self._generation += 1
         self._registered_fn = None
         self._tick_fn = None
+
+    def _require_owner_thread(self) -> None:
+        if threading.get_ident() != self._owner_thread_ident:
+            raise RuntimeError("Blender timers must be managed on their owner thread")
 
     def pumped_ms(self) -> float:
         """Return the most recent timer tick duration in milliseconds."""
@@ -168,6 +194,8 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
 
     def start_pump(self) -> None:
         """Ensure Blender timers are draining the core UI dispatcher queue."""
+        if self.is_shutdown:
+            raise RuntimeError("Blender UI dispatcher is shut down")
         self._pump.install(self._timer_tick)
 
     def stop_pump(self) -> None:
@@ -175,8 +203,12 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
         self._pump.uninstall()
 
     def poke_host_pump(self) -> None:
-        """Nudge Blender to drain queued main-thread work soon."""
-        self.start_pump()
+        """Leave work for the persistent timer installed by the host owner.
+
+        Core calls this hook synchronously from submitting worker threads.
+        Blender's timer API is owner-thread-only, so submission cannot install
+        or otherwise touch the native pump.
+        """
 
     def active_count(self) -> int:
         """Return the number of currently executing main-thread jobs."""
@@ -202,27 +234,55 @@ class BlenderUiDispatcher(HostUiDispatcherBase):
     ) -> Any:
         """Run ``func`` through the shared core UI dispatcher queue."""
         _ = (context, execution)
+        if self.is_shutdown:
+            raise RuntimeError("Blender UI dispatcher is shut down")
         affinity_norm = (affinity or "main").lower()
         if affinity_norm == "main" and threading.get_ident() == self._owner_thread_ident:
             return func(*args, **kwargs)
 
         request_id = self._request_id_for(func, action_name, skill_name)
         timeout_ms = self._timeout_ms_from_hint(timeout_hint_secs)
+        admission_lock = threading.Lock()
+        invocation_started = False
+        invocation_expired = False
 
         def _invoke() -> Any:
+            nonlocal invocation_started
+            with admission_lock:
+                if invocation_expired:
+                    raise RuntimeError("Blender UI dispatch expired before execution")
+                invocation_started = True
             return func(*args, **kwargs)
 
         outcome = self.submit_callable(request_id, _invoke, affinity=affinity_norm, timeout_ms=timeout_ms)
         if outcome.get("success"):
             return outcome.get("output")
+        # Core may already have dequeued a timed-out job without admitting our
+        # callable yet. Close admission atomically with its first invocation;
+        # Core cancellation alone does not prevent that late job.execute().
+        with admission_lock:
+            cancel_pending = not invocation_started
+            invocation_expired = cancel_pending
+        if cancel_pending and affinity_norm == "main" and not self.is_shutdown:
+            self.cancel(request_id)
         raise RuntimeError(outcome.get("error") or "Blender UI dispatch failed")
 
     def _timer_tick(self) -> Optional[float]:
+        self._require_owner_thread()
         if self.is_shutdown:
             return None
         self._host_dispatcher.tick(16)
         _executed, remaining = self.drain_queue(self.budget_ms)
         return self.active_interval_secs if remaining else self.idle_interval_secs
+
+    def drain_queue(self, budget_ms: float) -> tuple[int, int]:
+        """Drain Core jobs only on the Blender owner thread."""
+        self._require_owner_thread()
+        return super().drain_queue(budget_ms)
+
+    def _require_owner_thread(self) -> None:
+        if threading.get_ident() != self._owner_thread_ident:
+            raise RuntimeError("Blender UI work must drain on its owner thread")
 
     def _timeout_ms_from_hint(self, timeout_hint_secs: Optional[int]) -> Optional[int]:
         if timeout_hint_secs is None or timeout_hint_secs <= 0:

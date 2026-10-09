@@ -76,15 +76,16 @@ class _FakeServer:
 
 
 class TestReadinessBinder:
-    def test_no_dispatcher_marks_dcc_ready_immediately(self):
+    def test_no_dispatcher_remains_unready(self):
         from dcc_mcp_blender._readiness import ReadinessBinder
 
         server = _FakeServer(dispatcher=None)
         binder = ReadinessBinder()
-        assert binder.bind(server) is True
+        assert binder.bind(server) is False
         report = binder.report()
-        assert report["dispatcher"] is True
-        assert report["dcc"] is True
+        assert report["dispatcher"] is False
+        assert report["dcc"] is False
+        assert report["main_thread_executor"] is False
         assert binder.published_to_server is True
         # Probe was published to the inner server.
         assert server._server.readiness_probe is binder.probe
@@ -99,7 +100,9 @@ class TestReadinessBinder:
                 captured["request_id"] = request_id
                 captured["affinity"] = affinity
                 # Simulate the main-thread no-op completing.
-                on_complete(task())
+                task()
+                on_complete({"success": True, "output": None})
+                return {"success": True, "status": "pending"}
 
         server = _FakeServer(dispatcher=_AsyncDispatcher())
         binder = ReadinessBinder()
@@ -123,6 +126,7 @@ class TestReadinessBinder:
                 # real Blender timer pump where the callback runs later.
                 pending_on_complete["callback"] = on_complete
                 pending_on_complete["task"] = task
+                return {"success": True, "status": "pending"}
 
         server = _FakeServer(dispatcher=_DeferredAsyncDispatcher())
         binder = ReadinessBinder()
@@ -138,7 +142,8 @@ class TestReadinessBinder:
 
         # Now simulate the Blender timer pump draining the probe callback.
         assert "callback" in pending_on_complete
-        pending_on_complete["callback"](pending_on_complete["task"]())
+        pending_on_complete["task"]()
+        pending_on_complete["callback"]({"success": True, "output": None})
 
         # After the probe completes, both bits should be green.
         report_after = binder.report()
@@ -148,9 +153,11 @@ class TestReadinessBinder:
         )
 
     def test_bind_idempotent(self):
+        from dcc_mcp_core.host import QueueDispatcher
+
         from dcc_mcp_blender._readiness import ReadinessBinder
 
-        server = _FakeServer()
+        server = _FakeServer(dispatcher=QueueDispatcher())
         binder = ReadinessBinder()
         binder.bind(server)
         # Second bind on the same server is a no-op.

@@ -110,6 +110,7 @@ def test_blender_ui_dispatcher_uses_core_queue_and_timer_pump():
     with patch.dict(sys.modules, {"bpy": bpy}):
         dispatcher = BlenderUiDispatcher(timeout_ms=1000, idle_interval_secs=0.25)
         assert isinstance(dispatcher, HostUiDispatcherBase)
+        dispatcher.start()
 
         result = []
 
@@ -147,6 +148,7 @@ def test_blender_ui_dispatcher_shutdown_unblocks_pending_main_thread_work():
     bpy, registered = _mock_bpy(background=False)
     with patch.dict(sys.modules, {"bpy": bpy}):
         dispatcher = BlenderUiDispatcher(timeout_ms=5000)
+        dispatcher.start()
         errors = []
 
         def worker():
