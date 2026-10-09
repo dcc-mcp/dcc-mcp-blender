@@ -42,7 +42,7 @@ The list must include `dcc_type=blender`. If it does not, follow the
 **dcc-mcp-blender** — Core Blender adapter for DCC-MCP — Blender add-on with in-process
 MCP server.
 
-It is one of **38 host adapters** in the DCC-MCP catalog. Every adapter speaks the same
+It is one of **47 host adapters** in the DCC-MCP catalog. Every adapter speaks the same
 MCP protocol and builds on the same core runtime contract; each one exposes the tools
 its own host needs on top of that.
 
