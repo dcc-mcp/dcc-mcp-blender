@@ -107,7 +107,7 @@ def _successful_outcome(result: Any) -> bool:
 
 
 def _probe_dispatcher(server: Any) -> Any:
-    """Verify the bridge's HTTP queue, falling back to its retained pump owner."""
+    """Use the bridge's HTTP queue, or the retained owner when no bridge exists."""
     bridge = getattr(server, "_execution_bridge", None)
     if bridge is not None:
         try:
@@ -116,8 +116,7 @@ def _probe_dispatcher(server: Any) -> Any:
         except Exception as exc:  # noqa: BLE001
             logger.debug("[blender] readiness: host dispatcher resolution failed: %s", exc)
             return None
-        if dispatcher is not None:
-            return dispatcher
+        return dispatcher
     dispatcher = getattr(server, "_pump_dispatcher", None)
     if dispatcher is not None:
         return dispatcher

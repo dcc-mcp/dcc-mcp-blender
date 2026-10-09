@@ -110,6 +110,22 @@ def test_bridge_resolution_failure_stays_unready():
 
 
 @pytest.mark.parametrize(
+    "bridge",
+    [SimpleNamespace(resolve_host_dispatcher=lambda: None), SimpleNamespace(host_dispatcher=None)],
+)
+def test_bridge_without_http_queue_cannot_use_a_local_fallback(bridge):
+    queue = QueueDispatcher()
+    binder = ReadinessBinder()
+    server = _server(_execution_bridge=bridge, _pump_dispatcher=queue, _blender_dispatcher=queue)
+    assert binder.bind(server) is False
+    assert binder.bound_dispatcher is None
+    assert queue.tick(1).jobs_executed == 0
+    _assert_unready(binder)
+    assert binder.report()["dispatcher"] is False
+    assert binder.report()["host_execution_bridge"] is False
+
+
+@pytest.mark.parametrize(
     "result",
     [
         {"success": False, "error": "cancelled"},
