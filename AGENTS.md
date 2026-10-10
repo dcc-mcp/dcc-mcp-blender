@@ -74,6 +74,12 @@ Or install the Blender extension (ZIP) and the server starts automatically.
 
 ## Skills-first workflow
 
+Before content production, follow the shared [production reuse gate](https://github.com/dcc-mcp/dcc-mcp-core/blob/main/crates/dcc-mcp-gateway/src/gateway/native_resources/agent_workflows.md#production-reuse-gate)
+and [showcase evidence contract](https://github.com/dcc-mcp/showcase/blob/main/docs/showcase/CONTRACT.md).
+Use the existing provider [`blender-extension-store`](https://github.com/dcc-mcp/dcc-asset-blender-extensions/blob/main/skill/blender-extension-store/SKILL.md)
+to discover/download, then the bundled [`blender-extensions`](src/dcc_mcp_blender/skills/blender-extensions/SKILL.md)
+to plan/install/enable; keep the provider's verified `package` handoff.
+
 ```
 search_skills(query="render")  → find a typed skill
 load_skill("blender-animation") → expand its tools
