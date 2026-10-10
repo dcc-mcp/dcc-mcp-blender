@@ -352,6 +352,33 @@ def _interface_sockets(group: Any) -> list[Any]:
     return inputs + outputs
 
 
+def _socket_in_out(socket: Any, group: Any | None = None) -> str | None:
+    """Return ``"INPUT"``/``"OUTPUT"`` for a socket, or None when unknowable.
+
+    Blender 4.x sockets carry ``in_out``; legacy 3.6 ``NodeSocketInterface`` exposes
+    only ``is_output`` and no ``in_out`` at all, so a bare
+    ``getattr(socket, "in_out", "INPUT")`` silently classifies every 3.6 output
+    socket as an input. Both readers of socket direction go through here so the two
+    Blender shapes stay handled in exactly one place.
+    """
+    in_out = getattr(socket, "in_out", None)
+    if in_out in {"INPUT", "OUTPUT"}:
+        return in_out
+    is_output = getattr(socket, "is_output", None)
+    if isinstance(is_output, bool):
+        return "OUTPUT" if is_output else "INPUT"
+    if group is None:
+        return None
+    for collection, inferred in (
+        (getattr(group, "outputs", None), "OUTPUT"),
+        (getattr(group, "inputs", None), "INPUT"),
+    ):
+        for candidate in _iter_collection(collection):
+            if candidate is socket:
+                return inferred
+    return None
+
+
 def _modifier_get(modifier: Any, key: str) -> Any:
     # Blender 5.2 replaces modifier IDProperties with RNA input properties.
     properties = getattr(modifier, "properties", None)
@@ -383,7 +410,7 @@ def _modifier_set(modifier: Any, key: str, value: Any) -> None:
 
 def _modifier_input_identifier(group: Any, input_name: str) -> str:
     for socket in _interface_sockets(group):
-        if getattr(socket, "in_out", "INPUT") not in {"INPUT", None}:
+        if _socket_in_out(socket, group) not in {"INPUT", None}:
             continue
         if getattr(socket, "name", None) == input_name or getattr(socket, "identifier", None) == input_name:
             return _socket_identifier(socket)
@@ -551,7 +578,7 @@ def _interface_socket_records(group: Any) -> list[dict]:
     interface = getattr(group, "interface", None)
     items_tree = getattr(interface, "items_tree", None)
     if items_tree is not None:
-        items = [(socket, getattr(socket, "in_out", None)) for socket in _interface_sockets(group)]
+        items = [(socket, _socket_in_out(socket, group)) for socket in _interface_sockets(group)]
     else:
         items = [(socket, "INPUT") for socket in _iter_collection(getattr(group, "inputs", []))]
         items += [(socket, "OUTPUT") for socket in _iter_collection(getattr(group, "outputs", []))]
