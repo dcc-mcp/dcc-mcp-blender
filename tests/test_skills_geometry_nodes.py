@@ -30,6 +30,22 @@ class FakeSocket:
         self.in_out = in_out
 
 
+class _ItemsTreeSocket:
+    """An ``items_tree`` entry that is a socket but reports direction via ``is_output``.
+
+    Passes the ``item_type == "SOCKET"`` filter, so production reaches its direction
+    read; carrying no ``in_out`` makes the ``is_output`` fallback the only path that
+    can classify it.
+    """
+
+    def __init__(self, name, socket_type, is_output):
+        self.name = name
+        self.identifier = name
+        self.socket_type = socket_type
+        self.item_type = "SOCKET"
+        self.is_output = is_output
+
+
 class FakeLegacySocket:
     """Blender 3.6 style ``NodeSocketInterface``; direction lives in ``is_output``.
 
@@ -499,6 +515,76 @@ class TestGeometryNodeGroupTemplates:
             assert not hasattr(socket, "in_out")
         assert legacy.inputs[0].is_output is False
         assert legacy.outputs[0].is_output is True
+
+    def test_modifier_input_identifier_picks_the_input_side_of_a_same_name_pair(self):
+        """A legacy 3.6 tree with a same-name output socket resolves to the INPUT one.
+
+        Blender 3.6 ``NodeSocketInterface`` exposes ``is_output`` and no ``in_out``, so
+        a ``getattr(socket, "in_out", "INPUT")`` default marks *every* socket as an
+        input and lets the OUTPUT socket satisfy the name lookup. The output socket is
+        given the only matching name, so a direction-blind scan returns the output
+        identifier while a direction-aware one falls through to the caller's name.
+        """
+        from dcc_mcp_blender._node_graph_ops import _modifier_input_identifier
+
+        legacy = FakeLegacyNodeGroup("LegacyGroup")
+        legacy.inputs.new("NodeSocketFloat", "Count")
+        legacy.outputs.new("NodeSocketFloat", "Scale")
+        legacy.outputs[0].identifier = "Socket_1"
+
+        assert _modifier_input_identifier(legacy, "Scale") == "Scale"
+
+    def test_socket_in_out_reads_is_output_when_the_collection_cannot_answer(self):
+        """``is_output`` must be honoured on its own, not only via collection inference.
+
+        A detached legacy socket lives in no ``inputs``/``outputs`` collection, so
+        only the ``is_output`` branch can classify it. Without it the direction is
+        None, and ``_interface_socket_records`` would report a 3.6 output socket as
+        directionless instead of OUTPUT.
+        """
+        from dcc_mcp_blender._node_graph_ops import _socket_in_out
+
+        detached_in = FakeLegacySocket("Scale", "NodeSocketFloat", is_output=False)
+        detached_out = FakeLegacySocket("Scale", "NodeSocketFloat", is_output=True)
+
+        assert _socket_in_out(detached_in) == "INPUT"
+        assert _socket_in_out(detached_out) == "OUTPUT"
+
+    def test_interface_socket_records_and_modifier_identifier_share_one_direction_read(self):
+        """Both readers classify a legacy same-name pair identically via one helper.
+
+        The two functions used to re-implement the direction read separately, which is
+        how the ``in_out``-default bug could land in one and not the other. Pinning
+        their agreement on a legacy 3.6 tree keeps them on the shared helper.
+        """
+        from dcc_mcp_blender._node_graph_ops import _interface_socket_records, _socket_in_out
+
+        legacy = FakeLegacyNodeGroup("LegacyGroup")
+        legacy.inputs.new("NodeSocketFloat", "Scale")
+        legacy.outputs.new("NodeSocketFloat", "Scale")
+
+        records = _interface_socket_records(legacy)
+        assert [(record["name"], record["in_out"]) for record in records] == [("Scale", "INPUT"), ("Scale", "OUTPUT")]
+        for record, socket in zip(records, (*legacy.inputs, *legacy.outputs)):
+            assert _socket_in_out(socket, legacy) == record["in_out"]
+
+    def test_interface_socket_records_honours_is_output_on_a_modern_items_tree(self):
+        """The ``items_tree`` branch must also read ``is_output``, not just ``in_out``.
+
+        That branch hands direction back to ``_socket_in_out`` rather than reading
+        ``in_out`` inline, so a 4.x tree whose sockets report direction through
+        ``is_output`` is still classified. Sockets are appended directly, so they are
+        in no ``inputs``/``outputs`` collection and only ``is_output`` can classify
+        them.
+        """
+        from dcc_mcp_blender._node_graph_ops import _interface_socket_records
+
+        group = FakeNodeGroup("ModernGroup")
+        group.interface.items_tree.append(_ItemsTreeSocket("Scale", "NodeSocketFloat", is_output=False))
+        group.interface.items_tree.append(_ItemsTreeSocket("Scale", "NodeSocketFloat", is_output=True))
+
+        records = _interface_socket_records(group)
+        assert [(record["name"], record["in_out"]) for record in records] == [("Scale", "INPUT"), ("Scale", "OUTPUT")]
 
     def test_pass_through_works_on_legacy_3_6_style_trees(self):
         bpy = make_mock_bpy()
