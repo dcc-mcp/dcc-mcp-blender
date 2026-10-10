@@ -28,10 +28,18 @@ from dcc_mcp_blender._render_job_ops import get_render_job, start_render_job  # 
 # single-layer EXR. Hosts that no longer accept the value skip the case rather
 # than fail it; the explicit ``output_format`` argument below still reaches the
 # worker's native output configuration on every host.
+#
+# Every container the worker advertises is covered here, so widening the
+# whitelist without proving a real Blender writes it fails this file. The
+# extensions are Blender's own defaults -- it writes ``.jpg``/``.tif``, not
+# ``.jpeg``/``.tiff``.
 SCENE_FORMATS = {
     "OPEN_EXR": ".exr",
     "OPEN_EXR_MULTILAYER": ".exr",
     "PNG": ".png",
+    "JPEG": ".jpg",
+    "TIFF": ".tif",
+    "BMP": ".bmp",
 }
 
 
@@ -195,6 +203,89 @@ def test_start_render_job_uses_scene_device_when_unset(tmp_path):
         if job_id is not None:
             jobs.cancel_render_job(job_id)
         jobs._JOBS.pop(job_id, None)
+
+
+@pytest.mark.parametrize(
+    "scene_format",
+    [
+        pytest.param(
+            name,
+            marks=pytest.mark.skipif(
+                not _scene_format_accepted(name),
+                reason="Blender {} rejects {} on render.image_settings.file_format".format(
+                    ".".join(str(part) for part in bpy.app.version), name
+                ),
+            ),
+        )
+        for name in sorted(SCENE_FORMATS)
+    ],
+)
+def test_start_render_job_explicit_output_format(tmp_path, scene_format):
+    """An explicit ``output_format`` writes that container on a real worker.
+
+    The scene path covers the same containers above; this pins the explicit
+    argument independently, which is the route an agent takes when it wants a
+    container the saved scene does not have.
+    """
+    scene = _prepare_scene(tmp_path)
+    previous_format = scene.render.image_settings.file_format
+    output_dir = tmp_path / ("explicit_" + scene_format.lower())
+    set_image_format(scene.render.image_settings, "PNG")
+    job_id = None
+    try:
+        result = start_render_job(str(output_dir / "beauty_####"), 1, 2, output_format=scene_format, device=DEVICE)
+        assert result["success"], result
+        job_id = result["context"]["job_id"]
+        assert result["context"]["output_format"] == scene_format, result
+
+        context = _await_completion(job_id)
+        assert context["status"] == "completed", (context, _worker_logs(context))
+        assert context["written_frame_count"] == 2, context
+
+        suffix = SCENE_FORMATS[scene_format]
+        written = _frame_names(output_dir)
+        assert written == ["beauty_0001" + suffix, "beauty_0002" + suffix], written
+        for name in written:
+            path = output_dir / name
+            assert path.stat().st_size > 0, path
+            assert jobs._is_valid_output(path, output_format=scene_format), (path, scene_format)
+    finally:
+        set_image_format(scene.render.image_settings, previous_format)
+        if job_id is not None:
+            jobs.cancel_render_job(job_id)
+        jobs._JOBS.pop(job_id, None)
+
+
+def test_start_render_job_rejects_unsupported_scene_format(tmp_path):
+    """A scene format outside the whitelist fails before any frame renders.
+
+    Regression guard for the silent EXR fallback: the job must refuse the
+    submission and name the tools that can fix the scene, not quietly emit a
+    container the caller never asked for.
+    """
+    scene = _prepare_scene(tmp_path)
+    previous_format = scene.render.image_settings.file_format
+    output_dir = tmp_path / "rejected"
+    try:
+        # WEBP is a valid set_render_settings container with no stable leading
+        # signature, so it is the stable "not whitelisted" probe across hosts.
+        set_image_format(scene.render.image_settings, "WEBP")
+        assert scene.render.image_settings.file_format == "WEBP"
+
+        result = start_render_job(str(output_dir / "beauty_####"), 1, 48)
+        assert result["success"] is False, result
+        assert "WEBP" in result["error"], result
+        assert "set_render_settings" in result["error"], result
+        assert "set_render_output" in result["error"], result
+        assert result["prompt"] == (
+            "Call set_render_settings or set_render_output with a supported file_format, then retry."
+        )
+        # Nothing was submitted, so no worker can be running and no frame can
+        # have been written to the output directory.
+        assert "job_id" not in result["context"], result
+        assert not output_dir.exists(), sorted(output_dir.iterdir()) if output_dir.exists() else None
+    finally:
+        set_image_format(scene.render.image_settings, previous_format)
 
 
 def test_start_render_job_explicit_format_overrides_scene(tmp_path):

@@ -93,7 +93,12 @@ def test_render_tools_publish_ci_safe_input_contracts():
     # No schema default: an omitted output_format must fall through to the
     # scene's render.image_settings.file_format instead of forcing EXR.
     assert "default" not in output_format
-    assert output_format["enum"] == ["OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG"]
+    # The published enum is the worker's accepted set, so an agent cannot be
+    # offered a container that then fails at submit time.
+    assert set(output_format["enum"]) == set(_render_job_ops._OUTPUT_FORMATS), (
+        output_format["enum"],
+        sorted(_render_job_ops._OUTPUT_FORMATS),
+    )
     _assert_nullable_device_schema(render_job["properties"]["device"])
 
     settings = tools["set_render_settings"]["input_schema"]["properties"]

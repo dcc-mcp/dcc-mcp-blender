@@ -38,9 +38,16 @@ metadata:
 # blender-render
 
 Use `render_scene` for short stills. Use `start_render_job` for animation or
-multi-layer EXR or display-ready PNG output so the interactive Blender process
-remains responsive; poll with `get_render_job` and cancel only through the
-returned job id.
+multi-layer EXR or display-ready PNG / JPEG / TIFF / BMP output so the
+interactive Blender process remains responsive; poll with `get_render_job` and
+cancel only through the returned job id.
+
+`start_render_job` accepts the output containers
+`OPEN_EXR_MULTILAYER`, `OPEN_EXR`, `PNG`, `JPEG`, `TIFF`, `BMP`. Omit
+`output_format` to reuse the scene's `render.image_settings.file_format`. A
+scene set to any other container is rejected **before** any frame renders
+rather than silently falling back to EXR — call `set_render_settings` or
+`set_render_output` to change it and resubmit.
 
 Use `start_multiview_render_job` for a bounded camera list (up to 8) and
 `beauty`/`wire` PNG deliverables. It saves an isolated copy of the current

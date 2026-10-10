@@ -17,6 +17,18 @@ def _write_valid_png(path):
     path.write_bytes(b"\x89PNG\r\n\x1a\npayload")
 
 
+def _write_valid_jpeg(path):
+    path.write_bytes(b"\xff\xd8\xffpayload")
+
+
+def _write_valid_tiff(path):
+    path.write_bytes(b"\x49\x49\x2a\x00payload")
+
+
+def _write_valid_bmp(path):
+    path.write_bytes(b"BMpayload")
+
+
 def _fake_bpy(filepath, file_format="PNG"):
     """Minimal bpy stand-in exposing the scene render format the job reads."""
     return SimpleNamespace(
@@ -122,8 +134,10 @@ def test_select_frames_resumes_only_missing_valid_pngs(tmp_path):
 
 
 def test_rejects_unsupported_background_render_format(tmp_path):
+    # WEBP is a valid set_render_settings format but has no stable leading
+    # signature, so a worker cannot verify a resumed frame; it stays rejected.
     with pytest.raises(ValueError, match="output_format"):
-        jobs._expected_output_path(str(tmp_path / "beauty_####"), 1, output_format="TIFF")
+        jobs._expected_output_path(str(tmp_path / "beauty_####"), 1, output_format="WEBP")
 
 
 def test_start_get_cancel_background_render_job(monkeypatch, tmp_path):
@@ -232,10 +246,36 @@ def test_start_render_job_keeps_explicit_format_over_scene(monkeypatch, tmp_path
     assert created[0][created[0].index("--python-expr") + 1] == worker_format_expression("OPEN_EXR_MULTILAYER")
 
 
+def test_start_render_job_accepts_every_new_scene_format(monkeypatch, tmp_path):
+    """Each container added to the whitelist is reproducible from the scene."""
+    blend = tmp_path / "scene.blend"
+    blend.write_bytes(b"blend")
+
+    class FakeProcess:
+        pid = 11
+
+        def poll(self):
+            return None
+
+    for scene_format in ("JPEG", "TIFF", "BMP"):
+        monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format=scene_format))
+        monkeypatch.setattr(jobs.subprocess, "Popen", lambda command, **kwargs: FakeProcess())
+        jobs._JOBS.clear()
+
+        started = jobs.start_render_job(
+            output_pattern=str(tmp_path / "beauty_####"),
+            start_frame=1,
+            end_frame=2,
+        )
+
+        assert started["success"] is True, (scene_format, started)
+        assert started["context"]["output_format"] == scene_format, started
+
+
 def test_start_render_job_rejects_unsupported_scene_format(monkeypatch, tmp_path):
     blend = tmp_path / "scene.blend"
     blend.write_bytes(b"blend")
-    monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format="JPEG"))
+    monkeypatch.setitem(sys.modules, "bpy", _fake_bpy(blend, file_format="WEBP"))
     jobs._JOBS.clear()
 
     started = jobs.start_render_job(
@@ -245,16 +285,84 @@ def test_start_render_job_rejects_unsupported_scene_format(monkeypatch, tmp_path
     )
 
     assert started["success"] is False
-    assert "JPEG" in started["error"]
+    assert "WEBP" in started["error"]
     assert "OPEN_EXR_MULTILAYER" in started["error"]
+    # fail-loud: the message names the tools that can fix the scene instead of
+    # letting a worker silently substitute EXR.
+    assert "set_render_settings" in started["error"]
+    assert "set_render_output" in started["error"]
+    assert "silently" in started["error"]
+    assert started["prompt"] == (
+        "Call set_render_settings or set_render_output with a supported file_format, then retry."
+    )
+
+
+def test_format_tables_share_one_source_of_truth():
+    """_SCENE_OUTPUT_FORMATS is derived, so the two cannot drift apart."""
+    assert jobs._SCENE_OUTPUT_FORMATS == tuple(jobs._OUTPUT_FORMATS)
+    assert set(jobs._SCENE_OUTPUT_FORMATS) == set(jobs._OUTPUT_FORMATS)
+    # The whitelist grew past the original three containers.
+    assert len(jobs._OUTPUT_FORMATS) >= 5
+    for name in ("OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG", "JPEG", "TIFF"):
+        assert name in jobs._OUTPUT_FORMATS
+    # Every accepted container is one set_render_settings also offers, so a
+    # scene configured through the typed tool is reproducible by a worker.
+    from dcc_mcp_blender._render_ops import _IMAGE_FORMATS
+
+    assert set(jobs._OUTPUT_FORMATS) <= set(_IMAGE_FORMATS)
+    # The drift guard survives being re-run against a deliberately broken table.
+    saved_scene, saved_output = jobs._SCENE_OUTPUT_FORMATS, jobs._OUTPUT_FORMATS
+    try:
+        jobs._SCENE_OUTPUT_FORMATS = ("PNG",)
+        with pytest.raises(AssertionError, match="_SCENE_OUTPUT_FORMATS"):
+            jobs._assert_format_tables_agree()
+        jobs._SCENE_OUTPUT_FORMATS = saved_scene + ("PNG",)
+        with pytest.raises(AssertionError, match="repeat"):
+            jobs._assert_format_tables_agree()
+    finally:
+        jobs._SCENE_OUTPUT_FORMATS, jobs._OUTPUT_FORMATS = saved_scene, saved_output
+
+
+@pytest.mark.parametrize(
+    "name,suffix,writer",
+    [
+        ("JPEG", ".jpg", _write_valid_jpeg),
+        ("TIFF", ".tif", _write_valid_tiff),
+        ("BMP", ".bmp", _write_valid_bmp),
+    ],
+)
+def test_new_formats_resolve_extension_and_signature(tmp_path, name, suffix, writer):
+    pattern = str(tmp_path / "beauty_####")
+    expected = jobs._expected_output_path(pattern, 7, output_format=name)
+    assert expected == tmp_path / ("beauty_0007" + suffix)
+
+    # A frame is only "written" once it carries the container's signature.
+    assert jobs._is_valid_output(expected, output_format=name) is False
+    writer(expected)
+    assert jobs._is_valid_output(expected, output_format=name) is True
+
+    # A truncated or foreign frame is not resumable.
+    expected.write_bytes(b"nope")
+    assert jobs._is_valid_output(expected, output_format=name) is False
+
+
+def test_select_frames_resumes_missing_new_format_frames(tmp_path):
+    pattern = str(tmp_path / "beauty_####")
+    _write_valid_jpeg(jobs._expected_output_path(pattern, 1, output_format="JPEG"))
+    jobs._expected_output_path(pattern, 2, output_format="JPEG").write_bytes(b"x")
+
+    assert jobs._select_frames(pattern, 1, 3, 1, resume_missing=True, output_format="JPEG") == [2, 3]
 
 
 def test_resolve_output_format_maps_scene_values():
     assert jobs._resolve_output_format("png", scene_format="OPEN_EXR_MULTILAYER") == "PNG"
     assert jobs._resolve_output_format(None, scene_format="OPEN_EXR") == "OPEN_EXR"
     assert jobs._resolve_output_format("", scene_format="png") == "PNG"
+    assert jobs._resolve_output_format(None, scene_format="JPEG") == "JPEG"
+    assert jobs._resolve_output_format(None, scene_format="tiff") == "TIFF"
+    assert jobs._resolve_output_format(None, scene_format="BMP") == "BMP"
     with pytest.raises(ValueError, match="not supported"):
-        jobs._resolve_output_format(None, scene_format="TIFF")
+        jobs._resolve_output_format(None, scene_format="WEBP")
     with pytest.raises(ValueError, match="not supported"):
         jobs._resolve_output_format(None, scene_format="")
 

@@ -19,17 +19,33 @@ from dcc_mcp_blender._image_format import image_format, worker_format_expression
 _FRAME_TOKEN = re.compile(r"#+")
 _OPENEXR_MAGIC = b"\x76\x2f\x31\x01"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_TIFF_MAGIC = b"\x49\x49\x2a\x00"
+_BMP_MAGIC = b"\x42\x4d"
+# Output containers a background worker can write, mapped to the extension and
+# leading signature bytes the job later validates. ``OPEN_EXR_MULTILAYER`` and
+# ``OPEN_EXR`` deliberately share ``.exr``: the container is chosen by the
+# media type the worker sets, not by the suffix.
+#
+# Every entry must be a format ``set_render_settings`` accepts (see
+# ``_render_ops._IMAGE_FORMATS``), so a scene the user configured through the
+# typed tool is reproducible by a detached worker. Formats without a stable
+# leading signature are excluded: ``_is_valid_output`` needs the magic bytes to
+# tell a truncated frame from a complete one when resuming.
 _OUTPUT_FORMATS = {
     "OPEN_EXR_MULTILAYER": (".exr", _OPENEXR_MAGIC),
     "OPEN_EXR": (".exr", _OPENEXR_MAGIC),
     "PNG": (".png", _PNG_MAGIC),
+    "JPEG": (".jpg", _JPEG_MAGIC),
+    "TIFF": (".tif", _TIFF_MAGIC),
+    "BMP": (".bmp", _BMP_MAGIC),
 }
-# Scene ``render.image_settings.file_format`` values that a background worker
-# can reproduce. Kept identical to ``_OUTPUT_FORMATS`` on purpose: a scene set
-# to plain ``OPEN_EXR`` must stay single-layer instead of silently becoming a
-# multi-layer container, and anything else has to fail loudly rather than fall
-# back to EXR.
-_SCENE_OUTPUT_FORMATS = ("OPEN_EXR_MULTILAYER", "OPEN_EXR", "PNG")
+# Scene ``render.image_settings.file_format`` values a background worker can
+# reproduce. Derived from ``_OUTPUT_FORMATS`` so the two cannot drift apart:
+# the accepted set is one truth, not two. A scene set to plain ``OPEN_EXR``
+# must stay single-layer instead of silently becoming a multi-layer container,
+# and anything else has to fail loudly rather than fall back to EXR.
+_SCENE_OUTPUT_FORMATS = tuple(_OUTPUT_FORMATS)
 # Cycles device names a worker accepts through ``-- --cycles-device``. Kept as
 # the single source of truth for the hint a device failure returns so it cannot
 # drift away from the enum published by the skill contract.
@@ -42,6 +58,26 @@ _CYCLES_DEVICE_ERROR = "found no cycles device of the specified type"
 _LOG_TAIL_BYTES = 4096
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
+
+
+def _assert_format_tables_agree() -> None:
+    """Fail at import time if the two format tables ever stop matching.
+
+    ``_SCENE_OUTPUT_FORMATS`` is derived from ``_OUTPUT_FORMATS``, so these two
+    assertions cannot fail today. They exist for the edit that breaks the
+    derivation: a future change that reintroduces a hand-written scene list
+    (or reorders one) trips here instead of silently narrowing the formats a
+    job accepts.
+    """
+    assert set(_SCENE_OUTPUT_FORMATS) == set(_OUTPUT_FORMATS), (
+        "_SCENE_OUTPUT_FORMATS must accept exactly the containers _OUTPUT_FORMATS can write, got {} vs {}".format(
+            sorted(_SCENE_OUTPUT_FORMATS), sorted(_OUTPUT_FORMATS)
+        )
+    )
+    assert len(_SCENE_OUTPUT_FORMATS) == len(_OUTPUT_FORMATS), "_SCENE_OUTPUT_FORMATS must not repeat a container"
+
+
+_assert_format_tables_agree()
 
 
 def _launch_worker(command, directory, stdout_path, stderr_path):
@@ -97,9 +133,8 @@ def _resolve_output_format(output_format: str = None, scene_format: str = None) 
     if name not in _SCENE_OUTPUT_FORMATS:
         raise ValueError(
             "Scene render format {!r} is not supported by background render jobs. "
-            "Set output_format explicitly or change render.image_settings.file_format to one of: {}".format(
-                name, ", ".join(_SCENE_OUTPUT_FORMATS)
-            )
+            "Call set_render_settings or set_render_output with a file_format of one of: {}. "
+            "The scene format is never silently replaced with EXR.".format(name, ", ".join(_SCENE_OUTPUT_FORMATS))
         )
     return name
 

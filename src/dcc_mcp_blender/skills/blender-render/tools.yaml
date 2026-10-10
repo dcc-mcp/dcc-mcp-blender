@@ -120,8 +120,8 @@ tools:
           description: "Absolute output pattern containing # placeholders, for example C:/renders/beauty_####. Blender appends the selected format's extension."
         output_format:
           type: string
-          enum: [OPEN_EXR_MULTILAYER, OPEN_EXR, PNG]
-          description: "Background render output format. Omit to reuse the scene's current render.image_settings.file_format, which is what set_render_settings writes. PNG produces display-ready frames; multilayer EXR preserves render passes. The resolved format is returned as output_format."
+          enum: [OPEN_EXR_MULTILAYER, OPEN_EXR, PNG, JPEG, TIFF, BMP]
+          description: "Background render output format. Omit to reuse the scene's current render.image_settings.file_format, which is what set_render_settings writes. PNG and JPEG produce display-ready frames; TIFF and BMP are uncompressed or lightly compressed; multilayer EXR preserves render passes. The resolved format is returned as output_format. A scene format outside this list is rejected before rendering instead of silently falling back to EXR; call set_render_settings or set_render_output to change it."
         start_frame:
           type: integer
           minimum: 0
