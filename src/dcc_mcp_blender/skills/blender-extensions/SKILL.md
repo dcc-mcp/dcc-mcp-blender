@@ -33,3 +33,9 @@ add-on package. Plan first, then install into an enabled user repository.
 Blender 4.5+ packages with `blender_manifest.toml` use Blender Extensions.
 Legacy add-ons remain supported through Blender's compatibility operator.
 Remote marketplace discovery and license acceptance stay in provider skills.
+
+For content production, first follow the shared [production reuse gate](https://github.com/dcc-mcp/dcc-mcp-core/blob/main/crates/dcc-mcp-gateway/src/gateway/native_resources/agent_workflows.md#production-reuse-gate).
+Use `blender-extension-store` for search/inspect/download and preserve its
+verified `package` when planning. After an authorized compatible plan, request
+`install_extension(enable=true)` and verify a real MCP capability call; an
+installation return alone does not prove production usability.
