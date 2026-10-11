@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.17](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.16...v0.2.17) (2026-10-11)
+
+
+### Documentation
+
+* **portable-scene:** clarify allowed_output_root is caller-declared ([c9ab926](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c9ab9268c85ef28eee678964917628ad38eed911))
+
 ## [0.2.16](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.15...v0.2.16) (2026-10-09)
 
 
