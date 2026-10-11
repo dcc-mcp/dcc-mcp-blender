@@ -25,7 +25,8 @@
           },
           "allowed_output_root": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Caller-declared existing output directory that must contain the target file, supplied alongside filepath by the same caller. Not enforced server-side and no server-side root is pinned, so this is a path-traversal invariant rather than a trusted authorization boundary."
           },
           "render_path": {
             "type": "string",
