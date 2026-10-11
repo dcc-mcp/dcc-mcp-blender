@@ -5,7 +5,6 @@ license: "MIT"
 allowed-tools: ["Bash", "Read"]
 metadata:
   dcc-mcp:
-    dcc: blender
     layer: domain
     stage: scene
     version: "1.0.0"
