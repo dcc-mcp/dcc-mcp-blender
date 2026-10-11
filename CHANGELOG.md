@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.18](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.17...v0.2.18) (2026-10-11)
+
+
+### Documentation
+
+* **portable-scene:** clarify containment is server-enforced but unpinned ([#299](https://github.com/dcc-mcp/dcc-mcp-blender/issues/299)) ([6188c9e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6188c9e059a18e7f78ab2cb340b8beae8954edb6))
+
 ## [0.2.17](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.16...v0.2.17) (2026-10-11)
 
 
