@@ -33,10 +33,18 @@ jobs:
       - name: Run py37 syntax check
         run: python tools/check_py37_syntax.py
 
+  # Both lint jobs are gating: a real failure must turn the PR red.
+  # They previously carried `continue-on-error: true`, which made their green
+  # checks non-blocking. Ruff is verified clean against `main`, and the skill
+  # linter is verified clean against all bundled SKILL.md / tools.yaml files,
+  # so removing the exemption does not pre-break the branch.
+  #
+  # `tools.yaml` / `SKILL.md` ship inside the wheel and the addon ZIP, and
+  # `tools.yaml` descriptions are exposed to LLM clients over MCP
+  # `tools/list` — so these are runtime contracts, not documentation.
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -52,7 +60,6 @@ jobs:
   lint-skills:
     name: Lint SKILL.md files
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

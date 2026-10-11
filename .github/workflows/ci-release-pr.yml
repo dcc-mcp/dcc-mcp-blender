@@ -16,6 +16,26 @@
 # the regular CI will also run on release PRs. This workflow acts as a
 # safety net and gate when PAT is not yet available.
 #
+# SCOPE OF THE LINT EXEMPTION (intentional, not a silent skip):
+# The "Report Lint status" / "Report Lint SKILL.md files status" steps below
+# post pre-computed `success` commit statuses instead of running the real
+# lint jobs. This is deliberate and bounded:
+#   - It applies ONLY to bot-authored release PRs (branch `release-please--*`,
+#     author `github-actions[bot]` / `release-please[bot]`). Non-bot release
+#     PRs exit early at the "Validate release PR" step and are not exempted.
+#   - It is justified ONLY because the preceding "Validate release PR files"
+#     step hard-fails when the PR touches anything outside the release
+#     allowlist (`.release-please-manifest.json`, `CHANGELOG.md`,
+#     `pyproject.toml`, `Cargo.toml`, `Cargo.lock`, version modules and
+#     `blender_manifest.toml`). Version/changelog edits cannot change
+#     lint results or skill contracts, so re-running lint would only
+#     re-confirm the base branch's already-green state.
+#   - Adding a file to that allowlist therefore WIDENS this exemption. Any
+#     such change must be able to justify that the new file cannot affect
+#     ruff or SKILL.md/tools.yaml validation.
+# This exemption is the reason release PRs show 0s lint checks. It does not
+# weaken normal PRs, which run the real jobs in `ci.yml` with no exemption.
+#
 # Security:
 # - `pull_request_target` runs in the context of the base branch (main)
 # - We do NOT checkout or execute any code from the PR branch
@@ -106,6 +126,10 @@ jobs:
               .addList(names.map((name) => `\`${name}\``))
               .write();
 
+      # Pre-computed status, not a real run. Scope and justification are
+      # documented in the header comment above; the "Validate release PR files"
+      # step above is what makes this safe — it hard-fails if the PR touches
+      # anything outside the release-file allowlist.
       - name: Report Lint status
         uses: actions/github-script@v9
         with:

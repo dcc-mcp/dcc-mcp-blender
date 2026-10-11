@@ -131,6 +131,20 @@ execute_python only when no typed skill fits
 - Use `chore:` when the batch should **not** cut a release; use `docs:` when doc-only work
   should cut a patch release.
 
+## CI gate weight
+
+`ci.yml` lint jobs are **gating** — `Lint` and `Lint SKILL.md files` have no
+`continue-on-error`, so a real failure turns the PR red. `core-latest` keeps
+`continue-on-error: true` on purpose: it is an early-warning probe against the
+newest published Core and must not block merges.
+
+Release PRs are the one deliberate exception. `.github/workflows/ci-release-pr.yml`
+posts pre-computed `success` statuses for the two lint jobs instead of running
+them, which is why release PRs show 0s lint checks. That exemption is bounded:
+it applies only to bot-authored `release-please--*` PRs whose changed files all
+fall inside the release allowlist in that workflow. Widening the allowlist
+widens the exemption. See the workflow header comment for the full rationale.
+
 ## Do / Don't
 
 - **Do** single-source agent instructions here. This is the only agent contract
