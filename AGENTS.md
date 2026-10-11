@@ -140,10 +140,13 @@ newest published Core and must not block merges.
 
 Release PRs are the one deliberate exception. `.github/workflows/ci-release-pr.yml`
 posts pre-computed `success` statuses for the two lint jobs instead of running
-them, which is why release PRs show 0s lint checks. That exemption is bounded:
-it applies only to bot-authored `release-please--*` PRs whose changed files all
-fall inside the release allowlist in that workflow. Widening the allowlist
-widens the exemption. See the workflow header comment for the full rationale.
+them, which is why release PRs show 0s lint checks. That exemption requires two
+conditions, both enforced in the workflow: the head branch starts with
+`release-please--`, **and** the author is `github-actions[bot]` /
+`release-please[bot]`. A human-authored release branch posts no statuses and
+falls through to regular CI. The changed files must additionally fall inside
+the release allowlist in that workflow; widening the allowlist widens the
+exemption. See the workflow header comment for the full rationale.
 
 ## Do / Don't
 

@@ -19,10 +19,16 @@
 # SCOPE OF THE LINT EXEMPTION (intentional, not a silent skip):
 # The "Report Lint status" / "Report Lint SKILL.md files status" steps below
 # post pre-computed `success` commit statuses instead of running the real
-# lint jobs. This is deliberate and bounded:
-#   - It applies ONLY to bot-authored release PRs (branch `release-please--*`,
-#     author `github-actions[bot]` / `release-please[bot]`). Non-bot release
-#     PRs exit early at the "Validate release PR" step and are not exempted.
+# lint jobs. This is deliberate and bounded by TWO conditions, both enforced
+# in the workflow body rather than asserted only in this comment:
+#   - The head branch name starts with `release-please--` (job-level `if`),
+#     AND
+#   - The PR author is `github-actions[bot]` or `release-please[bot]`
+#     (the `noop` output of "Validate release PR", which gates every
+#     downstream step).
+# A human-authored release branch sets `noop=true` and posts NO statuses;
+# regular CI handles it. Both conditions must hold for the exemption to
+# apply — do not rely on the branch-name filter alone.
 #   - It is justified ONLY because the preceding "Validate release PR files"
 #     step hard-fails when the PR touches anything outside the release
 #     allowlist (`.release-please-manifest.json`, `CHANGELOG.md`,
@@ -62,6 +68,7 @@ jobs:
     if: startsWith(github.head_ref, 'release-please--')
     steps:
       - name: Validate release PR
+        id: release-meta
         env:
           RELEASE_HEAD_REF: ${{ github.head_ref }}
           RELEASE_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -84,6 +91,7 @@ jobs:
           echo "noop=false" >> $GITHUB_OUTPUT
 
       - name: Validate release PR files
+        if: steps.release-meta.outputs.noop == 'false'
         uses: actions/github-script@v9
         with:
           script: |
@@ -126,11 +134,14 @@ jobs:
               .addList(names.map((name) => `\`${name}\``))
               .write();
 
-      # Pre-computed status, not a real run. Scope and justification are
-      # documented in the header comment above; the "Validate release PR files"
-      # step above is what makes this safe — it hard-fails if the PR touches
-      # anything outside the release-file allowlist.
+      # Pre-computed status, not a real run. Gated on `noop == 'false'` so a
+      # human-authored release branch posts nothing and falls through to
+      # regular CI. Scope and justification are documented in the header
+      # comment above; the "Validate release PR files" step is what makes
+      # this safe — it hard-fails if the PR touches anything outside the
+      # release-file allowlist.
       - name: Report Lint status
+        if: steps.release-meta.outputs.noop == 'false'
         uses: actions/github-script@v9
         with:
           script: |
@@ -145,6 +156,7 @@ jobs:
             });
 
       - name: Report Lint SKILL.md files status
+        if: steps.release-meta.outputs.noop == 'false'
         uses: actions/github-script@v9
         with:
           script: |
