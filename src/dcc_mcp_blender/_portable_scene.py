@@ -12,6 +12,8 @@ from pathlib import Path
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 from dcc_mcp_core.skills_helper import check_dcc_cancelled
 
+CALLER_DECLARED_ROOT_ERROR = "Select a file in the caller-declared existing output root"
+
 
 def _safe_destination(filepath, allowed_output_root, extensions=(".blend",)):
     root = Path(allowed_output_root).absolute()
@@ -26,7 +28,7 @@ def _safe_destination(filepath, allowed_output_root, extensions=(".blend",)):
                 raise ValueError("Output paths cannot contain symlinks or reparse points")
     root = root.resolve(strict=True)
     if not root.is_dir() or not target.parent.is_dir() or root not in target.resolve().parents:
-        raise ValueError("Select a file in the explicitly authorized existing output root")
+        raise ValueError(CALLER_DECLARED_ROOT_ERROR)
     if target.suffix.lower() not in extensions or target.exists():
         raise ValueError("Select a new supported output file; existing files are never overwritten")
     return target

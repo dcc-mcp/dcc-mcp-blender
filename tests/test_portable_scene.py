@@ -1,5 +1,6 @@
 """Bounded scene-copy contract tests; real native acceptance is separately recorded."""
 
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -7,6 +8,8 @@ from types import SimpleNamespace as NS
 import pytest
 
 from dcc_mcp_blender import _portable_scene as mod
+
+SKILL_DIR = Path(mod.__file__).parent / "skills" / "blender-portable-scene"
 
 
 @pytest.fixture
@@ -41,6 +44,24 @@ def native(monkeypatch):
 def test_invalid_destination(tmp_path, path):
     with pytest.raises(ValueError):
         mod._safe_destination(str(tmp_path / path), str(tmp_path))
+
+
+def test_out_of_root_destination_states_caller_declared_root(tmp_path):
+    other = tmp_path / "nested"
+    other.mkdir()
+    with pytest.raises(ValueError, match="^Select a file in the caller-declared existing output root$"):
+        mod._safe_destination(str(tmp_path / "escape.blend"), str(other))
+    assert "explicitly authorized" not in mod.CALLER_DECLARED_ROOT_ERROR
+
+
+@pytest.mark.parametrize("name", ["SKILL.md", "tools.yaml"])
+def test_docs_share_the_caller_declared_output_root_wording(name):
+    text = (SKILL_DIR / name).read_text(encoding="utf-8")
+    assert re.search(r"caller-declared (output root|existing output directory)", text, re.IGNORECASE)
+    # SKILL.md:3 declares a separate claim about the *input* scene being authorized
+    # for publication; only the output-root wording must stay on "caller-declared".
+    remaining = text.replace("explicitly authorized task-owned scene", "")
+    assert "explicitly authorized" not in remaining.lower()
 
 
 def test_existing_output_never_overwritten(tmp_path):
