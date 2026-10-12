@@ -50,8 +50,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+      # Upper bound: ruff is still 0.x and each minor can add lint rules and
+      # change formatter output. `Lint` is gating, so an unbounded install
+      # would let a ruff release turn every PR in this repo red at once while
+      # the code itself had not changed. Keep in sync with the dev extra in
+      # pyproject.toml.
       - name: Install ruff
-        run: pip install ruff>=0.8.0
+        run: pip install "ruff>=0.8.0,<0.17.0"
       - name: Ruff check
         run: ruff check src/ tests/ tools/lint_skills.py packaging/assemble_zip.py packaging/addon_entry/__init__.py
       - name: Ruff format check

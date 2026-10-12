@@ -44,7 +44,11 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.0",
-    "ruff>=0.8.0",
+    # Upper bound matches the `Lint` job in ci.yml. ruff is pre-1.0: a minor
+    # release can add rules or change formatter output, and the lint jobs are
+    # gating, so an unpinned ruff would make CI red for reasons unrelated to
+    # the diff under review.
+    "ruff>=0.8.0,<0.17.0",
     "pyyaml>=5.0",
 ]
 

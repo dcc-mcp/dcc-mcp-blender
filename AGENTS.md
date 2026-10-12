@@ -138,15 +138,26 @@ execute_python only when no typed skill fits
 `continue-on-error: true` on purpose: it is an early-warning probe against the
 newest published Core and must not block merges.
 
-Release PRs are the one deliberate exception. `.github/workflows/ci-release-pr.yml`
-posts pre-computed `success` statuses for the two lint jobs instead of running
-them, which is why release PRs show 0s lint checks. That exemption requires two
-conditions, both enforced in the workflow: the head branch starts with
-`release-please--`, **and** the author is `github-actions[bot]` /
-`release-please[bot]`. A human-authored release branch posts no statuses and
+Release PRs are **not** exempt. `.github/workflows/ci-release-pr.yml` posts no
+lint statuses at all: it only validates release metadata and changed files, so
+`Lint` and `Lint SKILL.md files` on a release PR come from real `ci.yml` runs,
+exactly as on any other PR. It previously preseeded pre-computed `success`
+statuses for both jobs; that was removed because `ci.yml` uses
+`concurrency.cancel-in-progress: true`, so a cancelled real run would leave the
+preseeded `success` as the newest state on a required context.
+
+That metadata gate runs only when the head branch starts with
+`release-please--` **and** the author is `github-actions[bot]` /
+`release-please[bot]`; a human-authored release branch validates nothing and
 falls through to regular CI. The changed files must additionally fall inside
-the release allowlist in that workflow; widening the allowlist widens the
-exemption. See the workflow header comment for the full rationale.
+the release allowlist in that workflow; widening the allowlist widens what the
+workflow vouches for. See the workflow header comment for the full rationale.
+
+Ruff is pinned with an upper bound (`>=0.8.0,<0.17.0`) in both `ci.yml` and the
+`dev` extra in `pyproject.toml`, and the two must stay in sync. Ruff is pre-1.0,
+so a minor release can add rules or change formatter output; since `Lint` gates
+merges, an unbounded pin would let a ruff release turn every PR in the repo red
+without any code changing.
 
 ## Do / Don't
 

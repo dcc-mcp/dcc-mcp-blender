@@ -9,38 +9,44 @@
 #
 # Solution:
 # Use `pull_request_target` which IS triggered for bot-created PRs. This
-# workflow validates the release PR metadata and creates successful commit
-# statuses via the GitHub API, satisfying branch protection requirements.
+# workflow validates the release PR metadata and the set of changed files,
+# failing the check when a release PR carries anything outside the release
+# allowlist. It does not create commit statuses; the lint contexts on a
+# release PR come from real `ci.yml` runs (see below).
 #
 # Once PERSONAL_ACCESS_TOKEN is configured on all repos (preferred fix),
 # the regular CI will also run on release PRs. This workflow acts as a
 # safety net and gate when PAT is not yet available.
 #
-# SCOPE OF THE LINT EXEMPTION (intentional, not a silent skip):
-# The "Report Lint status" / "Report Lint SKILL.md files status" steps below
-# post pre-computed `success` commit statuses instead of running the real
-# lint jobs. This is deliberate and bounded by TWO conditions, both enforced
-# in the workflow body rather than asserted only in this comment:
+# NO LINT STATUS PRESEEDING — this workflow reports nothing for `Lint` or
+# `Lint SKILL.md files`.
+# It used to post pre-computed `success` commit statuses for both jobs. That
+# was redundant and, once the lint jobs became gating, actively unsafe:
+# `ci.yml` already runs both jobs for real on `release-please--branches--**`
+# pushes, and it sets `concurrency.cancel-in-progress: true`. When a release
+# branch is pushed twice in quick succession the real run is cancelled, and a
+# cancelled run reports no status — so the newest state left on that context
+# could be the preseeded `success`. With the lint jobs required, a cancelled
+# run would then look like a green gate.
+# Deleting the preseeding steps removes that failure mode: the contexts are
+# now reported only by real runs. It also means a release PR inherits the
+# same lint gate as every other PR.
+#
+# The remaining job still gates release PRs on metadata and changed files:
 #   - The head branch name starts with `release-please--` (job-level `if`),
 #     AND
 #   - The PR author is `github-actions[bot]` or `release-please[bot]`
 #     (the `noop` output of "Validate release PR", which gates every
 #     downstream step).
-# A human-authored release branch sets `noop=true` and posts NO statuses;
-# regular CI handles it. Both conditions must hold for the exemption to
-# apply — do not rely on the branch-name filter alone.
-#   - It is justified ONLY because the preceding "Validate release PR files"
-#     step hard-fails when the PR touches anything outside the release
-#     allowlist (`.release-please-manifest.json`, `CHANGELOG.md`,
-#     `pyproject.toml`, `Cargo.toml`, `Cargo.lock`, version modules and
-#     `blender_manifest.toml`). Version/changelog edits cannot change
-#     lint results or skill contracts, so re-running lint would only
-#     re-confirm the base branch's already-green state.
-#   - Adding a file to that allowlist therefore WIDENS this exemption. Any
-#     such change must be able to justify that the new file cannot affect
-#     ruff or SKILL.md/tools.yaml validation.
-# This exemption is the reason release PRs show 0s lint checks. It does not
-# weaken normal PRs, which run the real jobs in `ci.yml` with no exemption.
+# A human-authored release branch sets `noop=true` and validates nothing;
+# regular CI handles it. Both conditions must hold for the gate to run — do
+# not rely on the branch-name filter alone.
+#   - "Validate release PR files" hard-fails when the PR touches anything
+#     outside the release allowlist (`.release-please-manifest.json`,
+#     `CHANGELOG.md`, `pyproject.toml`, `Cargo.toml`, `Cargo.lock`, version
+#     modules and `blender_manifest.toml`). Adding a file to that allowlist
+#     WIDENS the set of changes this workflow will vouch for; any such change
+#     must justify that the new file is release metadata only.
 #
 # Security:
 # - `pull_request_target` runs in the context of the base branch (main)
@@ -58,7 +64,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  statuses: write
 
 jobs:
   release-pr-gate:
@@ -133,39 +138,3 @@ jobs:
               .addHeading('Release PR file validation', 2)
               .addList(names.map((name) => `\`${name}\``))
               .write();
-
-      # Pre-computed status, not a real run. Gated on `noop == 'false'` so a
-      # human-authored release branch posts nothing and falls through to
-      # regular CI. Scope and justification are documented in the header
-      # comment above; the "Validate release PR files" step is what makes
-      # this safe — it hard-fails if the PR touches anything outside the
-      # release-file allowlist.
-      - name: Report Lint status
-        if: steps.release-meta.outputs.noop == 'false'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.payload.pull_request.head.sha,
-              state: 'success',
-              context: 'Lint',
-              description: 'Release PR — lint not required for version/changelog changes',
-              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            });
-
-      - name: Report Lint SKILL.md files status
-        if: steps.release-meta.outputs.noop == 'false'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.payload.pull_request.head.sha,
-              state: 'success',
-              context: 'Lint SKILL.md files',
-              description: 'Release PR — skill lint not required for version/changelog changes',
-              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            });
