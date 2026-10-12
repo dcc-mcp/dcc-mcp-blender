@@ -146,6 +146,16 @@ statuses for both jobs; that was removed because `ci.yml` uses
 `concurrency.cancel-in-progress: true`, so a cancelled real run would leave the
 preseeded `success` as the newest state on a required context.
 
+Removing the preseeding is fail-safe but has a consequence worth knowing once
+`Lint` / `Lint SKILL.md files` become required checks: if a release branch is
+pushed twice in quick succession, `cancel-in-progress: true` cancels the first
+real run and it reports no status at all. The context then reads **missing**
+rather than red, and a release PR blocks on a missing required check until
+someone re-runs the workflow manually. That is the correct trade — a missing
+check cannot be mistaken for a pass, whereas the old preseeded `success` could
+— but it means an unexplained "required check missing" on a release PR is
+expected, not a broken workflow.
+
 That metadata gate runs only when the head branch starts with
 `release-please--` **and** the author is `github-actions[bot]` /
 `release-please[bot]`; a human-authored release branch validates nothing and

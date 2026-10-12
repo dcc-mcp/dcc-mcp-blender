@@ -1,22 +1,28 @@
 # CI gate for Release Please PRs
 #
 # Problem:
-# Release Please creates PRs using GITHUB_TOKEN (when PERSONAL_ACCESS_TOKEN
-# is not available). Due to GitHub's security model, PRs created by
-# github-actions[bot] via GITHUB_TOKEN do NOT trigger `pull_request`
-# workflow events. This means the main CI workflow never runs on release
-# PRs, so required status checks are never reported, blocking the merge.
+# A release PR must not carry anything outside the release allowlist — no
+# stray source change should reach `main` by riding along with a version bump.
+# Validating that needs a workflow that is guaranteed to run on a release PR.
+#
+# Note on triggers (verified 2026-10-12): `release.yml` drives release-please
+# with `secrets.PERSONAL_ACCESS_TOKEN`, not `GITHUB_TOKEN`, so release PRs are
+# NOT subject to the "bot PRs do not trigger workflows" restriction — `ci.yml`
+# runs on them for real. An earlier version of this header claimed this file
+# existed to compensate for that restriction; that rationale is obsolete.
 #
 # Solution:
-# Use `pull_request_target` which IS triggered for bot-created PRs. This
-# workflow validates the release PR metadata and the set of changed files,
-# failing the check when a release PR carries anything outside the release
-# allowlist. It does not create commit statuses; the lint contexts on a
-# release PR come from real `ci.yml` runs (see below).
+# Use `pull_request_target` so the gate runs regardless of how the release PR
+# was created or who authored it. This workflow validates the release PR
+# metadata and the set of changed files, failing the check when a release PR
+# carries anything outside the release allowlist. It does not create commit
+# statuses; the lint contexts on a release PR come from real `ci.yml` runs
+# (see below).
 #
-# Once PERSONAL_ACCESS_TOKEN is configured on all repos (preferred fix),
-# the regular CI will also run on release PRs. This workflow acts as a
-# safety net and gate when PAT is not yet available.
+# This workflow's allowlist gate is not redundant with `ci.yml`: `ci.yml` runs
+# tests and lint, but never checks *which files* a release PR is allowed to
+# touch. Keeping both means the allowlist gate survives even if
+# `release.yml` ever falls back to `GITHUB_TOKEN`.
 #
 # NO LINT STATUS PRESEEDING — this workflow reports nothing for `Lint` or
 # `Lint SKILL.md files`.
