@@ -118,8 +118,11 @@ class FakeMeshObject:
         self.data.shape_keys.key_blocks.append(key)
         return key
 
-    def driver_add(self, data_path):
-        fcurve = FakeFcurve(data_path, 0, [])
+    def path_resolve(self, data_path):
+        return [0.0, 0.0, 0.0]
+
+    def driver_add(self, data_path, array_index):
+        fcurve = FakeFcurve(data_path, array_index, [])
         fcurve.driver = FakeDriver()
         return fcurve
 
@@ -330,6 +333,7 @@ def test_constraints_binding_shape_key_driver_and_error_paths():
         bpy,
         object_name="Mesh",
         data_path="location",
+        array_index=2,
         expression="frame / 10",
     )
     assert driver["success"] is True

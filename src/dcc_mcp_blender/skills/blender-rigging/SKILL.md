@@ -76,3 +76,21 @@ requested local channels. Drivers that overwrite channels cause failure.
 An application or readback failure attempts to restore all original channels;
 the error explicitly reports `rolled_back` and `rollback_errors`. Inspect the
 rig before retrying. Use `blender-animation` separately for keyframes.
+
+## Drive one channel
+
+`set_driver` changes exactly one channel. For Euler Z use
+`data_path="rotation_euler", array_index=2, expression="frame / 10"`.
+Array paths require an explicit, in-range index; component paths such as
+`rotation_euler.z` and `rotation_euler[2]` are rejected. Omit `array_index`
+for scalar paths such as `empty_display_size` or `["speed"]`. Existing
+drivers on other channels are preserved.
+
+Variables are appended to the selected driver. Names must be unique Python
+identifiers, including against existing variables. Leading underscores and names
+changed by Python Unicode normalization are rejected. Expressions must fit
+within 255 UTF-8 bytes so Blender cannot silently truncate them. Supported variable types
+are `SINGLE_PROP` (requires a numeric scalar `target_data_path`) and
+`TRANSFORMS` (optional `transform_type`, default `LOC_X`). Target objects
+default to the driven object. Invalid paths, indices, expression syntax,
+and variable specifications are rejected before changing the driver.

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import keyword
+import re
+import unicodedata
 from typing import Any, Mapping, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
@@ -410,11 +413,12 @@ def set_driver(
     data_path: str,
     expression: str,
     variables: Sequence[Mapping[str, Any]] | None = None,
+    array_index: int | None = None,
 ) -> dict:
-    """Create or update a driver on an object data path."""
-    if not data_path or not data_path.strip():
+    """Create or update exactly one scalar or explicitly indexed array driver."""
+    if not isinstance(data_path, str) or not data_path.strip():
         return skill_error("Invalid data_path", "data_path must be a non-empty Blender RNA path.")
-    if not expression or not expression.strip():
+    if not isinstance(expression, str) or not expression.strip():
         return skill_error("Invalid expression", "expression must be a non-empty driver expression.")
     try:
         import bpy
@@ -422,32 +426,109 @@ def set_driver(
         obj, error = _object_by_name(bpy, object_name)
         if error:
             return error
-        fcurve = obj.driver_add(data_path)
-        if isinstance(fcurve, list):
-            fcurve = fcurve[0]
-        driver = fcurve.driver
-        driver.expression = expression
-        added_variables = []
+        # Resolve and validate the complete request before driver_add can mutate RNA.
+        if re.search(r"(?:\.[xyzw]|\[\d+\])$", data_path):
+            return skill_error("Invalid data_path", "Pass the array property path and a separate array_index.")
+        value = obj.path_resolve(data_path)
+        is_array = not isinstance(value, (str, bytes, Mapping)) and hasattr(value, "__len__")
+        if is_array:
+            if type(array_index) is not int or not 0 <= array_index < len(value):
+                return skill_error("Invalid array_index", "Array properties require an in-range integer array_index.")
+        elif array_index is not None:
+            return skill_error("Invalid array_index", "Omit array_index for scalar properties.")
+        elif not isinstance(value, (bool, int, float)):
+            return skill_error("Invalid data_path", "The driven property must be numeric.")
+        if is_array and not isinstance(value[array_index], (bool, int, float)):
+            return skill_error("Invalid data_path", "The driven array must be numeric.")
+        # Blender stores this in a 256-byte C buffer, including its terminator.
+        # Reject instead of returning success for a silently truncated expression.
+        if len(expression.encode("utf-8")) > 255:
+            return skill_error("Invalid expression", "expression must fit within 255 UTF-8 bytes.")
+        # Blender, like eval(), accepts leading spaces/tabs; compile() does not.
+        compile(expression.lstrip(" \t"), "<driver expression>", "eval")
+        if variables is not None and (isinstance(variables, (str, bytes)) or not isinstance(variables, Sequence)):
+            return skill_error("Invalid variables", "variables must be an array of variable specs.")
+        prepared = []
+        animation = getattr(obj, "animation_data", None)
+        existing = next(
+            (
+                fc
+                for fc in getattr(animation, "drivers", [])
+                if fc.data_path == data_path and fc.array_index == (array_index or 0)
+            ),
+            None,
+        )
+        names = {v.name for v in existing.driver.variables} if existing else set()
         for spec in variables or []:
-            variable = driver.variables.new()
-            variable.name = str(spec.get("name", "var"))
-            variable.type = str(spec.get("type", "SINGLE_PROP"))
-            target_spec = variable.targets[0]
+            if not isinstance(spec, Mapping):
+                return skill_error("Invalid variable", "Each variable must be an object.")
+            name = spec.get("name", "var")
+            kind = spec.get("type", "SINGLE_PROP")
+            if (
+                not isinstance(name, str)
+                or not name.isidentifier()
+                or name.startswith("_")
+                or keyword.iskeyword(name)
+                or unicodedata.normalize("NFKC", name) != name
+                or name in names
+            ):
+                return skill_error(
+                    "Invalid variable name",
+                    "Variable names must be unique Python identifiers without a leading underscore or Unicode normalization changes.",
+                )
+            if len(name.encode("utf-8")) > 63:
+                return skill_error("Invalid variable name", "Variable names must fit within 63 UTF-8 bytes.")
+            names.add(name)
+            if kind not in {"SINGLE_PROP", "TRANSFORMS"}:
+                return skill_error("Invalid variable type", "Supported types are SINGLE_PROP and TRANSFORMS.")
             target_name = spec.get("target_object") or object_name
             target_obj, error = _object_by_name(bpy, target_name)
             if error:
                 return error
-            target_spec.id = target_obj
-            if spec.get("target_data_path"):
-                target_spec.data_path = str(spec["target_data_path"])
-            if spec.get("transform_type") and hasattr(target_spec, "transform_type"):
-                target_spec.transform_type = str(spec["transform_type"])
+            path = spec.get("target_data_path", "")
+            transform = spec.get("transform_type", "LOC_X")
+            if kind == "SINGLE_PROP":
+                if not isinstance(path, str) or not path:
+                    return skill_error("Invalid variable target", "SINGLE_PROP requires target_data_path.")
+                target_value = target_obj.path_resolve(path)
+                if not isinstance(target_value, (bool, int, float)):
+                    return skill_error("Invalid variable target", "target_data_path must resolve to a numeric scalar.")
+            elif transform not in {
+                "LOC_X",
+                "LOC_Y",
+                "LOC_Z",
+                "ROT_X",
+                "ROT_Y",
+                "ROT_Z",
+                "ROT_W",
+                "SCALE_X",
+                "SCALE_Y",
+                "SCALE_Z",
+                "SCALE_AVG",
+            }:
+                return skill_error("Invalid transform_type", "Use a Blender driver transform channel.")
+            prepared.append((name, kind, target_obj, path, transform))
+        fcurve = obj.driver_add(data_path) if array_index is None else obj.driver_add(data_path, array_index)
+        driver = fcurve.driver
+        driver.expression = expression
+        added_variables = []
+        for name, kind, target_obj, path, transform in prepared:
+            variable = driver.variables.new()
+            variable.name = name
+            variable.type = kind
+            target = variable.targets[0]
+            target.id = target_obj
+            if kind == "SINGLE_PROP":
+                target.data_path = path
+            else:
+                target.transform_type = transform
             added_variables.append(variable.name)
         return skill_success(
             f"Set driver on {object_name}.{data_path}",
             object_name=obj.name,
             data_path=data_path,
             expression=expression,
+            array_index=array_index,
             variable_count=len(added_variables),
             variables=added_variables,
             prompt="Use get_keyframes or Blender's driver editor to inspect the driven channel.",

@@ -464,17 +464,39 @@ tools:
         data_path:
           type: string
           minLength: 1
-          description: RNA data path to drive, such as location.x or scale.
+          description: Property RNA path, such as rotation_euler. Do not embed a component; use array_index.
+        array_index:
+          type: integer
+          minimum: 0
+          description: Required for arrays (X=0, Y=1, Z=2); omit for scalar properties.
         expression:
           type: string
           minLength: 1
-          description: Driver expression.
+          description: Driver expression, at most 255 UTF-8 bytes.
         variables:
           type: array
           items:
             type: object
             additionalProperties: true
-          description: Optional driver variable specs.
+            properties:
+              name:
+                type: string
+                description: Unique Python identifier, at most 63 UTF-8 bytes; no leading underscore or Unicode normalization changes.
+              type:
+                type: string
+                enum: [SINGLE_PROP, TRANSFORMS]
+                default: SINGLE_PROP
+              target_object:
+                type: string
+                description: Existing target object; defaults to the driven object.
+              target_data_path:
+                type: string
+                description: Numeric scalar RNA path, required for SINGLE_PROP.
+              transform_type:
+                type: string
+                enum: [LOC_X, LOC_Y, LOC_Z, ROT_X, ROT_Y, ROT_Z, ROT_W, SCALE_X, SCALE_Y, SCALE_Z, SCALE_AVG]
+                default: LOC_X
+          description: Variables to append; validated before changing the selected driver.
     output_schema: *rig_result_schema
     read_only: false
     destructive: false
