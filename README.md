@@ -426,8 +426,45 @@ print(server.mcp_url)
 dcc_mcp_blender.stop_server()
 ```
 
+### Gateway compatibility
+
+Core 0.20.42 does **not** expose the public remote-listener options used below.
+They were added in [Core PR #2735](https://github.com/dcc-mcp/dcc-mcp-core/pull/2735)
+and are available in [Core 0.20.44](https://github.com/dcc-mcp/dcc-mcp-core/releases/tag/v0.20.44).
+The adapter's supported dependency range also permits older builds without
+this optional API, so check the installed signature before using it.
+
+For an embedded MCP endpoint isolated from shared gateway routing, use this
+fallback, including on Core 0.20.42. Use an environment without
+`DCC_MCP_GATEWAY_REMOTE_HOST` / `DCC_MCP_GATEWAY_REMOTE_PORT` overrides:
+
+```python
+import tempfile
+
+import dcc_mcp_blender
+
+dcc_mcp_blender.stop_server()
+server = dcc_mcp_blender.start_server(
+    port=0,
+    gateway_port=0,
+    enable_gateway_failover=False,
+    registry_dir=tempfile.mkdtemp(prefix="dcc-mcp-blender-private-"),
+)
+print(server.mcp_url)
+```
+
+`gateway_port=0` disables this instance's gateway election and listeners,
+leaving the embedded loopback MCP endpoint on an OS-assigned port. Core still
+registers the instance; the fresh private `registry_dir` prevents a running
+shared gateway from discovering that registration. Connect an MCP client
+directly to `server.mcp_url`; this example does not use CLI gateway routing.
+It does not stop gateways already running elsewhere. Do not simply omit
+`gateway_remote_port=0` while retaining a nonzero gateway port: Core's default
+additional listener can bind to `0.0.0.0`.
+
 To keep a private local gateway while disabling its additional remote listener,
-start a fresh server with explicit options:
+first verify that the installed `DccServerOptions.from_env` signature exposes
+`gateway_remote_port`. Only then start a fresh server with explicit options:
 
 ```python
 server = dcc_mcp_blender.start_server(
