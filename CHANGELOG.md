@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.19](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.18...v0.2.19) (2026-10-13)
+
+
+### Bug Fixes
+
+* **portable-scene:** align out-of-root error wording with caller-declared docs ([3ca1e9e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3ca1e9e88dbecbf279f8ce7c09ee67002596e1d5))
+
 ## [0.2.18](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.17...v0.2.18) (2026-10-11)
 
 
