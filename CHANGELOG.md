@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.20](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.19...v0.2.20) (2026-10-13)
+
+
+### Features
+
+* support JPEG, TIFF and BMP in background render jobs ([082c6ba](https://github.com/dcc-mcp/dcc-mcp-blender/commit/082c6ba8a01c9a272ed635bcd1f47f9ac90fb57e))
+
+
+### Bug Fixes
+
+* **multiview:** budget receipt IO retries without exceeding deadline ([c28bb3a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c28bb3aabc35fad6fa053b4ef2b37950774b1df1))
+* **render:** preserve native denoise and output configuration ([2e10183](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2e10183345ddb2134586bb1b418431d244c05742))
+* resolve modifier input socket direction from a shared helper ([d71a694](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d71a694da8666c6b95dcfd5114c5c838878b5999))
+* select explicit driver channels without mutating sibling axes ([83aaf89](https://github.com/dcc-mcp/dcc-mcp-blender/commit/83aaf89d4152c5e281a1f0d41ab2eaa3ddf0534f))
+
+
+### Documentation
+
+* clarify Core gateway compatibility and isolated fallback ([810695f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/810695f047bfa25ddb65b0a20ad655fa7cfb287b))
+* route Blender production through existing extension reuse gate ([6c6e6d8](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6c6e6d8c08e585e016a23d282855e5498fdb6967))
+
 ## [0.2.19](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.18...v0.2.19) (2026-10-13)
 
 
