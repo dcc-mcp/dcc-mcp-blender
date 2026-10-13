@@ -29,7 +29,7 @@ def _sharing_error(code=5):
     return error
 
 
-def test_writer_recovers_from_sharing_conflict_without_replacing_old_receipt_early(tmp_path, monkeypatch):
+def test_writer_recovers_from_sharing_conflict_without_replacing_old_receipt_early(tmp_path, monkeypatch, retry_clock):
     original = _receipt()
     write_receipt(tmp_path, original)
     updated = _receipt("failed")
@@ -54,7 +54,7 @@ def test_writer_recovers_from_sharing_conflict_without_replacing_old_receipt_ear
 
 @pytest.mark.parametrize("boundary", ["open", "stat"])
 @pytest.mark.parametrize("winerror", [5, 32, 33, None])
-def test_public_poll_recovers_from_transient_windows_read_error(tmp_path, monkeypatch, boundary, winerror):
+def test_public_poll_recovers_from_transient_windows_read_error(tmp_path, monkeypatch, retry_clock, boundary, winerror):
     write_receipt(tmp_path, _receipt())
     original = getattr(Path, boundary)
     conflicted = False
@@ -124,25 +124,82 @@ def test_persistent_conflict_fails_within_short_retry_budget(tmp_path, monkeypat
         assert read_receipt(tmp_path, "test") == original
         assert list(tmp_path.iterdir()) == [tmp_path / "result.json"]
 
-    assert 1 < len(attempts) <= 10
-    assert retry_clock.sleeps
-    assert retry_clock.now <= 0.1
+    assert len(attempts) == receipts._IO_RETRY_ATTEMPTS
+    assert retry_clock.sleeps == [receipts._IO_RETRY_INTERVAL] * (receipts._IO_RETRY_ATTEMPTS - 1)
+    assert retry_clock.now == pytest.approx(0.09)
 
 
-def test_retry_deadline_prevents_another_attempt_after_scheduler_delay(tmp_path, monkeypatch, retry_clock):
+@pytest.mark.parametrize("operation", ["read", "replace"])
+def test_retry_deadline_prevents_another_attempt_after_scheduler_delay(tmp_path, monkeypatch, retry_clock, operation):
     write_receipt(tmp_path, _receipt())
     monkeypatch.setattr(sys, "platform", "win32")
-    attempts = _reject_io(monkeypatch, tmp_path, "read", _sharing_error())
+    error = _sharing_error()
+    attempts = _reject_io(monkeypatch, tmp_path, operation, error)
 
     def delayed_sleep(delay):
-        retry_clock.now += 0.2
+        retry_clock.now += 1.5
 
     monkeypatch.setattr(receipts.time, "sleep", delayed_sleep)
+    with pytest.raises(PermissionError) as raised:
+        if operation == "read":
+            read_receipt(tmp_path, "test")
+        else:
+            write_receipt(tmp_path, _receipt("failed"))
+
+    assert raised.value is error
+    assert len(attempts) == 1
+
+
+@pytest.mark.parametrize("first_attempt_seconds", [0.995, 1.0, 1.5])
+def test_retry_deadline_preserves_last_error_when_attempt_uses_budget(monkeypatch, retry_clock, first_attempt_seconds):
+    monkeypatch.setattr(sys, "platform", "win32")
+    error = _sharing_error()
+    attempts = []
+
+    def fail():
+        attempts.append(retry_clock.now)
+        retry_clock.now += first_attempt_seconds
+        raise error
+
+    with pytest.raises(PermissionError) as raised:
+        receipts._retry_receipt_io(fail, reading=True)
+
+    assert raised.value is error
+    assert len(attempts) == 1
+    if first_attempt_seconds < receipts._IO_RETRY_DEADLINE:
+        assert retry_clock.sleeps == [pytest.approx(receipts._IO_RETRY_DEADLINE - first_attempt_seconds)]
+        assert retry_clock.now == receipts._IO_RETRY_DEADLINE
+    else:
+        assert not retry_clock.sleeps
+
+
+def test_slow_first_attempt_does_not_consume_the_retry_allowance(tmp_path, monkeypatch, retry_clock):
+    """A slow IO attempt must not eat the attempt-count budget.
+
+    The old wall-clock-first budget (0.1s) let a single slow attempt on a loaded
+    CI runner exhaust the allowance, so the transient conflict was surfaced
+    instead of retried.
+    """
+    write_receipt(tmp_path, _receipt())
+    monkeypatch.setattr(sys, "platform", "win32")
+    original = Path.open
+    conflicted = False
+
+    def slow_open_then_succeed(path, *args, **kwargs):
+        nonlocal conflicted
+        if path == tmp_path / "result.json" and not conflicted:
+            conflicted = True
+            # The first attempt alone burns more than the entire legacy 0.1s budget.
+            retry_clock.now += 0.5
+            raise _sharing_error(5)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", slow_open_then_succeed)
     result = load_skill_script("blender-render", "get_render_job").main(job_id="test", job_directory=str(tmp_path))
 
-    assert result["success"] is False
-    assert result["message"] == "Render receipt unavailable"
-    assert len(attempts) == 1
+    assert result["success"], result
+    assert result["context"]["status"] == "unknown"
+    assert result["context"]["last_recorded_status"] == "running"
 
 
 @pytest.mark.parametrize("operation", ["read", "replace"])

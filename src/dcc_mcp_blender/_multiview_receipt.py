@@ -12,14 +12,17 @@ import uuid
 from pathlib import Path
 
 TERMINAL = {"completed", "failed", "cancelled"}
-_IO_RETRY_TIMEOUT = 0.1
+# Fast conflicts are bounded by attempt count. A separate one-second deadline
+# leaves room for slow filesystem calls but prevents starting another retry
+# after the budget expires; it cannot interrupt an operation already in flight.
+_IO_RETRY_DEADLINE = 1.0
 _IO_RETRY_ATTEMPTS = 10
 _IO_RETRY_INTERVAL = 0.01
 
 
 def _retry_receipt_io(operation, *, reading=False):
     """Bound retries for transient Windows sharing/access conflicts only."""
-    deadline = time.monotonic() + _IO_RETRY_TIMEOUT
+    deadline = time.monotonic() + _IO_RETRY_DEADLINE
     for attempt in range(_IO_RETRY_ATTEMPTS):
         try:
             return operation()
