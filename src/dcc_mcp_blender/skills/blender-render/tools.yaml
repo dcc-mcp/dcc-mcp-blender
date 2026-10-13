@@ -327,6 +327,7 @@ tools:
           minLength: 1
         use_gpu:
           type: boolean
+          description: "OpenImageDenoise GPU preference. Requires host support; omitting it leaves the setting unchanged."
         scene_name:
           type: string
           minLength: 1
@@ -374,7 +375,8 @@ tools:
           enum: [RGB, RGBA, BW, RGBA_PREMUL]
         color_depth:
           type: string
-          enum: ["8", "10", "12", "16", "16F", "32F"]
+          enum: ["8", "10", "12", "16", "32", "16F", "32F"]
+          description: Native bit depth; 16F and 32F are aliases for 16 and 32. Must be supported by the final output format.
         exr_codec:
           type: string
           enum: [NONE, PXR24, ZIP, PIZ, RLE, ZIPS, B44, B44A, DWAA, DWAB]

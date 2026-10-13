@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -23,10 +24,10 @@ class FakeCycles:
         self.denoiser = "AUTO"
         self.denoising_input_passes = "RGB"
         self.denoising_prefilter = "ACCURATE"
-        self.use_denoising_use_gpu = False
+        self.denoising_use_gpu = False
         self.use_pass_volume_direct = False
         self.use_pass_volume_indirect = False
-        self.use_pass_denoising = False
+        self.denoising_store_passes = False
 
 
 class FakeViewLayer:
@@ -255,7 +256,7 @@ def test_cycles_passes_route_to_the_cycles_owner():
     result = _call("set_view_layer_passes", _bpy_with_scene(scene), enable=["volume_direct", "denoising"])
     assert result["success"] is True
     assert layer.cycles.use_pass_volume_direct is True
-    assert layer.cycles.use_pass_denoising is True
+    assert layer.cycles.denoising_store_passes is True
 
 
 # ---------------------------------------------------------------------------
@@ -269,18 +270,18 @@ def test_set_render_denoise_enables_and_flips_the_denoising_pass():
 
     assert result["success"] is True
     assert scene.cycles.use_denoising is True
-    assert scene.view_layers.get("ViewLayer").cycles.use_pass_denoising is True
+    assert scene.view_layers.get("ViewLayer").cycles.denoising_store_passes is True
 
 
 def test_set_render_denoise_disables_and_clears_the_denoising_pass():
     scene = _default_scene()
     scene.cycles.use_denoising = True
-    scene.view_layers.get("ViewLayer").cycles.use_pass_denoising = True
+    scene.view_layers.get("ViewLayer").cycles.denoising_store_passes = True
 
     result = _call("set_render_denoise", _bpy_with_scene(scene), enabled=False)
     assert result["success"] is True
     assert scene.cycles.use_denoising is False
-    assert scene.view_layers.get("ViewLayer").cycles.use_pass_denoising is False
+    assert scene.view_layers.get("ViewLayer").cycles.denoising_store_passes is False
 
 
 def test_set_render_denoise_configures_denoiser_and_input_passes():
@@ -298,6 +299,58 @@ def test_set_render_denoise_configures_denoiser_and_input_passes():
     assert scene.cycles.denoiser == "OPENIMAGEDENOISE"
     assert scene.cycles.denoising_input_passes == "RGB_ALBEDO_NORMAL"
     assert scene.cycles.denoising_prefilter == "ACCURATE"
+    assert scene.cycles.denoising_use_gpu is False
+    assert result["context"]["applied"]["denoising_use_gpu"] is False
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_set_render_denoise_uses_native_gpu_property(use_gpu):
+    scene = _default_scene()
+    scene.cycles.denoising_use_gpu = not use_gpu
+
+    result = _call("set_render_denoise", _bpy_with_scene(scene), use_gpu=use_gpu)
+
+    assert result["success"] is True
+    assert scene.cycles.denoising_use_gpu is use_gpu
+    assert result["context"]["applied"] == {"denoising_use_gpu": use_gpu}
+    assert not hasattr(scene.cycles, "use_denoising_use_gpu")
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_missing_denoise_gpu_property_leaves_batch_unapplied(use_gpu):
+    scene = _default_scene()
+    del scene.cycles.denoising_use_gpu
+
+    result = _call(
+        "set_render_denoise",
+        _bpy_with_scene(scene),
+        enabled=True,
+        denoiser="OPENIMAGEDENOISE",
+        input_passes="RGB_ALBEDO_NORMAL",
+        prefilter="FAST",
+        use_gpu=use_gpu,
+    )
+
+    assert result["success"] is False
+    assert "scene.cycles.denoising_use_gpu" in result["error"]
+    assert "Nothing was changed" in result["error"]
+    assert scene.cycles.use_denoising is False
+    assert scene.cycles.denoiser == "AUTO"
+    assert scene.cycles.denoising_input_passes == "RGB"
+    assert scene.cycles.denoising_prefilter == "ACCURATE"
+    assert scene.view_layers.get("ViewLayer").cycles.denoising_store_passes is False
+
+
+def test_denoise_gpu_property_is_not_required_when_omitted():
+    scene = _default_scene()
+    del scene.cycles.denoising_use_gpu
+
+    result = _call("set_render_denoise", _bpy_with_scene(scene), enabled=True, denoiser="OPENIMAGEDENOISE")
+
+    assert result["success"] is True
+    assert scene.cycles.use_denoising is True
+    assert scene.cycles.denoiser == "OPENIMAGEDENOISE"
+    assert "denoising_use_gpu" not in result["context"]["applied"]
 
 
 def test_set_render_denoise_rejects_unknown_denoiser():
@@ -748,3 +801,66 @@ def test_use_preview_is_preflighted_and_names_image_settings():
     assert result["success"] is False
     assert "image_settings.use_preview" in result["error"]
     assert scene.render.filepath == "//render", "nothing may be written when preflight fails"
+
+
+@pytest.mark.parametrize("depth,expected", [("16F", "16"), ("32F", "32"), ("32", "32")])
+def test_output_depth_uses_native_enum_values(depth, expected):
+    scene = _default_scene()
+
+    result = _call("set_render_output", _bpy_with_scene(scene), file_format="OPEN_EXR", color_depth=depth)
+
+    assert result["success"] is True
+    assert scene.render.image_settings.color_depth == expected
+    assert result["context"]["applied"]["color_depth"] == expected
+
+
+def test_rejected_output_depth_rolls_back_the_whole_batch():
+    class StrictImageSettings(FakeImageSettings):
+        def __setattr__(self, name, value):
+            if name == "color_depth" and value == "32":
+                raise TypeError("depth unavailable")
+            super().__setattr__(name, value)
+
+    scene = _default_scene()
+    scene.render.image_settings = StrictImageSettings()
+
+    result = _call(
+        "set_render_output", _bpy_with_scene(scene), filepath="//changed", multilayer=True, color_depth="32F"
+    )
+
+    assert result["success"] is False
+    assert scene.render.filepath == "//render"
+    assert scene.render.image_settings.file_format == "PNG"
+    assert scene.render.image_settings.color_depth == "8"
+    assert scene.render.use_single_layer is True
+
+
+def test_rejected_denoise_enum_rolls_back_the_whole_batch():
+    class StrictCycles(FakeCycles):
+        def __setattr__(self, name, value):
+            if name == "denoising_prefilter" and value == "INVALID":
+                raise TypeError("prefilter unavailable")
+            super().__setattr__(name, value)
+
+    scene = _default_scene()
+    scene.cycles = StrictCycles()
+
+    result = _call(
+        "set_render_denoise",
+        _bpy_with_scene(scene),
+        enabled=True,
+        input_passes="RGB_ALBEDO_NORMAL",
+        prefilter="INVALID",
+    )
+
+    assert result["success"] is False
+    assert scene.cycles.use_denoising is False
+    assert scene.cycles.denoising_input_passes == "RGB"
+    assert scene.cycles.denoising_prefilter == "ACCURATE"
+    assert scene.view_layers.get("ViewLayer").cycles.denoising_store_passes is False
+
+
+def test_depth_schema_includes_native_and_alias_values():
+    doc = yaml.safe_load(Path(RENDER_PATH).read_text(encoding="utf-8"))
+    tool = next(tool for tool in doc["tools"] if tool["name"] == "set_render_output")
+    assert {"16", "32", "16F", "32F"}.issubset(tool["input_schema"]["properties"]["color_depth"]["enum"])

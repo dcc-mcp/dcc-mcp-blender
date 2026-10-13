@@ -34,7 +34,7 @@ _VIEW_LAYER_PASSES = {
     "cryptomatte_asset": ("layer", "use_pass_cryptomatte_asset"),
     "volume_direct": ("cycles", "use_pass_volume_direct"),
     "volume_indirect": ("cycles", "use_pass_volume_indirect"),
-    "denoising": ("cycles", "use_pass_denoising"),
+    "denoising": ("cycles", "denoising_store_passes"),
 }
 
 

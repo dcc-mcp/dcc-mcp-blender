@@ -118,9 +118,20 @@ rendering a sub-rectangle:
 `set_view_layer_passes` complements `blender-scene-assembly`'s
 `configure_view_layer`, which can only switch passes **on**. Use this one when a
 pass has to be turned off again. Passes listed in neither `enable` nor `disable`
-keep their current state.
+keep their current state. The `denoising` pass uses the native Cycles
+`denoising_store_passes` flag, shared with scene-assembly configuration.
 
-Denoise settings are Cycles-only; EEVEE ignores them.
+Denoise settings are Cycles-only; EEVEE ignores them. `set_render_denoise.use_gpu`
+sets the OpenImageDenoise GPU preference (`scene.cycles.denoising_use_gpu`);
+actual GPU acceleration requires a compatible device. Omit the option to leave
+it unchanged. If a requested property is absent from the host, the tool rejects
+the whole batch before changing any denoise settings. Host-rejected enum values
+also restore the previous denoise settings.
+
+`color_depth` accepts native values such as `16` and `32`; `16F` and `32F` are
+aliases for those values. The final format (including a `multilayer` override)
+is selected before applying format-dependent color settings. If the host
+rejects a value or format, previous output settings are restored.
 
 Multi-layer EXR is a property of the **container format**, so
 `multilayer: true` switches `image_settings.file_format` to

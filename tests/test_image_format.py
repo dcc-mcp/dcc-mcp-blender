@@ -132,3 +132,31 @@ def test_format_expression_embeds_data_literal_not_executable_code(monkeypatch):
     requested = "PNG'; raise RuntimeError('injected') #"
     exec(worker_format_expression(requested), {})
     assert settings.file_format == requested.upper()
+
+
+def test_rejected_output_restores_media_before_dependent_format():
+    class StrictMediaImageSettings(MediaImageSettings):
+        def __setattr__(self, name, value):
+            if name == "color_depth" and value == "32":
+                raise TypeError("depth unavailable")
+            super().__setattr__(name, value)
+
+    scene = _default_scene()
+    settings = scene.render.image_settings = StrictMediaImageSettings()
+    set_image_format(settings, "OPEN_EXR_MULTILAYER")
+    settings.events.clear()
+
+    result = load_and_call(
+        "blender-render/scripts/set_render_output.py",
+        _bpy_with_scene(scene),
+        filepath="//changed",
+        file_format="PNG",
+        color_depth="32F",
+    )
+
+    assert result["success"] is False
+    assert settings.media_type == "MULTI_LAYER_IMAGE"
+    assert settings.file_format == "OPEN_EXR_MULTILAYER"
+    assert settings.color_depth == "8"
+    assert scene.render.filepath == "//render"
+    assert settings.events[-1] == ("media_type", "MULTI_LAYER_IMAGE")
