@@ -10,8 +10,8 @@ metadata:
     stage: render
     version: "1.0.1"
     tags: [blender, render, viewport, camera, AOV, denoise, exr, border]
-    search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range"
-    search-aliases: [render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status]
+    search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range, fractional frame rate, fps, timebase"
+    search-aliases: [render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status, fractional frame rate, fps, timebase]
     intent: "Configure render settings, render scenes, submit/query/cancel isolated animation jobs, and capture viewport images."
     recall-context:
       app_type: blender
@@ -99,6 +99,18 @@ and are not symlinks: the directory is caller-supplied, and a receipt there
 proves nothing about the files beside it.
 
 ## Output configuration
+
+`set_render_settings` accepts native integer `fps` and optional `fps_base`;
+the effective frame rate is `fps / fps_base`. For approximately 23.976 fps,
+use `fps: 24` with `fps_base: 1.001`. Both this tool and `get_render_info`
+return the actual native `fps`, `fps_base`, and derived `effective_fps`, including
+Blender's floating-point storage precision. Use the reported effective rate
+when aligning frames with timestamps. Each omitted value is preserved, so
+setting `fps` alone does not reset an existing fractional base; pass
+`fps_base: 1` explicitly for an integer rate. Both inputs are checked against
+native RNA limits before any settings change (normally `fps` 1–32767 and
+`fps_base` approximately 0.00001–1000000). Boolean, non-finite, non-positive,
+out-of-range, and non-integer `fps` inputs are rejected.
 
 Typed tools for the settings that decide what ends up on disk. Reach for them
 instead of raw scripting when the task is about AOVs, denoise, file format, or

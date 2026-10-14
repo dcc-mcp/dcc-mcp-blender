@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._frame_rate import frame_rate_info
+
 
 def get_render_info() -> dict:
     """Return the current render settings.
@@ -18,6 +20,7 @@ def get_render_info() -> dict:
         render = scene.render
 
         info = {
+            **frame_rate_info(render),
             "engine": render.engine,
             "resolution_x": render.resolution_x,
             "resolution_y": render.resolution_y,

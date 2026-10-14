@@ -189,3 +189,55 @@ tools:
     open_world_hint: false
   call_examples:
   - arguments: {}
+- name: set_camera_keyframe
+  description: Keyframe the current lens or ortho_scale camera-data value without moving the playhead
+  source_file: scripts/set_camera_keyframe.py
+  execution: sync
+  affinity: main
+  read_only: false
+  destructive: false
+  idempotent: false
+  enforce_thread_affinity: true
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        minLength: 1
+        description: Exact Blender camera object name; shared camera data affects all its users.
+      frame:
+        type: integer
+        minimum: -1048574
+        maximum: 1048574
+      data_path:
+        type: string
+        enum: [lens, ortho_scale]
+        default: lens
+      interpolation:
+        type: string
+        enum: [LINEAR, BEZIER, CONSTANT]
+        default: LINEAR
+    required: [name, frame]
+  output_schema:
+    type: object
+    required: [success]
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+    additionalProperties: true
+  annotations:
+    read_only_hint: false
+    destructive_hint: false
+    idempotent_hint: false
+    open_world_hint: false
+  call_examples:
+  - arguments:
+      name: ReviewCamera
+      frame: 48
+      data_path: lens
+      interpolation: LINEAR

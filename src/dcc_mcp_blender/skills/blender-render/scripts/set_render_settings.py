@@ -6,6 +6,7 @@ from typing import Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._frame_rate import frame_rate_info, validate_frame_rate
 from dcc_mcp_blender._image_format import set_image_format
 
 VALID_ENGINES = {"CYCLES", "BLENDER_EEVEE", "BLENDER_EEVEE_NEXT", "BLENDER_WORKBENCH"}
@@ -20,6 +21,7 @@ def set_render_settings(
     samples: Optional[int] = None,
     output_path: Optional[str] = None,
     file_format: Optional[str] = None,
+    fps_base: Optional[float] = None,
 ) -> dict:
     """Configure render settings for the current scene.
 
@@ -28,6 +30,9 @@ def set_render_settings(
         resolution_x: Horizontal resolution in pixels.
         resolution_y: Vertical resolution in pixels.
         resolution_percentage: Render resolution percentage (1-100).
+        fps: Native integer frame-rate numerator (1-32767).
+        fps_base: Native frame-rate denominator; effective rate is fps / fps_base.
+            Omit to preserve the current base, including fractional frame rates.
         samples: Number of render samples (Cycles or EEVEE).
         output_path: Output file path for renders.
         file_format: Output file format, e.g. PNG, JPEG, EXR.
@@ -40,6 +45,11 @@ def set_render_settings(
 
         scene = bpy.context.scene
         render = scene.render
+
+        try:
+            validate_frame_rate(render, fps, fps_base)
+        except ValueError as exc:
+            return skill_error("Invalid frame rate", str(exc))
 
         if engine:
             engine = engine.upper()
@@ -57,9 +67,9 @@ def set_render_settings(
         if resolution_percentage is not None:
             render.resolution_percentage = resolution_percentage
         if fps is not None:
-            if fps <= 0:
-                return skill_error("Invalid frame rate", "fps must be greater than zero")
             render.fps = fps
+        if fps_base is not None:
+            render.fps_base = fps_base
         if output_path:
             render.filepath = output_path
         if file_format:
@@ -79,7 +89,7 @@ def set_render_settings(
             resolution_x=render.resolution_x,
             resolution_y=render.resolution_y,
             resolution_percentage=render.resolution_percentage,
-            fps=render.fps,
+            **frame_rate_info(render),
             output_path=render.filepath,
             prompt="Settings applied. Use render_scene to render.",
         )

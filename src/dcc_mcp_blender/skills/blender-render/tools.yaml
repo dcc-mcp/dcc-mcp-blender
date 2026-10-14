@@ -20,7 +20,7 @@ tools:
     destructive: false
     idempotent: false
   - name: set_render_settings
-    description: "Configure render settings (engine, resolution, samples, output path)"
+    description: "Configure render settings (engine, resolution, fractional frame rate, samples, output path)"
     source_file: scripts/set_render_settings.py
     execution: sync
     affinity: main
@@ -48,7 +48,14 @@ tools:
         fps:
           type: integer
           minimum: 1
-          description: Output frame rate.
+          maximum: 32767
+          description: Native frame-rate numerator. Effective frame rate is fps / fps_base; omitting fps preserves it.
+        fps_base:
+          type: number
+          # Native float32 representation of Blender's nominal 0.00001 limit.
+          minimum: 0.000009999999747378752
+          maximum: 1000000
+          description: Native frame-rate denominator, validated against host RNA bounds (approximately 0.00001 to 1000000). Use fps 24 and fps_base 1.001 for approximately 23.976 fps. Omit to preserve the current base.
         samples:
           type: integer
           minimum: 1
@@ -65,7 +72,7 @@ tools:
     destructive: false
     idempotent: true
   - name: get_render_info
-    description: "Return current render settings"
+    description: "Return current render settings, including native fps, fps_base, and effective_fps (fps / fps_base)"
     source_file: scripts/get_render_info.py
     execution: sync
     affinity: main
