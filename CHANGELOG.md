@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.21](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.20...v0.2.21) (2026-10-15)
+
+
+### Features
+
+* add camera optics keyframes and fractional render timebase ([cbe8dbe](https://github.com/dcc-mcp/dcc-mcp-blender/commit/cbe8dbe05e4cae8baf8311e755cf564a46ae9899))
+
 ## [0.2.20](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.19...v0.2.20) (2026-10-13)
 
 
