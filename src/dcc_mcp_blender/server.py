@@ -41,7 +41,7 @@ from . import (
     _semantic_index,
 )
 from .__version__ import __version__
-from .context_snapshot import BlenderContextSnapshotProvider
+from .context_snapshot import BlenderContextSnapshotProvider, collect_gateway_metadata
 from .host import BlenderInlineCallableDispatcher
 
 logger = logging.getLogger(__name__)
@@ -437,6 +437,9 @@ class BlenderMcpServer(DccServerBase):
                     start_fn()
             # Never advertise a GUI server before its native timer is installed.
             super().start(install_atexit_hook=install_atexit_hook)
+            # Report scene / version / display_name once the server is up so the
+            # gateway shows a human-readable label instead of a bare UUID.
+            self.refresh_gateway_metadata()
         except Exception:
             try:
                 self.stop()
@@ -558,6 +561,35 @@ class BlenderMcpServer(DccServerBase):
             self._project_tools = _project_tools.attach_to_server(self)
         except Exception as exc:  # noqa: BLE001
             logger.debug("[%s] project tools registration failed: %s", _DCC_NAME, exc)
+
+    def refresh_gateway_metadata(self) -> bool:
+        """Report the live Blender scene to the gateway registry.
+
+        Calls :func:`~dcc_mcp_blender.context_snapshot.collect_gateway_metadata`
+        and forwards ``scene`` / ``version`` / ``documents`` / ``display_name``
+        to :meth:`dcc_mcp_core.server_base.DccServerBase.update_gateway_metadata`
+        so gateway candidate lists show ``Blender 5.1.1 — shot_light.blend``
+        instead of a bare UUID.
+
+        Returns ``False`` (never raises) when the metadata could not be
+        collected or an older core without ``update_gateway_metadata`` is
+        installed.
+        """
+        try:
+            metadata = collect_gateway_metadata(provider=self._snapshot_provider_impl)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] gateway metadata collection failed: %s", _DCC_NAME, exc)
+            return False
+
+        if not any(metadata.values()):
+            logger.debug("[%s] gateway metadata empty; skipping registry update", _DCC_NAME)
+            return False
+
+        try:
+            return bool(self.update_gateway_metadata(**metadata))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[%s] update_gateway_metadata failed: %s", _DCC_NAME, exc)
+            return False
 
     def _attach_resources(self) -> None:
         try:

@@ -70,6 +70,13 @@ class _FakeServer:
         self.instance_id = "abcd1234"
 
 
+def _fake_snapshot(bpy_module: Any) -> Dict[str, Any]:
+    """Build a snapshot dict from a fake ``bpy`` module using the real provider."""
+    from dcc_mcp_blender.context_snapshot import BlenderContextSnapshotProvider
+
+    return BlenderContextSnapshotProvider(bpy_provider=lambda: bpy_module).collect()
+
+
 # ---------------------------------------------------------------------------
 # Readiness binder
 # ---------------------------------------------------------------------------
@@ -595,6 +602,64 @@ class TestServerWiring:
         manifest = server.build_capability_manifest()
         assert manifest["dcc_type"] == "blender"
         assert "capabilities" in manifest
+
+    def test_refresh_gateway_metadata_forwards_collected_fields(self):
+        """collect_gateway_metadata() output must reach update_gateway_metadata()."""
+        from dcc_mcp_blender.server import BlenderMcpServer
+
+        server = BlenderMcpServer(port=0)
+
+        fake = MagicMock()
+        fake.data.filepath = "/projects/shot/shot_light.blend"
+        fake.app.version_string = "5.1.1"
+        fake.context.scene.name = "Scene"
+        fake.context.selected_objects = []
+
+        server._snapshot_provider_impl = MagicMock(return_value=_fake_snapshot(fake))
+
+        calls = []
+        server.update_gateway_metadata = lambda **kwargs: calls.append(kwargs) or True
+
+        assert server.refresh_gateway_metadata() is True
+        assert len(calls) == 1
+        assert calls[0] == {
+            "scene": "/projects/shot/shot_light.blend",
+            "version": "5.1.1",
+            "documents": ["/projects/shot/shot_light.blend"],
+            "display_name": "Blender 5.1.1 — shot_light.blend",
+        }
+
+    def test_refresh_gateway_metadata_noop_without_blender_state(self):
+        """With no scene and no version there is nothing worth reporting."""
+        from dcc_mcp_blender.server import BlenderMcpServer
+
+        server = BlenderMcpServer(port=0)
+        server._snapshot_provider_impl = MagicMock(return_value={"dcc": "blender", "available": False})
+
+        calls = []
+        server.update_gateway_metadata = lambda **kwargs: calls.append(kwargs) or True
+
+        assert server.refresh_gateway_metadata() is False
+        assert calls == []
+
+    def test_refresh_gateway_metadata_degrades_on_old_core(self):
+        """A core without update_gateway_metadata must not break startup."""
+        from dcc_mcp_blender.server import BlenderMcpServer
+
+        server = BlenderMcpServer(port=0)
+
+        fake = MagicMock()
+        fake.data.filepath = "/projects/shot/shot.blend"
+        fake.app.version_string = "4.0.0"
+        fake.context.selected_objects = []
+        server._snapshot_provider_impl = MagicMock(return_value=_fake_snapshot(fake))
+
+        def _missing(**kwargs):
+            raise AttributeError("update_gateway_metadata")
+
+        server.update_gateway_metadata = _missing
+
+        assert server.refresh_gateway_metadata() is False
 
     def test_public_exports(self):
         import dcc_mcp_blender as b
