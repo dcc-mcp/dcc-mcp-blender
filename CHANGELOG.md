@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.22](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.21...v0.2.22) (2026-10-17)
+
+
+### Features
+
+* add explicit ownership leases for shared Blender servers ([#313](https://github.com/dcc-mcp/dcc-mcp-blender/issues/313)) ([3b34096](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3b340965f851953dd754b93d77e3f99e814a7a9d))
+
 ## [0.2.21](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.20...v0.2.21) (2026-10-15)
 
 
