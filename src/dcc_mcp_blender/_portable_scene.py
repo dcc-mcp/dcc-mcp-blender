@@ -72,6 +72,19 @@ def _clear_browser_directory(params):
     _set_clean_native_string(params, "directory", b"//")
 
 
+def _sequencer_has_content(scene):
+    """An empty editor has no media dependency; unknown layouts fail closed."""
+    editor = scene.sequence_editor
+    if editor is None:
+        return False
+    strips = getattr(editor, "strips", None)
+    if strips is None:
+        strips = getattr(editor, "sequences", None)
+    if strips is None:
+        return True
+    return len(strips) != 0
+
+
 def save_portable_scene_copy(filepath, allowed_output_root, render_path="//renders/hero.png"):
     """Save a new audited copy of a self-contained scene without changing its source."""
     restored = []
@@ -109,7 +122,7 @@ def save_portable_scene_copy(filepath, allowed_output_root, render_path="//rende
                     "Drivers require a separate audit", "Only native keyframes are covered by this export profile"
                 )
         for saved_scene in getattr(bpy.data, "scenes", ()):
-            if saved_scene.sequence_editor is not None:
+            if _sequencer_has_content(saved_scene):
                 return skill_error(
                     "Sequencer requires a separate dependency audit", "Sequence editors are outside this export profile"
                 )

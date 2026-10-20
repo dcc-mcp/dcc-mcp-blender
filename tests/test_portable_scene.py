@@ -215,3 +215,21 @@ def test_racing_destination_never_overwritten(tmp_path, native, monkeypatch):
     assert not mod.save_portable_scene_copy(str(target), str(tmp_path))["success"]
     assert target.read_bytes() == b"other writer"
     assert native[2].filepath == "/workspace/private-task/render.png"
+
+
+@pytest.mark.parametrize("attribute", ["strips", "sequences"])
+def test_empty_sequence_editor_has_no_media_dependency(tmp_path, native, attribute):
+    native[0].data.scenes = [NS(sequence_editor=NS(**{attribute: []}))]
+    target = tmp_path / "public.blend"
+    assert mod.save_portable_scene_copy(str(target), str(tmp_path))["success"]
+    assert target.read_bytes() == native[3].payload
+    assert len(native[3].calls) == 1
+
+
+@pytest.mark.parametrize("attribute", ["strips", "sequences"])
+@pytest.mark.parametrize("strip_type", ["SOUND", "MOVIE", "META"])
+def test_nonempty_sequence_editor_remains_blocked(tmp_path, native, attribute, strip_type):
+    native[0].data.scenes = [NS(sequence_editor=NS(**{attribute: [NS(type=strip_type)]}))]
+    assert not mod.save_portable_scene_copy(str(tmp_path / "public.blend"), str(tmp_path))["success"]
+    assert not list(tmp_path.iterdir())
+    assert not native[3].calls
