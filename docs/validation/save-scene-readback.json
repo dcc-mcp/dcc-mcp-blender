@@ -1,0 +1,66 @@
+{
+  "source_base": "1ba474f314ea2c5c35eeadc70bcd59d15775ea83",
+  "finding_origin": "Code review during a showcase save audit; no observed production save failure or data loss is claimed.",
+  "host": "Blender 4.5.13 LTS Linux background",
+  "core": "0.20.46",
+  "python": "3.11.15",
+  "wheel_sha256": "65a0ce530a5eb0857e50d879761694fd921e22106e5e64ebe8a0a9ced00dba3a",
+  "focused_tests": {
+    "save_contract": 45,
+    "existing_scene": 13,
+    "passed": 58
+  },
+  "native_tests": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "transport": {
+    "method": "actual Streamable HTTP initialize/load_skill/paginated tools/list/tools/call",
+    "typed_call_count": 12,
+    "live_output_schema_validated": true,
+    "bootstrap": "unmodified official blender_bootstrap.py from isolated built wheel"
+  },
+  "verified_method": "finished_operator_matching_scene_path_nonempty_file",
+  "readback": {
+    "objects_after_save_current_and_reopen": [
+      "AddedAfterSave",
+      "SavedMarker"
+    ],
+    "relative_save_success": true,
+    "extensionless_success": true,
+    "failed_destination_success": false,
+    "failed_destination_mutation_applied": null
+  },
+  "fault_injection_only": [
+    "CANCELLED",
+    "RUNNING_MODAL",
+    "mixed FINISHED flags",
+    "FINISHED with missing/empty/wrong target",
+    "readback permission failure",
+    "exception after partial write"
+  ],
+  "native_path_finding": "Initial native run rejected // and resolved plain relative paths using operator-internal rules. Final code resolves destination before the operator and passes an absolute path; rerun passed all nine cases.",
+  "native_cases": [
+    "Save As",
+    "save current after additional changes",
+    "reopen content readback",
+    "ordinary relative and normalized dot paths",
+    "Blender-relative // against pre-save scene",
+    "extensionless filename",
+    "directory symlink",
+    "file symlink",
+    "invalid destination failure"
+  ],
+  "limits": [
+    "FINISHED plus native scene path and nonempty regular file is not a content-integrity guarantee",
+    "No production data-loss incident was observed",
+    "No render or shared-content-host mutation; isolated host terminated and waited",
+    "No deployment, merge or release"
+  ],
+  "full_default_suite": {
+    "passed": 1975,
+    "skipped": 43,
+    "failed": 0
+  }
+}

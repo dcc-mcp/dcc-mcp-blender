@@ -8,13 +8,45 @@ tools:
     destructive: true
     idempotent: false
   - name: save_scene
-    description: "Save the current Blender scene"
+    description: >
+      Save the current scene to an explicit filepath or its existing file.
+      Requires FINISHED, matching native scene filepath and a nonempty regular
+      file before success. Reports actual filepath and verified postcondition;
+      this is not a reopen/content-integrity guarantee. Never retries a failed save.
     source_file: scripts/save_scene.py
     execution: sync
     affinity: main
+    enforce_thread_affinity: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        filepath:
+          type: [string, 'null']
+          minLength: 1
+          description: Optional destination; Blender-relative // paths are supported. Omit to save the current file.
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+        postcondition:
+          type: object
+          additionalProperties: true
+          properties:
+            verified: {type: boolean}
+            method: {type: string}
     read_only: false
     destructive: false
     idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
   - name: open_scene
     description: "Open a Blender scene file (.blend) from disk"
     source_file: scripts/open_scene.py

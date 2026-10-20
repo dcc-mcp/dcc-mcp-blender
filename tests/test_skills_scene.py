@@ -86,15 +86,20 @@ class TestNewScene:
 
 
 class TestSaveScene:
-    def test_save_to_explicit_path(self):
-        bpy = make_mock_bpy()
-        result = load_and_call("blender-scene/scripts/save_scene.py", bpy, filepath="/tmp/test.blend")
-        assert result["success"] is True
-        bpy.ops.wm.save_as_mainfile.assert_called_once_with(filepath="/tmp/test.blend")
+    def test_save_to_explicit_path(self, tmp_path):
+        from tests.test_save_scene_contract import host
 
-    def test_save_existing_file(self):
-        bpy = make_mock_bpy()
-        bpy.data.filepath = "/existing/scene.blend"
+        bpy = host(tmp_path)
+        path = str(tmp_path / "test.blend")
+        result = load_and_call("blender-scene/scripts/save_scene.py", bpy, filepath=path)
+        assert result["success"] is True
+        bpy.ops.wm.save_as_mainfile.assert_called_once_with(filepath=path)
+
+    def test_save_existing_file(self, tmp_path):
+        from tests.test_save_scene_contract import host
+
+        bpy = host(tmp_path)
+        bpy.data.filepath = str(tmp_path / "existing.blend")
         result = load_and_call("blender-scene/scripts/save_scene.py", bpy)
         assert result["success"] is True
         bpy.ops.wm.save_mainfile.assert_called_once()
