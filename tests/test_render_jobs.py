@@ -228,6 +228,78 @@ def test_png_changed_during_validation_is_rejected(monkeypatch, tmp_path, replac
     assert not jobs._is_valid_output(path, output_format="PNG")
 
 
+def test_png_accepts_windows_stat_and_fstat_ctime_difference(monkeypatch, tmp_path):
+    """Windows path stat can expose birth time while fstat exposes change time."""
+    path = tmp_path / "frame.png"
+    _write_valid_png(path)
+    by_path = path.stat()
+    calls = []
+
+    def fstat(_fd):
+        calls.append(_fd)
+        return SimpleNamespace(
+            st_dev=by_path.st_dev,
+            st_ino=by_path.st_ino,
+            st_size=by_path.st_size,
+            st_mtime_ns=by_path.st_mtime_ns,
+            st_ctime_ns=by_path.st_ctime_ns + 123456789,
+        )
+
+    monkeypatch.setattr(jobs.os, "fstat", fstat)
+    assert jobs._is_valid_output(path, output_format="PNG")
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("field", ["st_size", "st_mtime_ns", "st_ctime_ns"])
+def test_png_rejects_fd_metadata_change_without_relying_on_path_ctime(monkeypatch, tmp_path, field):
+    path = tmp_path / "frame.png"
+    _write_valid_png(path)
+    by_path = path.stat()
+    snapshot = {name: getattr(by_path, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")}
+    # Simulate Windows: the path's ctime is unrelated to either fd ctime.
+    snapshot["st_ctime_ns"] += 123456789
+    calls = []
+
+    def fstat(_fd):
+        changed = dict(snapshot)
+        if calls:
+            changed[field] += 1
+        calls.append(_fd)
+        return SimpleNamespace(**changed)
+
+    monkeypatch.setattr(jobs.os, "fstat", fstat)
+    assert not jobs._is_valid_output(path, output_format="PNG")
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("field", ["st_dev", "st_ino", "st_size", "st_mtime_ns"])
+def test_png_rejects_current_path_mismatch_even_when_fd_is_unchanged(monkeypatch, tmp_path, field):
+    path = tmp_path / "frame.png"
+    _write_valid_png(path)
+    original_stat = Path.stat
+    validation_complete = []
+    original_validate = jobs.is_complete_png
+
+    def validate(stream, size):
+        result = original_validate(stream, size)
+        validation_complete.append(True)
+        return result
+
+    def stat(self, *args, **kwargs):
+        actual = original_stat(self, *args, **kwargs)
+        if self != path or not validation_complete:
+            return actual
+        snapshot = {
+            name: getattr(actual, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        }
+        snapshot[field] += 1
+        return SimpleNamespace(**snapshot)
+
+    monkeypatch.setattr(jobs, "is_complete_png", validate)
+    monkeypatch.setattr(Path, "stat", stat)
+    assert not jobs._is_valid_output(path, output_format="PNG")
+
+
 def test_rejects_unsupported_background_render_format(tmp_path):
     # WEBP is a valid set_render_settings format but has no stable leading
     # signature, so a worker cannot verify a resumed frame; it stays rejected.

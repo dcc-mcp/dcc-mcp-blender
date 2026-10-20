@@ -197,12 +197,24 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
             if magic == _PNG_MAGIC:
                 before = os.fstat(stream.fileno())
                 valid = is_complete_png(stream, before.st_size)
-                after = path.stat()
+                after = os.fstat(stream.fileno())
+                current = path.stat()
                 # Detect writes and path replacement during validation. Do not
                 # cache across calls: a later edit needs fresh verification.
-                return valid and all(
-                    getattr(before, field) == getattr(after, field)
-                    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+                # Compare ctime only between fstat calls: on Windows, stat(path)
+                # may report creation time while fstat reports change time
+                # (python/cpython#157671). Identity/size/mtime still have to
+                # match the current path, so replacement is not silently ignored.
+                return (
+                    valid
+                    and all(
+                        getattr(before, field) == getattr(after, field)
+                        for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+                    )
+                    and all(
+                        getattr(after, field) == getattr(current, field)
+                        for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+                    )
                 )
             return stream.read(len(magic)) == magic
     except OSError:
