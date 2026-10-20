@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +15,7 @@ def _write_valid_exr(path):
 
 
 def _write_valid_png(path):
-    path.write_bytes(b"\x89PNG\r\n\x1a\npayload")
+    path.write_bytes((Path(__file__).parent / "fixtures" / "png" / "basn6a08.png").read_bytes())
 
 
 def _write_valid_jpeg(path):
@@ -131,6 +132,100 @@ def test_select_frames_resumes_only_missing_valid_pngs(tmp_path):
     jobs._expected_output_path(pattern, 3, output_format="PNG").write_bytes(b"not a png")
 
     assert jobs._select_frames(pattern, 1, 4, 1, resume_missing=True, output_format="PNG") == [2, 3, 4]
+
+
+@pytest.mark.parametrize("payload", [b"\x89PNG\r\n\x1a\n", b"\x89PNG\r\n\x1a\npayload"])
+def test_png_header_only_is_not_skipped_or_reported_complete(tmp_path, payload):
+    pattern = str(tmp_path / "beauty_####")
+    jobs._expected_output_path(pattern, 1, output_format="PNG").write_bytes(payload)
+    assert not jobs._is_valid_output(tmp_path / "beauty_0001.png", output_format="PNG")
+    assert jobs._select_frames(pattern, 1, 1, 1, resume_missing=True, output_format="PNG") == [1]
+    context = jobs._job_context(
+        dict(
+            job_id="truncated-png",
+            status="running",
+            process=SimpleNamespace(pid=1, poll=lambda: 0),
+            output_format="PNG",
+            output_pattern=pattern,
+            frames=[1],
+            stdout_path="",
+            stderr_path="",
+        )
+    )
+    assert context["status"] == "failed"
+    assert context["written_frame_count"] == 0
+    assert context["missing_frame_sample"] == [1]
+
+
+def test_complete_png_job_validates_each_frame_once_without_bpy(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "bpy", None)
+    pattern = str(tmp_path / "beauty_####")
+    _write_valid_png(jobs._expected_output_path(pattern, 1, output_format="PNG"))
+    original = jobs.is_complete_png
+    calls = []
+
+    def validate(stream, size):
+        calls.append(size)
+        return original(stream, size)
+
+    monkeypatch.setattr(jobs, "is_complete_png", validate)
+    context = jobs._job_context(
+        dict(
+            job_id="valid-png",
+            status="running",
+            process=SimpleNamespace(pid=1, poll=lambda: 0),
+            output_format="PNG",
+            output_pattern=pattern,
+            frames=[1],
+            stdout_path="",
+            stderr_path="",
+        )
+    )
+    assert context["status"] == "completed"
+    assert context["written_frame_count"] == 1
+    assert len(calls) == 1
+
+
+def test_completed_png_job_is_failed_if_output_later_becomes_incomplete(tmp_path):
+    pattern = str(tmp_path / "beauty_####")
+    path = jobs._expected_output_path(pattern, 1, output_format="PNG")
+    _write_valid_png(path)
+    job = dict(
+        job_id="later-truncated-png",
+        status="running",
+        process=SimpleNamespace(pid=1, poll=lambda: 0),
+        output_format="PNG",
+        output_pattern=pattern,
+        frames=[1],
+        stdout_path="",
+        stderr_path="",
+    )
+    assert jobs._job_context(job)["status"] == "completed"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    context = jobs._job_context(job)
+    assert context["status"] == "failed"
+    assert context["written_frame_count"] == 0
+    assert context["missing_frame_sample"] == [1]
+
+
+@pytest.mark.parametrize("replace", [False, True])
+def test_png_changed_during_validation_is_rejected(monkeypatch, tmp_path, replace):
+    path = tmp_path / "frame.png"
+    _write_valid_png(path)
+    original = jobs.is_complete_png
+
+    def validate(stream, size):
+        result = original(stream, size)
+        if replace:
+            other = tmp_path / "replacement.png"
+            other.write_bytes(b"\x89PNG\r\n\x1a\n")
+            other.replace(path)
+        else:
+            path.write_bytes(b"\x89PNG\r\n\x1a\n")
+        return result
+
+    monkeypatch.setattr(jobs, "is_complete_png", validate)
+    assert not jobs._is_valid_output(path, output_format="PNG")
 
 
 def test_rejects_unsupported_background_render_format(tmp_path):

@@ -49,6 +49,22 @@ scene set to any other container is rejected **before** any frame renders
 rather than silently falling back to EXR — call `set_render_settings` or
 `set_render_output` to change it and resubmit.
 
+Animation PNG resume/progress checks validate chunk CRCs, a complete zlib
+stream, and the filtered scanline layout (including Adam7), without calling
+`bpy` from status-query threads. They do not reconstruct pixels, validate all
+ancillary metadata, or establish visual quality. PNG files or inflated image
+data above 1 GiB, more than 1,000,000 total scanlines across all Adam7 passes,
+APNG, and unknown critical chunks fail closed. Each poll
+rechecks each job frame once, with bounded memory but work proportional to
+compressed and inflated image bytes; avoid tight polling of long/high-resolution
+sequences. A tracked PNG frame that becomes invalid after completion makes the
+job failed on its next query. Frames skipped at submission are not subsequently
+tracked by that job.
+
+**Other animation formats still use signature-only checks**, which do not prove
+completeness. Independently decode EXR/JPEG/TIFF/BMP deliverables before trusting
+them; integrity support for those formats remains open in issue #315.
+
 Use `start_multiview_render_job` for a bounded camera list (up to 8) and
 `beauty`/`wire` PNG deliverables. It saves an isolated copy of the current
 scene without changing the live filename, selection, materials, or settings.

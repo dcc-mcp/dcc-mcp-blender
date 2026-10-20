@@ -142,7 +142,7 @@ tools:
         resume_missing:
           type: boolean
           default: true
-          description: "Skip existing files with a valid signature for the selected output format and render only missing frames."
+          description: "Skip existing PNGs only after complete chunk/CRC and bounded decompressed scanline validation (1 GiB file/inflated-data and 1,000,000 total pass-row limits). Other formats currently use signature-only checks, which do not prove completeness. Render missing or rejected frames."
         device:
           type: [string, "null"]
           enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU, null]

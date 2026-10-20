@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Tuple
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 from dcc_mcp_blender._image_format import image_format, worker_format_expression
+from dcc_mcp_blender._png_integrity import is_complete_png
 
 _FRAME_TOKEN = re.compile(r"#+")
 _OPENEXR_MAGIC = b"\x76\x2f\x31\x01"
@@ -30,8 +31,9 @@ _BMP_MAGIC = b"\x42\x4d"
 # Every entry must be a format ``set_render_settings`` accepts (see
 # ``_render_ops._IMAGE_FORMATS``), so a scene the user configured through the
 # typed tool is reproducible by a detached worker. Formats without a stable
-# leading signature are excluded: ``_is_valid_output`` needs the magic bytes to
-# tell a truncated frame from a complete one when resuming.
+# leading signature are excluded. PNG receives complete container/scanline
+# validation. Other formats currently receive signature-only checks, which
+# cannot establish completeness (tracked separately in issue #315).
 _OUTPUT_FORMATS = {
     "OPEN_EXR_MULTILAYER": (".exr", _OPENEXR_MAGIC),
     "OPEN_EXR": (".exr", _OPENEXR_MAGIC),
@@ -192,6 +194,16 @@ def _is_valid_output(path: Path, *, output_format: str = "OPEN_EXR_MULTILAYER") 
         if not path.is_file() or path.stat().st_size < len(magic):
             return False
         with path.open("rb") as stream:
+            if magic == _PNG_MAGIC:
+                before = os.fstat(stream.fileno())
+                valid = is_complete_png(stream, before.st_size)
+                after = path.stat()
+                # Detect writes and path replacement during validation. Do not
+                # cache across calls: a later edit needs fresh verification.
+                return valid and all(
+                    getattr(before, field) == getattr(after, field)
+                    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+                )
             return stream.read(len(magic)) == magic
     except OSError:
         return False
@@ -491,22 +503,7 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     process = job.get("process")
     output_format = str(job.get("output_format", "OPEN_EXR_MULTILAYER")).strip().upper()
     _output_format_spec(output_format)
-    if job["status"] == "running" and process is not None:
-        return_code = process.poll()
-        if return_code is not None:
-            expected = [
-                _expected_output_path(
-                    job["output_pattern"],
-                    frame,
-                    output_format=output_format,
-                )
-                for frame in job["frames"]
-            ]
-            job["status"] = (
-                "completed"
-                if return_code == 0 and all(_is_valid_output(path, output_format=output_format) for path in expected)
-                else "failed"
-            )
+    return_code = process.poll() if job["status"] == "running" and process is not None else None
     written = [
         frame
         for frame in job["frames"]
@@ -522,6 +519,13 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     written_set = set(written)
     missing = [frame for frame in job["frames"] if frame not in written_set]
     expected_count = len(job["frames"])
+    if return_code is not None:
+        # Reuse the checks above; validating every PNG twice would inflate all
+        # scanlines twice on the very poll that observes worker completion.
+        job["status"] = "completed" if return_code == 0 and not missing else "failed"
+    elif output_format == "PNG" and job["status"] == "completed" and missing:
+        # A later edit must not leave "completed" beside missing PNG frames.
+        job["status"] = "failed"
     context = {
         "job_id": job["job_id"],
         "status": job["status"],

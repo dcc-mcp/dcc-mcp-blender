@@ -1,0 +1,3 @@
+Unmodified PNG Suite fixtures from the official libpng repository:
+https://raw.githubusercontent.com/pnggroup/libpng/18ea3e9404a09f42d92f952a4c0d1dd3d688182a/contrib/pngsuite/
+See PNGSUITE-README for provenance and permission notice.
