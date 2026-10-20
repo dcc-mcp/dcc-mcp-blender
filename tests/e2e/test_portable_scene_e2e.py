@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import wave
 from pathlib import Path
 
 import pytest
@@ -223,11 +224,50 @@ def test_native_out_of_profile_dependency_does_not_publish(tmp_path):
     assert bpy.data.texts.get(text.name) is text
 
 
-def test_native_empty_sequence_editor_remains_outside_export_profile(tmp_path):
+def test_native_empty_sequence_editor_copy_reopens_without_dependencies(tmp_path):
     scene = bpy.context.scene
     editor = scene.sequence_editor_create()
     assert editor is not None
     _assert_empty_sequence_editor(editor)
+    pointer = editor.as_pointer()
+    scene.render.filepath = PRIVATE_RENDER
+    target = tmp_path / "empty-sequencer.blend"
+
+    result = load_skill("blender-portable-scene", "save_portable_scene_copy").main(
+        filepath=str(target), allowed_output_root=str(tmp_path)
+    )
+
+    assert result["success"], result
+    assert target.read_bytes().startswith(b"BLENDER")
+    assert b"portable-copy-fixture" not in target.read_bytes()
+    assert not list(tmp_path.glob(".blend-publish-*"))
+    assert scene.render.filepath == PRIVATE_RENDER
+    assert scene.sequence_editor.as_pointer() == pointer
+    _assert_empty_sequence_editor(scene.sequence_editor)
+    assert load_skill("blender-scene", "open_scene").main(filepath=str(target))["success"]
+    assert bpy.context.scene.sequence_editor is not None
+    _assert_empty_sequence_editor(bpy.context.scene.sequence_editor)
+    assert not bpy.data.sounds
+
+
+@pytest.mark.parametrize("strip_type", ["META", "SOUND"])
+def test_native_nonempty_sequence_editor_does_not_publish(tmp_path, strip_type):
+    scene = bpy.context.scene
+    editor = scene.sequence_editor_create()
+    strips = getattr(editor, "strips", None)
+    if strips is None:
+        strips = editor.sequences
+    if strip_type == "META":
+        strip = strips.new_meta(name="UnsupportedMeta", channel=1, frame_start=1)
+    else:
+        audio = tmp_path / "fixture.wav"
+        with wave.open(str(audio), "wb") as stream:
+            stream.setnchannels(1)
+            stream.setsampwidth(2)
+            stream.setframerate(8000)
+            stream.writeframes(b"\x00\x00" * 800)
+        strip = strips.new_sound(name="UnsupportedSound", filepath=str(audio), channel=1, frame_start=1)
+    assert len(strips) == 1 and strip.type == strip_type
     pointer = editor.as_pointer()
     scene.render.filepath = PRIVATE_RENDER
     target = tmp_path / "sequencer-rejected.blend"
@@ -237,8 +277,11 @@ def test_native_empty_sequence_editor_remains_outside_export_profile(tmp_path):
     )
 
     assert result["success"] is False, result
-    assert result["message"] == "Sequencer requires a separate dependency audit"
+    if strip_type == "META":
+        assert result["message"] == "Sequencer requires a separate dependency audit"
+    else:
+        assert result["message"] == "Scene is outside the self-contained export profile"
     assert not target.exists() and not list(tmp_path.glob(".blend-publish-*"))
     assert scene.render.filepath == PRIVATE_RENDER
     assert scene.sequence_editor.as_pointer() == pointer
-    _assert_empty_sequence_editor(scene.sequence_editor)
+    assert len(strips) == 1 and strip.type == strip_type
