@@ -1,0 +1,17 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "id": 1,
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "audio-isolation-real-acceptance",
+        "version": "1"
+      }
+    }
+  },
+  "status": 200,
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"logging\":{},\"prompts\":{},\"resources\":{\"subscribe\":true,\"listChanged\":true},\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"dcc-mcp-blender\",\"version\":\"0.2.22\"},\"instructions\":\"Direct DCC workflow: search_tools(query) or search_skills(query), inspect get_skill_info(skill_name), load_skill only when needed, then tools/call. tools/list is paginated; follow nextCursor if you list it.\"}}"
+}

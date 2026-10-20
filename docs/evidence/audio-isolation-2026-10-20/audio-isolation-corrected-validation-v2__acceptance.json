@@ -1,0 +1,262 @@
+{
+  "scope": "Actual corrected PCM only; subjective listening and MP3 still pending",
+  "cases": [
+    {
+      "name": "fixture",
+      "job_id": "43fd7dce157d4579aa11dcad4a959c98",
+      "native_result": {
+        "job_id": "43fd7dce157d4579aa11dcad4a959c98",
+        "status": "completed",
+        "scene_sha256": "8d9e094b3957aa2bc63abc2387778cbba2c155d584d61817344d20737cc741f4",
+        "request_sha256": "2d33cda741d2b76796157b2d5465237e23e9111bcb16feb3c5b35c9c1190a7fd",
+        "output_sha256": "d1d303c42556cff01dfc7f4cdcd3082e8d69c330709e3ecf42dbe6b1e4f985fd",
+        "output_name": "audio-corrected.wav",
+        "native_output_sha256": "0ebe10b3b61dd774b4d2f751b52f6eb017c27c743032272adc9bd9fe781206ae",
+        "correction": {
+          "expected_frames": 960,
+          "native_frames": 1440,
+          "removed_duplicate_frames": 480,
+          "raw_pcm_duplicate_exact": true,
+          "unchanged_prefix_pcm": true,
+          "sample_rate": 48000,
+          "channels": 2,
+          "bits": 24
+        },
+        "frames": 960,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.09155559539794922,
+        "full_decode": true,
+        "content_fidelity": "not established; independent reference/listening acceptance required"
+      },
+      "quality": {
+        "frames": 960,
+        "channels": 2,
+        "sample_rate": 48000,
+        "full_decode": true,
+        "finite": true,
+        "peak": 0.09155559539794922,
+        "clipped_samples": 0,
+        "nrmse": 3.0565812751452466e-05,
+        "segments": [
+          {
+            "asset": "fixture",
+            "start_sample": 0,
+            "samples": 960,
+            "nrmse": 3.0565812751452466e-05,
+            "first_256_max_abs_error": 2.86102294921875e-06,
+            "first_256_expected_peak": 0.091522216796875,
+            "max_abs_error": 2.86102294921875e-06
+          }
+        ],
+        "numerical_passed": true,
+        "ideal_continuous_edit_nrmse": null,
+        "fade_model": "Blender4.5.13 frame-sampled volume with previous-to-current 480-sample block ramp; independent ideal slope error also reported",
+        "subjective_listening": "not performed",
+        "comparison": "fixed source PCM + documented edits; no delay search, gain fitting, resampling or threshold relaxation",
+        "output_sha256": "d1d303c42556cff01dfc7f4cdcd3082e8d69c330709e3ecf42dbe6b1e4f985fd"
+      }
+    },
+    {
+      "name": "trail",
+      "job_id": "6d371716ec5547b09cdfcf4d1fdcee81",
+      "native_result": {
+        "job_id": "6d371716ec5547b09cdfcf4d1fdcee81",
+        "status": "completed",
+        "scene_sha256": "e3b9c95a63adae16a1eea485116d39fac4f1c6cd8e414c87db1bd27758bff7fb",
+        "request_sha256": "ac78281c5ff9fee1a669d261f6daf07d09e846fcf72c9468859e737b4f2175bf",
+        "output_sha256": "a30e991b3153953cdd0f92348ec55a8c4a8f5c4cda558a10587d55417c31cc8d",
+        "output_name": "audio-corrected.wav",
+        "native_output_sha256": "5d8696c592da6e6d73518f9f5ebe752cf96cb1ca0e43345fac54cbb78333279d",
+        "correction": {
+          "expected_frames": 1372800,
+          "native_frames": 1373280,
+          "removed_duplicate_frames": 480,
+          "raw_pcm_duplicate_exact": true,
+          "unchanged_prefix_pcm": true,
+          "sample_rate": 48000,
+          "channels": 2,
+          "bits": 24
+        },
+        "frames": 1372800,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.2262742519378662,
+        "full_decode": true,
+        "content_fidelity": "not established; independent reference/listening acceptance required"
+      },
+      "quality": {
+        "frames": 1372800,
+        "channels": 2,
+        "sample_rate": 48000,
+        "full_decode": true,
+        "finite": true,
+        "peak": 0.2262742519378662,
+        "clipped_samples": 0,
+        "nrmse": 1.1818670273202744e-06,
+        "segments": [
+          {
+            "asset": "footstep_stone_01",
+            "start_sample": 0,
+            "samples": 13920,
+            "nrmse": 3.0960033559624595e-06,
+            "first_256_max_abs_error": 1.1644098981550277e-07,
+            "first_256_expected_peak": 0.2262742070689219,
+            "max_abs_error": 1.1914877721329016e-07
+          },
+          {
+            "asset": "footstep_stone_02",
+            "start_sample": 29760,
+            "samples": 16320,
+            "nrmse": 3.560363832985354e-06,
+            "first_256_max_abs_error": 1.1795825154495287e-07,
+            "first_256_expected_peak": 0.13433161568567978,
+            "max_abs_error": 1.1919156589750707e-07
+          },
+          {
+            "asset": "footstep_stone_03",
+            "start_sample": 62400,
+            "samples": 14880,
+            "nrmse": 3.471941355919562e-06,
+            "first_256_max_abs_error": 1.185873331806947e-07,
+            "first_256_expected_peak": 0.15268437657605155,
+            "max_abs_error": 1.191561185909587e-07
+          },
+          {
+            "asset": "footstep_stone_04",
+            "start_sample": 93120,
+            "samples": 17760,
+            "nrmse": 2.578384740226203e-06,
+            "first_256_max_abs_error": 1.1768646776197378e-07,
+            "first_256_expected_peak": 0.2262742070689219,
+            "max_abs_error": 1.1915092745307457e-07
+          },
+          {
+            "asset": "footstep_stone_05",
+            "start_sample": 126720,
+            "samples": 15840,
+            "nrmse": 2.6259368286380296e-06,
+            "first_256_max_abs_error": 1.1725695241381312e-07,
+            "first_256_expected_peak": 0.2262742070689219,
+            "max_abs_error": 1.191154801465262e-07
+          },
+          {
+            "asset": "footstep_stone_06",
+            "start_sample": 158880,
+            "samples": 19680,
+            "nrmse": 2.8330150515384884e-06,
+            "first_256_max_abs_error": 1.1798294765122397e-07,
+            "first_256_expected_peak": 0.2262742070689219,
+            "max_abs_error": 1.1908826487579908e-07
+          },
+          {
+            "asset": "footstep_grass_01",
+            "start_sample": 194400,
+            "samples": 13440,
+            "nrmse": 2.469387417979805e-06,
+            "first_256_max_abs_error": 1.1625057243225267e-07,
+            "first_256_expected_peak": 0.0994606619269184,
+            "max_abs_error": 1.1917903338203571e-07
+          },
+          {
+            "asset": "footstep_grass_02",
+            "start_sample": 223680,
+            "samples": 16800,
+            "nrmse": 2.6922158376342125e-06,
+            "first_256_max_abs_error": 1.1774415531462523e-07,
+            "first_256_expected_peak": 0.09995883767631716,
+            "max_abs_error": 1.1919156589750707e-07
+          },
+          {
+            "asset": "footstep_grass_03",
+            "start_sample": 256800,
+            "samples": 15360,
+            "nrmse": 2.226836318811217e-06,
+            "first_256_max_abs_error": 1.1800512459675242e-07,
+            "first_256_expected_peak": 0.15094624054346228,
+            "max_abs_error": 1.1910598852905971e-07
+          },
+          {
+            "asset": "footstep_grass_04",
+            "start_sample": 288000,
+            "samples": 18240,
+            "nrmse": 2.424027424704352e-06,
+            "first_256_max_abs_error": 1.1785621010368397e-07,
+            "first_256_expected_peak": 0.15757442252767953,
+            "max_abs_error": 1.1913839493768452e-07
+          },
+          {
+            "asset": "footstep_grass_05",
+            "start_sample": 322080,
+            "samples": 14400,
+            "nrmse": 2.461020463607101e-06,
+            "first_256_max_abs_error": 1.1672984891880622e-07,
+            "first_256_expected_peak": 0.13393703688992079,
+            "max_abs_error": 1.1914877721329016e-07
+          },
+          {
+            "asset": "footstep_grass_06",
+            "start_sample": 352800,
+            "samples": 20160,
+            "nrmse": 2.6837709153402625e-06,
+            "first_256_max_abs_error": 1.1749543913155969e-07,
+            "first_256_expected_peak": 0.15979395986396022,
+            "max_abs_error": 1.1917903338203571e-07
+          },
+          {
+            "asset": "environment_soft_wind_foliage_loop",
+            "start_sample": 388800,
+            "samples": 384000,
+            "nrmse": 3.1919265637035344e-07,
+            "first_256_max_abs_error": 0.0,
+            "first_256_expected_peak": 0.0,
+            "max_abs_error": 1.2035171190888372e-07
+          },
+          {
+            "asset": "music_sparse_tonal_loop",
+            "start_sample": 788640,
+            "samples": 384000,
+            "nrmse": 1.8311735802266595e-07,
+            "first_256_max_abs_error": 0.0,
+            "first_256_expected_peak": 0.0,
+            "max_abs_error": 1.1965632438701301e-07
+          },
+          {
+            "asset": "interaction_confirm",
+            "start_sample": 1188960,
+            "samples": 26400,
+            "nrmse": 1.3508460381994445e-06,
+            "first_256_max_abs_error": 1.185039060520453e-07,
+            "first_256_expected_peak": 0.03622108590395935,
+            "max_abs_error": 1.1909560625341341e-07
+          },
+          {
+            "asset": "interaction_discovery",
+            "start_sample": 1231200,
+            "samples": 79200,
+            "nrmse": 1.7629598827787632e-06,
+            "first_256_max_abs_error": 1.1885533821986288e-07,
+            "first_256_expected_peak": 0.03459784218041078,
+            "max_abs_error": 1.1917903338203571e-07
+          },
+          {
+            "asset": "interaction_soft_impact",
+            "start_sample": 1326240,
+            "samples": 29760,
+            "nrmse": 2.3565933840237548e-06,
+            "first_256_max_abs_error": 1.1818147047143599e-07,
+            "first_256_expected_peak": 0.17542319140355805,
+            "max_abs_error": 1.1919156589750707e-07
+          }
+        ],
+        "numerical_passed": true,
+        "ideal_continuous_edit_nrmse": 0.017688660125519336,
+        "fade_model": "Blender4.5.13 frame-sampled volume with previous-to-current 480-sample block ramp; independent ideal slope error also reported",
+        "subjective_listening": "not performed",
+        "comparison": "fixed source PCM + documented edits; no delay search, gain fitting, resampling or threshold relaxation",
+        "output_sha256": "a30e991b3153953cdd0f92348ec55a8c4a8f5c4cda558a10587d55417c31cc8d"
+      }
+    }
+  ],
+  "passed": true
+}

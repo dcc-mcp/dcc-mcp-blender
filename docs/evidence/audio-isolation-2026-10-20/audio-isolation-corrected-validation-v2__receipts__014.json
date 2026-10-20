@@ -1,0 +1,13 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": 14,
+    "params": {
+      "name": "blender_scene__list_objects",
+      "arguments": {}
+    }
+  },
+  "status": 200,
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":14,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"message\\\":\\\"Found 3 objects\\\",\\\"error\\\":null,\\\"prompt\\\":\\\"Use get_scene_info for a hierarchical view, or manipulate objects with the blender-objects skill.\\\",\\\"context\\\":{\\\"objects\\\":[{\\\"name\\\":\\\"Camera\\\",\\\"type\\\":\\\"CAMERA\\\",\\\"location\\\":[7.358891487121582,-6.925790786743164,4.958309173583984],\\\"visible\\\":true},{\\\"name\\\":\\\"Cube\\\",\\\"type\\\":\\\"MESH\\\",\\\"location\\\":[0.0,0.0,0.0],\\\"visible\\\":true},{\\\"name\\\":\\\"Light\\\",\\\"type\\\":\\\"LIGHT\\\",\\\"location\\\":[4.076245307922363,1.0054539442062378,5.903861999511719],\\\"visible\\\":true}],\\\"count\\\":3}}\"}],\"structuredContent\":{\"success\":true,\"message\":\"Found 3 objects\",\"error\":null,\"prompt\":\"Use get_scene_info for a hierarchical view, or manipulate objects with the blender-objects skill.\",\"context\":{\"objects\":[{\"name\":\"Camera\",\"type\":\"CAMERA\",\"location\":[7.358891487121582,-6.925790786743164,4.958309173583984],\"visible\":true},{\"name\":\"Cube\",\"type\":\"MESH\",\"location\":[0.0,0.0,0.0],\"visible\":true},{\"name\":\"Light\",\"type\":\"LIGHT\",\"location\":[4.076245307922363,1.0054539442062378,5.903861999511719],\"visible\":true}],\"count\":3}},\"isError\":false}}"
+}

@@ -1,0 +1,170 @@
+{
+  "redaction": "Machine directory prefixes replaced consistently; not cryptographic execution attestation. Original receipt hashes retained.",
+  "files": [
+    {
+      "file": "audio-isolation-corrected-validation-v2__acceptance.json",
+      "original_sha256": "00cc6ff2a718412f3e33919dc2a61d327fae038b8274425c909cb341ae2832da",
+      "sanitized_sha256": "00cc6ff2a718412f3e33919dc2a61d327fae038b8274425c909cb341ae2832da"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__parent-exit.json",
+      "original_sha256": "f97022d8838655b3122dc8d29ab1bf026a524257a2c96e1a4f2e24b48a568895",
+      "sanitized_sha256": "f97022d8838655b3122dc8d29ab1bf026a524257a2c96e1a4f2e24b48a568895"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__candidate-freeze.json",
+      "original_sha256": "9b83db9a0b54f1c882888f972cf3838fca9b59dc05347f5016858603285f6d90",
+      "sanitized_sha256": "9b83db9a0b54f1c882888f972cf3838fca9b59dc05347f5016858603285f6d90"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__artifacts__frames-1-accuracy-240__status.json",
+      "original_sha256": "bf703b14deb02f3df4c7817774c6f506a5b96bb204f7c890161c9e1a76357610",
+      "sanitized_sha256": "f410a9911cddbbdc88dfcc9cf9ae103a25f9b84b48116b07d70240a1d18e09df"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__parent-exit.json",
+      "original_sha256": "8fdecd6017507c6611f9e5ea77a9f7f0b432c37e61e3e273e4e640d0fde51137",
+      "sanitized_sha256": "8fdecd6017507c6611f9e5ea77a9f7f0b432c37e61e3e273e4e640d0fde51137"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__001.json",
+      "original_sha256": "1e57635c0a63be7516ba012ea39b4397451e6d50c6e73e23902be5093416a394",
+      "sanitized_sha256": "1e57635c0a63be7516ba012ea39b4397451e6d50c6e73e23902be5093416a394"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__002.json",
+      "original_sha256": "ba206d5f8e5b9706143884c5d5f46db35f0d106a7eeab95c9c89711c3e45764e",
+      "sanitized_sha256": "ba206d5f8e5b9706143884c5d5f46db35f0d106a7eeab95c9c89711c3e45764e"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__003.json",
+      "original_sha256": "61b1282fc8102c8691c600c79e68eb8fd99201cc5c5190b02bb2c469ac23849b",
+      "sanitized_sha256": "61b1282fc8102c8691c600c79e68eb8fd99201cc5c5190b02bb2c469ac23849b"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__004.json",
+      "original_sha256": "4cb22977fda0ab3b5eb94398c143bb690d48e8652717e4614f0d2e9f8935612f",
+      "sanitized_sha256": "4cb22977fda0ab3b5eb94398c143bb690d48e8652717e4614f0d2e9f8935612f"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__005.json",
+      "original_sha256": "878de80b138913b0aa10dd040e9fa7bb51b286a7758b89551703c05399f1d6f9",
+      "sanitized_sha256": "878de80b138913b0aa10dd040e9fa7bb51b286a7758b89551703c05399f1d6f9"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__006.json",
+      "original_sha256": "0b042eca1f9cb937ab188a209b8411009063371155bd3621ba158569530ed542",
+      "sanitized_sha256": "0b042eca1f9cb937ab188a209b8411009063371155bd3621ba158569530ed542"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__007.json",
+      "original_sha256": "1d9fa1ef3ee6d8d5a31d836d1f9b64767dabd127ad72db508ed27fdf18cd7efe",
+      "sanitized_sha256": "1d9fa1ef3ee6d8d5a31d836d1f9b64767dabd127ad72db508ed27fdf18cd7efe"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__008.json",
+      "original_sha256": "731e644bf8c4ba6cddbb420044f73c3ed9b7c4e36b84161ab566b2dff650c0b0",
+      "sanitized_sha256": "170b9ed579d35d4f68563dc9d3bff2237905e8e7b9af0030adb396874f0d44e3"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__009.json",
+      "original_sha256": "f22aeb61e5222adf0ee8396dc7af7d85a1b2090ff8d3568ad09045d3d5fb117f",
+      "sanitized_sha256": "95847e63da8b91ef6428409e75866e13aa9c37c3d114543f35ea1c3cff99637d"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__010.json",
+      "original_sha256": "aa7fd07e9df364c62aa079950fec58d88dd94d51eceff592daf88966216f49e0",
+      "sanitized_sha256": "11cb9e8937682f768e9cf13acc797438b0b3b50bbb3119fd743642420cc3baa2"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__011.json",
+      "original_sha256": "2a945ec1c9d1c44153a21a70808ff36e3277524239c28dd55d65a26cb53b85c7",
+      "sanitized_sha256": "fcafc02346d957d06a2601035b1e648496f8fc046f63d682cdcaad7e3e458e9c"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__012.json",
+      "original_sha256": "a815fdf10fa72b085cc95b1b4e136c0e638dee61a3f7445ad74cd83575ff9618",
+      "sanitized_sha256": "bc5c06cd074208dd47483b2156791ac5d05f1a97cd0137e0a0629ea5512cdd1e"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__013.json",
+      "original_sha256": "b89793f8199b627c64e4d94f74d785c4cb953404ebde171246ba3148dce7f159",
+      "sanitized_sha256": "2e0aa1cf2a4ebd4f5033ef684449759a27f42c9f70a5092083a16ea9681572ea"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__014.json",
+      "original_sha256": "7aaffeec3bdb1ccd695be77de348512dcea5d98a31742eabeec760fc1160210b",
+      "sanitized_sha256": "7aaffeec3bdb1ccd695be77de348512dcea5d98a31742eabeec760fc1160210b"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__015.json",
+      "original_sha256": "1224331f4f9f34818c358c2df5f12ead984b62cb3952ce463ef9345ba29fe593",
+      "sanitized_sha256": "552eaab38d17e76475aa1dcaab6ca7158dc6a4562e9076fb7ed283f7851b33c5"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__016.json",
+      "original_sha256": "251f3c8beca797058d95163524c6a86a37ccf0d38bf0e638aae1e24e8eccca5d",
+      "sanitized_sha256": "2e318576029672eca04514e02ced00d75edcea98567cc7723a178a4adf161b60"
+    },
+    {
+      "file": "audio-isolation-corrected-validation-v2__receipts__017.json",
+      "original_sha256": "c38b40a065fb4a504c6e54a873d30786d90cc5ef1e08f3284b67bbb8216ba111",
+      "sanitized_sha256": "4b3c3d8b472f8e63fab6c0c84e8453d54e9eeeb1bd600f4759ca028aec637b1e"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__001.json",
+      "original_sha256": "1e57635c0a63be7516ba012ea39b4397451e6d50c6e73e23902be5093416a394",
+      "sanitized_sha256": "1e57635c0a63be7516ba012ea39b4397451e6d50c6e73e23902be5093416a394"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__002.json",
+      "original_sha256": "ba206d5f8e5b9706143884c5d5f46db35f0d106a7eeab95c9c89711c3e45764e",
+      "sanitized_sha256": "ba206d5f8e5b9706143884c5d5f46db35f0d106a7eeab95c9c89711c3e45764e"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__003.json",
+      "original_sha256": "61b1282fc8102c8691c600c79e68eb8fd99201cc5c5190b02bb2c469ac23849b",
+      "sanitized_sha256": "61b1282fc8102c8691c600c79e68eb8fd99201cc5c5190b02bb2c469ac23849b"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__004.json",
+      "original_sha256": "e4075bf8b28390434d70b72e4f2dc94590a4df15377fc41467fe9ae8150e4d8c",
+      "sanitized_sha256": "e4075bf8b28390434d70b72e4f2dc94590a4df15377fc41467fe9ae8150e4d8c"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__005.json",
+      "original_sha256": "962fe2bd2096980d927f3f0e60aee3520116401f1d64d963061278ec88fbe8dc",
+      "sanitized_sha256": "962fe2bd2096980d927f3f0e60aee3520116401f1d64d963061278ec88fbe8dc"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__006.json",
+      "original_sha256": "f4c1fffaa8a679db5a272bdc93ecd7ed9bf180cc07aef7f15f14a201f7ff25d4",
+      "sanitized_sha256": "f4c1fffaa8a679db5a272bdc93ecd7ed9bf180cc07aef7f15f14a201f7ff25d4"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__007.json",
+      "original_sha256": "44a00137670e188d12e33ec3135088e79b69c9685d1dedbc38f77609dff1623a",
+      "sanitized_sha256": "44a00137670e188d12e33ec3135088e79b69c9685d1dedbc38f77609dff1623a"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__008.json",
+      "original_sha256": "c36de02331d7605986093f18d66377933019e251d05317c5606f15a14ad5b068",
+      "sanitized_sha256": "edc544269df5a4bead367707f2bb79e4a7b391ab1fa7e5bd8a3cd46e37cffe1f"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__009.json",
+      "original_sha256": "ea1d0cfc0b7163555fa853440f6f0e21c80afbbf311bd0588d1ada5d4bffc95c",
+      "sanitized_sha256": "4f274ab973f1a4d867c6df3ad1c33b38c5e37409c96aba3f027f9564f2bf8121"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__010.json",
+      "original_sha256": "b12c05bbbf0607bd9379fd300660f8c3d0927fb9dc7e88e71ee58711a4f73c24",
+      "sanitized_sha256": "105ad592563aefadc57fc2095c838f0ee94da5b7e123b401a0084f91b5773105"
+    },
+    {
+      "file": "audio-isolation-frame-matrix-remaining__receipts__011.json",
+      "original_sha256": "f376df1231433539b4ac18caea7abf8aeadd0693c2aaec0d87dc584c0827065a",
+      "sanitized_sha256": "c54738140336b77655f278ea8d9994460beb999603efbd8ac5672c587bf51db7"
+    }
+  ]
+}

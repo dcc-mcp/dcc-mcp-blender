@@ -1,0 +1,306 @@
+"""Bounded WAV exports in owned workers, never the interactive Blender process."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import threading
+import uuid
+from pathlib import Path
+
+from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
+
+from dcc_mcp_blender._audio_export_worker import digest
+from dcc_mcp_blender._render_job_ops import _launch_worker, _terminate_process_tree
+
+_JOBS = {}
+_LOCK = threading.RLock()
+_SUBMITTING = False
+_ACTIVE = {"running", "cancelling", "termination_uncertain"}
+
+
+def _tail(path):
+    try:
+        with Path(path).open("rb") as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - 4096))
+            return stream.read(4096).decode("utf-8", errors="replace")
+    except OSError as exc:
+        return "Log unavailable: {}".format(exc)
+
+
+def _persist(job, strict=False):
+    visible = {k: v for k, v in job.items() if k not in ("process", "thread")}
+    path = Path(job["job_directory"]) / "status.json"
+    temporary = path.with_suffix(".tmp")
+    try:
+        temporary.write_text(json.dumps(visible, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except (OSError, ValueError) as exc:
+        job["receipt_write_error"] = str(exc)
+        if strict:
+            raise
+        visible["receipt_write_error"] = str(exc)
+    return visible
+
+
+def _stop(process):
+    _terminate_process_tree(process)
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def _validated_output(job, receipt):
+    name = receipt.get("output_name", "audio.wav")
+    if name not in {"audio.wav", "audio-corrected.wav"}:
+        raise ValueError("Unexpected audio output name")
+    if name == "audio-corrected.wav":
+        correction = receipt.get("correction")
+        if not isinstance(correction, dict):
+            raise ValueError("Missing correction receipt")
+        if (
+            job.get("correct_duplicate_final_pcm_block") is not True
+            or correction.get("raw_pcm_duplicate_exact") is not True
+        ):
+            raise ValueError("Unrequested or unverified PCM correction")
+        native = Path(job["job_directory"]) / "audio.wav"
+        if digest(native) != receipt.get("native_output_sha256"):
+            raise ValueError("Preserved native output changed")
+    return Path(job["job_directory"]) / name
+
+
+def _watch(job, timeout):
+    process = job["process"]
+    try:
+        code = process.wait(timeout=timeout)
+        with _LOCK:
+            job["returncode"] = code
+            if job["status"] == "running":
+                job["status"] = "failed"
+                if code == 0:
+                    receipt_path = Path(job["job_directory"]) / "result.json"
+                    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                    output = _validated_output(job, receipt)
+                    if (
+                        receipt["job_id"] == job["job_id"]
+                        and receipt["status"] == "completed"
+                        and receipt["full_decode"] is True
+                        and receipt["request_sha256"] == job["request_sha256"]
+                        and receipt["output_sha256"] == digest(output)
+                    ):
+                        job["status"] = "completed"
+                        job["validation"] = receipt
+    except subprocess.TimeoutExpired:
+        try:
+            _stop(process)
+        except Exception as exc:
+            with _LOCK:
+                job["status"] = "termination_uncertain"
+                job["diagnostic"] = str(exc)
+        else:
+            with _LOCK:
+                if job["status"] == "running":
+                    job["status"] = "timed_out"
+                job["returncode"] = process.poll()
+    except Exception as exc:
+        # A wait/read failure is not proof of process termination. Keep ownership
+        # until bounded cleanup has confirmed the child exit.
+        try:
+            if process.poll() is None:
+                _stop(process)
+            code = process.poll()
+            if code is None:
+                raise RuntimeError("Owned worker termination could not be confirmed")
+        except Exception as stop_exc:
+            with _LOCK:
+                job["status"] = "termination_uncertain"
+                job["diagnostic"] = "{}; cleanup: {}".format(exc, stop_exc)
+        else:
+            with _LOCK:
+                job["status"] = "failed"
+                job["returncode"] = code
+                job["diagnostic"] = str(exc)
+    finally:
+        with _LOCK:
+            job["stdout_tail"] = _tail(job["stdout_path"])
+            job["stderr_tail"] = _tail(job["stderr_path"])
+            _persist(job)
+
+
+def start_audio_export_job(
+    job_directory: str,
+    scene_sha256: str,
+    start_frame: int,
+    end_frame: int,
+    scene_path: str = None,
+    use_saved_snapshot: bool = False,
+    input_files: list = None,
+    sample_rate: int = 48000,
+    sample_format: str = "S24",
+    accuracy: int = 1024,
+    correct_duplicate_final_pcm_block: bool = False,
+    timeout_seconds: int = 120,
+) -> dict:
+    """Export at most sixty seconds of a previously saved scene to WAV PCM."""
+    global _SUBMITTING
+    process = None
+    job = None
+    with _LOCK:
+        if _SUBMITTING or any(j["status"] in _ACTIVE for j in _JOBS.values()):
+            return skill_error("Audio worker busy", "One active audio export per adapter; poll existing job")
+        _SUBMITTING = True
+    try:
+        import bpy
+
+        if type(start_frame) is not int or type(end_frame) is not int or end_frame < start_frame:
+            raise ValueError("A nonempty integer frame range is required")
+        if sample_rate not in (44100, 48000) or sample_format not in ("S24", "F32"):
+            raise ValueError("Only 44.1/48 kHz S24/F32 PCM is supported")
+        if type(accuracy) is not int or not 1 <= accuracy <= 65536:
+            raise ValueError("accuracy must be an integer in 1..65536")
+        if type(correct_duplicate_final_pcm_block) is not bool:
+            raise ValueError("correct_duplicate_final_pcm_block must be a boolean")
+        if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 600:
+            raise ValueError("timeout_seconds must be in 1..600")
+        if use_saved_snapshot is not True or not scene_path:
+            raise ValueError("Explicit scene_path and use_saved_snapshot=true are required; live scene is never saved")
+        source = Path(scene_path).expanduser().resolve()
+        if digest(source) != scene_sha256:
+            raise ValueError("Saved scene hash mismatch")
+        if not isinstance(input_files, list) or len(input_files) > 256:
+            raise ValueError(
+                "Declare at most 256 external saved-scene sounds in input_files; packed sounds are bound by scene hash"
+            )
+        declared = {}
+        for item in input_files:
+            if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
+                raise ValueError("Each input file requires exactly path and sha256")
+            path = str(Path(item["path"]).expanduser().resolve())
+            checksum = item["sha256"]
+            if path in declared and declared[path] != checksum:
+                raise ValueError("Conflicting hashes for the same input path")
+            if digest(path) != checksum:
+                raise ValueError("Declared input file hash mismatch")
+            declared[path] = checksum
+        dependencies = [{"path": path, "sha256": declared[path]} for path in sorted(declared)]
+        directory = Path(job_directory).expanduser().resolve()
+        directory.mkdir(parents=False, exist_ok=False)
+        job_id = uuid.uuid4().hex
+        request = dict(
+            job_id=job_id,
+            scene_path=str(source),
+            scene_sha256=scene_sha256,
+            dependencies=dependencies,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            sample_rate=sample_rate,
+            sample_format=sample_format,
+            accuracy=accuracy,
+            correct_duplicate_final_pcm_block=correct_duplicate_final_pcm_block,
+        )
+        request_path = directory / "request.json"
+        request_path.write_text(json.dumps(request, indent=2), encoding="utf-8")
+        worker = Path(__file__).with_name("_audio_export_worker.py")
+        command = [
+            str(bpy.app.binary_path),
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(worker),
+            "--",
+            str(directory),
+        ]
+        stdout = directory / "stdout.log"
+        stderr = directory / "stderr.log"
+        request_sha256 = digest(request_path)
+        job = dict(
+            job_id=job_id,
+            status="running",
+            process=None,
+            pid=None,
+            job_directory=str(directory),
+            scene_sha256=scene_sha256,
+            correct_duplicate_final_pcm_block=correct_duplicate_final_pcm_block,
+            source_snapshot={"path": str(source), "sha256": scene_sha256, "input_files": dependencies},
+            warning="Only the explicitly authorized saved snapshot is exported; live edits are neither saved nor exported.",
+            request_sha256=request_sha256,
+            stdout_path=str(stdout),
+            stderr_path=str(stderr),
+        )
+        with _LOCK:
+            _JOBS[job_id] = job
+            process = _launch_worker(command, directory, stdout, stderr)
+            job["process"] = process
+            job["pid"] = process.pid
+            context = _persist(job, strict=True)
+        threading.Thread(target=_watch, args=(job, timeout_seconds), daemon=True).start()
+        return skill_success("Owned audio export submitted; no automatic retries", **context)
+    except Exception as exc:
+        if process is not None:
+            try:
+                _stop(process)
+            except Exception as stop_error:
+                if job is not None:
+                    with _LOCK:
+                        job["status"] = "termination_uncertain"
+                        job["diagnostic"] = str(stop_error)
+                        _persist(job)
+                return skill_exception(
+                    stop_error,
+                    message="Submission failed; owned worker termination is uncertain; do not retry",
+                )
+        if job is not None:
+            with _LOCK:
+                job["status"] = "failed"
+                job["diagnostic"] = str(exc)
+                job["returncode"] = process.poll() if process is not None else None
+                _persist(job)
+        return skill_exception(exc, message="Audio export submission failed")
+    finally:
+        with _LOCK:
+            _SUBMITTING = False
+
+
+def get_audio_export_job(job_id: str) -> dict:
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return skill_error("Unknown audio job", "Only jobs owned by this running adapter can be queried")
+        if job["status"] == "completed":
+            try:
+                current = digest(_validated_output(job, job["validation"]))
+                if current != job["validation"]["output_sha256"]:
+                    raise ValueError("Completed audio output changed")
+            except (OSError, ValueError) as exc:
+                job["status"] = "failed"
+                job["diagnostic"] = str(exc)
+        return skill_success("Audio export status", **_persist(job))
+
+
+def cancel_audio_export_job(job_id: str) -> dict:
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return skill_error("Unknown audio job", "No process was stopped")
+        if job["status"] == "cancelling":
+            return skill_success("Owned worker cancellation is already in progress", **_persist(job))
+        if job["status"] not in {"running", "termination_uncertain"}:
+            return skill_success("Audio job already terminal", **_persist(job))
+        job["status"] = "cancelling"
+    try:
+        _stop(job["process"])
+    except Exception as exc:
+        with _LOCK:
+            job["status"] = "termination_uncertain"
+            job["diagnostic"] = str(exc)
+            return skill_success("Owned worker termination uncertain; do not retry", **_persist(job))
+    with _LOCK:
+        job["status"] = "cancelled"
+        job["returncode"] = job["process"].poll()
+        return skill_success("Owned audio worker stopped", **_persist(job))

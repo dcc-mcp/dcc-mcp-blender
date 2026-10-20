@@ -1,0 +1,11 @@
+{
+  "wheel_sha256": "c4369a84fe0b9488fea5c33e26fa20f3a26c0e20000a0bab9c2423e7c12ae475",
+  "isolated_python": true,
+  "empty_pythonpath": true,
+  "cwd": "unrelated",
+  "stdout": "loaded",
+  "worker_sha256": "e8430db39a9131022a08ffbf55bd11b282f44c6dda0092e2708c286b8e6afe95",
+  "helper_sha256": "abb48e9f8b28e2c5b5f482d34abe55da7cf0372ed04750d1daf3224ea42a7be3",
+  "native_rerun": false,
+  "pytest": "1974 passed, 42 skipped"
+}
