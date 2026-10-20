@@ -158,6 +158,63 @@ tools:
     next-tools:
       on-success: [blender_render__get_render_job]
       on-failure: [dcc_diagnostics__process_status]
+  - name: start_saved_scene_job
+    description: "Render an existing saved .blend by absolute path and expected SHA-256 without loading or saving the control host. Format is explicit; null device inherits the saved file. Owned worker uses disabled autoexec and source-change checks, not immutable snapshot isolation."
+    source_file: scripts/start_saved_scene_job.py
+    execution: sync
+    affinity: main
+    read_only: false
+    destructive: false
+    idempotent: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [source_filepath, expected_sha256, output_pattern, output_format, start_frame, end_frame]
+      properties:
+        source_filepath:
+          type: string
+          minLength: 1
+          description: "Absolute existing .blend path. Source stays in place so // relative assets resolve from its original location. Keep the source and external assets unchanged throughout the job."
+        expected_sha256:
+          type: string
+          pattern: "^[0-9a-fA-F]{64}$"
+          description: "Expected SHA-256 of the complete saved source file. Worker rechecks before loading, after loading and after rendering; this detects changes but is not race-free snapshot isolation."
+        output_pattern:
+          type: string
+          minLength: 1
+          description: "Absolute output pattern containing # placeholders, for example C:/renders/beauty_####. Blender appends the selected format's extension."
+        output_format:
+          type: string
+          enum: [OPEN_EXR_MULTILAYER, OPEN_EXR, PNG, JPEG, TIFF, BMP]
+          description: "Required output container. Never read from the control host. Non-PNG output integrity remains signature-only; independently decode deliverables."
+        start_frame:
+          type: integer
+          minimum: 0
+          maximum: 1048574
+        end_frame:
+          type: integer
+          minimum: 0
+          maximum: 1048574
+        step:
+          type: integer
+          minimum: 1
+          default: 1
+        resume_missing:
+          type: boolean
+          default: false
+          description: "Opt-in existing-frame reuse. Default false renders every requested frame. Existing images are NOT bound to this source SHA; PNG container/scanline checks and other formats' signature-only checks do not establish source provenance. Skipped frames are not subsequently tracked."
+        device:
+          type: [string, "null"]
+          enum: [OPTIX, CUDA, HIP, ONEAPI, METAL, CPU, null]
+          default: null
+          description: "Cycles device override for the worker. Omit (default null) to render with the Cycles device saved in the .blend file, which is CPU for a new scene; passing a value overrides the artist's scene setting. OPTIX needs an NVIDIA GPU and is Windows/Linux only, so it fails on macOS and on any host without an NVIDIA GPU."
+        factory_startup:
+          type: boolean
+          default: true
+          description: "Default true disables user preferences and add-ons. Set false only for trusted required add-ons. Automatic scripts from the .blend remain disabled in either mode."
+    next-tools:
+      on-success: [blender_render__get_render_job]
+      on-failure: [dcc_diagnostics__process_status]
   - name: get_render_job
     description: "Return bounded frame progress, process status, and log paths for an owned background render job."
     source_file: scripts/get_render_job.py

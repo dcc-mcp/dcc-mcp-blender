@@ -11,8 +11,8 @@ metadata:
     version: "1.0.1"
     tags: [blender, render, viewport, camera, AOV, denoise, exr, border]
     search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range, fractional frame rate, fps, timebase"
-    search-aliases: [render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status, fractional frame rate, fps, timebase]
-    intent: "Configure render settings, render scenes, submit/query/cancel isolated animation jobs, and capture viewport images."
+    search-aliases: [saved scene render, render blend filepath, render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status, fractional frame rate, fps, timebase]
+    intent: "Configure render settings, render live or saved scenes, submit/query/cancel isolated animation jobs, and capture viewport images."
     recall-context:
       app_type: blender
       domain: rendering
@@ -83,6 +83,48 @@ and scales with the object. The wire pass uses Cycles CPU. Requests exceeding th
 rejected. Each PNG is decoded by Blender, dimension checked, and hashed;
 status reads verify the entire file hash. Failed images retain individual
 errors and do not make the batch successful.
+
+## Render a saved file without loading the control host
+
+Use `start_saved_scene_job` with `source_filepath`, `expected_sha256`, an
+absolute `output_pattern`, explicit `output_format`, `start_frame` and
+`end_frame`. An empty host or unrelated unsaved scene is sufficient. This tool
+reads only the host executable path, never the live scene, filepath or format;
+it does not open, save, copy, or overwrite the source in the control host.
+Poll and cancel with the same `get_render_job(job_id)` and
+`cancel_render_job(job_id)` as other owned animation jobs.
+
+The worker loads the original absolute path, preserving `//` resource bases.
+Packed inputs are the simplest baseline. External images, linked libraries,
+caches, fonts and other dependencies must remain accessible and unchanged;
+these are not fingerprinted or copied. Existing compositor/sequencer outputs
+and saved render settings still apply; this is not a sandbox for untrusted files.
+
+`output_format` is mandatory. A null `device` inherits only the saved file's
+Cycles device, never the control host's. `factory_startup` defaults to true,
+disabling user preferences/add-ons. Opt out only for trusted required add-ons.
+`--disable-autoexec` is always set before loading, including when factory
+startup is false. Files requiring embedded Python/drivers may therefore not
+reproduce correctly; do not enable automatic scripts to work around this.
+
+The job rejects output paths that currently alias the source by resolved path
+or file identity (including symlinks/hardlinks), and rechecks before and after
+worker loading. These checks are not atomic protection against later path
+changes. The job records source SHA-256, size, launch settings and fingerprint
+observations in `source_receipt_path`. It checks the source at submission,
+immediately before worker loading, after loading and after rendering. A
+mismatch aborts and fails the job, even if outputs already exist. This is
+change detection, **not immutable snapshot isolation**: a file can still change
+between observations or change and be restored. Keep the source and all assets
+unchanged. Raw/gzip headers are checked before launch; zstd compression receives
+a container-magic check, with full file validity determined by Blender loading.
+
+`resume_missing` defaults to false. Opting in reuses existing images under the
+normal animation integrity limits above, without proving they came from this
+source SHA. A no-work result says no worker ran; skipped images are not tracked.
+The source receipt is diagnostic evidence, not a job recovery or PID-ownership
+mechanism. Keep the original job ID for in-process status/cancel; after a control
+host restart this new animation entry point does not recover a live worker.
 
 ## Render device for background jobs
 

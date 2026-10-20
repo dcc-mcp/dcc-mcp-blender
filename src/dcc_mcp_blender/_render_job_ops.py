@@ -16,6 +16,13 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 from dcc_mcp_blender._image_format import image_format, worker_format_expression
 from dcc_mcp_blender._png_integrity import is_complete_png
+from dcc_mcp_blender._saved_scene_source import (
+    read_source_receipt,
+    reject_source_output_alias,
+    source_check_expression,
+    source_fingerprint,
+    write_source_receipt,
+)
 
 _FRAME_TOKEN = re.compile(r"#+")
 _OPENEXR_MAGIC = b"\x76\x2f\x31\x01"
@@ -272,6 +279,8 @@ def _failed_job_context(context: Dict[str, Any]) -> Dict[str, Any]:
         stdout_tail, multiview=context.get("kind") == "multiview"
     )
     if hint:
+        if context.get("kind") == "saved_scene":
+            hint = hint.replace("Retry start_render_job", "Retry start_saved_scene_job")
         enriched["failure_hint"] = hint
     return enriched
 
@@ -328,6 +337,7 @@ def _build_blender_command(
     device: str = None,
     factory_startup: bool,
     output_format: str = "OPEN_EXR_MULTILAYER",
+    source_checks: Dict[str, str] = None,
 ) -> List[str]:
     """Build the ``blender --background`` command for an owned render job.
 
@@ -340,9 +350,14 @@ def _build_blender_command(
     command = [blender_path, "--background"]
     if factory_startup:
         command.append("--factory-startup")
+    if source_checks:
+        # Set script policy and failure exit code BEFORE the source is loaded.
+        command.extend(("--disable-autoexec", "--python-exit-code", "1", "--python-expr", source_checks["before_load"]))
+    command.append(scene_path)
+    if source_checks:
+        command.extend(("--python-expr", source_checks["after_load"]))
     command.extend(
         [
-            scene_path,
             "--render-output",
             output_pattern,
             "--python-exit-code",
@@ -355,9 +370,160 @@ def _build_blender_command(
     )
     for frame in frames:
         command.extend(("--render-frame", str(frame)))
+    if source_checks:
+        command.extend(("--python-expr", source_checks["after_render"]))
     if device:
         command.extend(("--", "--cycles-device", device.upper()))
     return command
+
+
+def start_saved_scene_job(
+    source_filepath: str,
+    expected_sha256: str,
+    output_pattern: str,
+    output_format: str,
+    start_frame: int,
+    end_frame: int,
+    step: int = 1,
+    resume_missing: bool = False,
+    device: str = None,
+    factory_startup: bool = True,
+) -> dict:
+    """Render an existing .blend without opening or saving the control scene.
+
+    Format is required; an omitted device inherits only the saved file's Cycles
+    setting. Factory startup defaults on and automatic scripts are always off.
+    The source stays in place for // assets. Hash observations are not snapshot
+    isolation and do not cover external assets. Keep all inputs unchanged.
+    """
+    job = None
+    try:
+        import bpy  # Only bpy.app.binary_path is read from the control host.
+
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+            raise ValueError("expected_sha256 must be a 64-character SHA-256 hex digest")
+        expected_sha256 = expected_sha256.lower()
+        resolved_format = _normalize_output_format(output_format)
+        if any(type(value) is not int or not 0 <= value <= 1048574 for value in (start_frame, end_frame)):
+            raise ValueError("start_frame and end_frame must be integers between 0 and 1048574")
+        if type(step) is not int or step < 1:
+            raise ValueError("step must be a positive integer")
+        if type(resume_missing) is not bool or type(factory_startup) is not bool:
+            raise ValueError("resume_missing and factory_startup must be booleans")
+        if device is not None:
+            if not isinstance(device, str) or device.upper() not in _DEVICES:
+                raise ValueError("device must be null or one of: {}".format(", ".join(_DEVICES)))
+            device = device.upper()
+        frames = _select_frames(
+            output_pattern,
+            start_frame,
+            end_frame,
+            step,
+            resume_missing=resume_missing,
+            output_format=resolved_format,
+        )
+        observed = source_fingerprint(source_filepath)
+        if observed["sha256"] != expected_sha256:
+            raise ValueError("Saved source does not match expected_sha256")
+        for frame in frames:
+            reject_source_output_alias(
+                source_filepath, _expected_output_path(output_pattern, frame, output_format=resolved_format)
+            )
+        # Do not resolve symlinks or copy the source: either can change // paths.
+        source_filepath = str(Path(source_filepath))
+        output_dir = _expected_output_path(output_pattern, start_frame, output_format=resolved_format).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+        job_id = uuid.uuid4().hex
+        receipt_path = output_dir / (".dcc-mcp-render-{}.source.json".format(job_id))
+        job = {
+            "job_id": job_id,
+            "kind": "saved_scene",
+            "process": None,
+            "status": "running" if frames else "completed",
+            "frames": frames,
+            "output_pattern": output_pattern,
+            "output_format": resolved_format,
+            "scene_path": source_filepath,
+            "source_sha256": expected_sha256,
+            "source_size_bytes": observed["size_bytes"],
+            "source_receipt_path": str(receipt_path),
+            "device": device,
+            "factory_startup": factory_startup,
+            "resume_missing": resume_missing,
+            "stdout_path": str(output_dir / (".dcc-mcp-render-{}.out.log".format(job_id))),
+            "stderr_path": str(output_dir / (".dcc-mcp-render-{}.err.log".format(job_id))),
+            "started_at": time.time(),
+        }
+        with _LOCK:
+            _JOBS[job_id] = job
+        write_source_receipt(
+            receipt_path,
+            {
+                "job_id": job_id,
+                "source_filepath": source_filepath,
+                "expected_sha256": expected_sha256,
+                "source_size_bytes": observed["size_bytes"],
+                "phase": "submitted" if frames else "not_run",
+                "observations": {"submission": observed},
+                "launch_settings": {
+                    "output_pattern": output_pattern,
+                    "output_format": resolved_format,
+                    "output_suffix": _output_format_spec(resolved_format)[0],
+                    "start_frame": start_frame,
+                    "end_frame": end_frame,
+                    "step": step,
+                    "resume_missing": resume_missing,
+                    "device": device,
+                    "factory_startup": factory_startup,
+                    "disable_autoexec": True,
+                },
+            },
+        )
+        if frames:
+            source_checks = {
+                phase: source_check_expression(
+                    receipt_path,
+                    job_id,
+                    source_filepath,
+                    expected_sha256,
+                    observed["size_bytes"],
+                    phase,
+                )
+                for phase in ("before_load", "after_load", "after_render")
+            }
+            command = _build_blender_command(
+                blender_path=str(bpy.app.binary_path),
+                scene_path=source_filepath,
+                output_pattern=output_pattern,
+                frames=frames,
+                device=device,
+                factory_startup=factory_startup,
+                output_format=resolved_format,
+                source_checks=source_checks,
+            )
+            job["process"] = _launch_worker(command, output_dir, Path(job["stdout_path"]), Path(job["stderr_path"]))
+        return skill_success(
+            "Saved-scene render job submitted" if frames else "All requested frames already exist; no worker ran",
+            **_job_context(job),
+            prompt="Use get_render_job and cancel_render_job with this job_id. Keep the source and external assets unchanged.",
+        )
+    except Exception as exc:
+        if job is not None:
+            # Keep the identity and logs on launch failure. Never discard an
+            # observed process handle if constructing the response itself fails.
+            if job["process"] is None:
+                job["status"] = "failed"
+            job["error"] = str(exc)
+            return skill_exception(
+                exc,
+                message="Failed to submit saved-scene render job",
+                job_id=job["job_id"],
+                status=job["status"],
+                stdout_path=job["stdout_path"],
+                stderr_path=job["stderr_path"],
+                source_receipt_path=job["source_receipt_path"],
+            )
+        return skill_exception(exc, message="Invalid saved-scene render request")
 
 
 def start_render_job(
@@ -516,6 +682,16 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     output_format = str(job.get("output_format", "OPEN_EXR_MULTILAYER")).strip().upper()
     _output_format_spec(output_format)
     return_code = process.poll() if job["status"] == "running" and process is not None else None
+    source_receipt = None
+    if job.get("kind") == "saved_scene":
+        if return_code is not None:
+            job["return_code"] = return_code
+        try:
+            source_receipt = read_source_receipt(job["source_receipt_path"], job["job_id"])
+            if source_receipt.get("error"):
+                job["error"] = source_receipt["error"]
+        except (OSError, ValueError, TypeError) as exc:
+            job["error"] = "Saved source receipt unavailable: {}".format(exc)
     written = [
         frame
         for frame in job["frames"]
@@ -538,6 +714,13 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
     elif output_format == "PNG" and job["status"] == "completed" and missing:
         # A later edit must not leave "completed" beside missing PNG frames.
         job["status"] = "failed"
+    if (
+        job.get("kind") == "saved_scene"
+        and job["status"] == "completed"
+        and (job.get("error") or (job["frames"] and (source_receipt or {}).get("phase") != "after_render"))
+    ):
+        job["status"] = "failed"
+        job.setdefault("error", "Worker did not finish saved-source verification")
     context = {
         "job_id": job["job_id"],
         "status": job["status"],
@@ -551,6 +734,22 @@ def _job_context(job: Dict[str, Any]) -> Dict[str, Any]:
         "stdout_path": job["stdout_path"],
         "stderr_path": job["stderr_path"],
     }
+    if job.get("kind") == "saved_scene":
+        context.update(
+            kind="saved_scene",
+            source_filepath=job["scene_path"],
+            source_sha256=job["source_sha256"],
+            source_size_bytes=job["source_size_bytes"],
+            source_receipt_path=job["source_receipt_path"],
+            source_receipt=source_receipt,
+            device=job["device"],
+            factory_startup=job["factory_startup"],
+            disable_autoexec=True,
+            resume_missing=job["resume_missing"],
+            return_code=job.get("return_code"),
+        )
+        if job.get("error"):
+            context["error"] = job["error"]
     return context
 
 
