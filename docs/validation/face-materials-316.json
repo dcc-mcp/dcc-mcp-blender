@@ -1,0 +1,97 @@
+{
+  "issue": "https://github.com/dcc-mcp/dcc-mcp-blender/issues/316",
+  "source_base": "1ba474f314ea2c5c35eeadc70bcd59d15775ea83",
+  "host": "Blender 4.5.13 Linux background",
+  "python": "3.11.15",
+  "core": "0.20.46",
+  "bootstrap": "unmodified official dcc_mcp_blender/blender_bootstrap.py from isolated built wheel",
+  "wheel_sha256": "545c51794b3161570cb3ad30c58f11ab7dd25d2d3c83870d3f7b6d145b8491de",
+  "unit_tests": {
+    "passed": 2037,
+    "skipped": 43,
+    "failed": 0
+  },
+  "focused_contract_tests": {
+    "passed": 107,
+    "failed": 0
+  },
+  "native_host_tests": {
+    "passed": 13,
+    "skipped": 0,
+    "failed": 0
+  },
+  "transport": {
+    "protocol": "2025-03-26",
+    "method": "actual Streamable HTTP initialize, search_skills, load_skill, paginated tools/list, tools/call",
+    "tools_call_count": 42,
+    "assignment_route": "blender_materials__assign_face_materials",
+    "inspection_route": "blender_materials__inspect_face_materials",
+    "loaded_output_schemas_validated": true,
+    "postcondition": {
+      "method": "exact_polygon_material_indices_and_revision",
+      "verified": true
+    }
+  },
+  "before": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "assignment": [
+    {
+      "face_index": 1,
+      "material_index": 1
+    },
+    {
+      "face_index": 3,
+      "material_index": 2
+    }
+  ],
+  "after_and_native_reopen": [
+    0,
+    1,
+    0,
+    2
+  ],
+  "glb_primitive_materials": [
+    "FaceBlue",
+    "FaceGold",
+    "FaceRed"
+  ],
+  "reimported_face_counts": {
+    "FaceRed": 2,
+    "FaceBlue": 1,
+    "FaceGold": 1
+  },
+  "reimported_x_centroid_to_material": {
+    "0.333": "FaceRed",
+    "6.333": "FaceRed",
+    "3.333": "FaceBlue",
+    "9.333": "FaceGold"
+  },
+  "artifacts_sha256": {
+    "face-materials.blend": "a7894284f94eb156a442c865bf65c097a21ea014064cd340d6e0c984dfe39fee",
+    "face-materials.glb": "1a789f5522de77cb17c35622f58adca1777a68b5e388c2a6e4ea4f5e5626114b"
+  },
+  "negative_transport_cases": [
+    "out-of-range face after valid first record",
+    "out-of-range material slot after valid first record",
+    "conflicting duplicate face",
+    "boolean face index",
+    "boolean material index",
+    "empty batch",
+    "4097-record batch",
+    "missing object",
+    "stale pre-reopen revision"
+  ],
+  "preservation_evidence": "Readback after each invalid batch remains [0,1,0,2]; native tests also verify mode, active object, selection and untouched slots/faces.",
+  "script_boundary": "MCP execute_python used only for read-only installed-code provenance and imported geometric material association; all scene creation, material creation, slot assignment, per-face mutation, save/open, GLB export/import use typed tools.",
+  "host_cleanup": "Isolated host terminated and waited; no rendering; original published adapter installation unchanged.",
+  "limitations": [
+    "Linux Blender 4.5.13 background acceptance only; no GUI or other-host-platform claim",
+    "No shared gateway CLI acceptance claim",
+    "Revision is session-local and pins geometry/slots, not current face assignments",
+    "Failure-injection rollback coverage uses unit doubles; real-host paths are never replaced by mocks"
+  ]
+}

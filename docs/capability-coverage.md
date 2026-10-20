@@ -33,6 +33,11 @@ terminal artifact validation. Existing unrelated worktrees remain independent.
 - Follow-up: optional revision checks before extrude, bevel, inset, and edge
   subdivision. Unguarded callers and other mutation tools are not protected.
 
+- #316: bounded original-mesh per-face material assignment and inspection,
+  revision-pinned geometry/slots, preflight validation and verified rollback.
+  Native round-trip tests and real MCP transport receipts cover this slice, not
+  evaluated meshes, GUI acceptance or a full material authoring workflow.
+
 These slices do not establish full Phase 1 coverage or the Phase 4 benchmarks.
 
 ## Domain gaps

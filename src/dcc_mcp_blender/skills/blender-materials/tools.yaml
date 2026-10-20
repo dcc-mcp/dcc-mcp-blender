@@ -122,3 +122,132 @@ tools:
       destructive_hint: false
       idempotent_hint: false
       open_world_hint: false
+
+  - name: inspect_face_materials
+    description: >
+      Read a bounded page of original mesh polygon material-slot indices and
+      effective material slots. Returns a session-local geometry/slot revision
+      required by assign_face_materials. Object mode only; never changes selection.
+    source_file: scripts/inspect_face_materials.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 5
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name: {type: string, minLength: 1, maxLength: 1024}
+        offset: {type: integer, minimum: 0, maximum: 100000, default: 0}
+        limit: {type: integer, minimum: 1, maximum: 256, default: 64}
+        expected_revision:
+          type: string
+          pattern: '^face-materials-v1:[0-9a-f]{64}$'
+          description: Pin subsequent pages to the same geometry and effective material slots.
+    output_schema: &face_material_result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        postcondition:
+          type: object
+          additionalProperties: true
+          properties:
+            method: {type: string}
+            verified: {type: boolean}
+        context:
+          type: object
+          additionalProperties: true
+          properties:
+            object_name: {type: string}
+            mesh_name: {type: string}
+            mesh_source: {type: string, enum: [original]}
+            face_count: {type: integer, minimum: 0}
+            revision: {type: string, pattern: '^face-materials-v1:[0-9a-f]{64}$'}
+            assignments:
+              type: array
+              maxItems: 4096
+              items:
+                type: object
+                additionalProperties: false
+                required: [face_index, material_index]
+                properties:
+                  face_index: {type: integer, minimum: 0}
+                  material_index: {type: integer, minimum: 0}
+            material_slots:
+              type: array
+              maxItems: 1024
+              items:
+                type: object
+                additionalProperties: false
+                required: [material_index, material_name, link]
+                properties:
+                  material_index: {type: integer, minimum: 0}
+                  material_name: {type: [string, 'null']}
+                  link: {type: string, enum: [DATA, OBJECT]}
+            next_offset: {type: [integer, 'null'], minimum: 0}
+            affected_count: {type: integer, minimum: 0, maximum: 4096}
+            changed_count: {type: integer, minimum: 0, maximum: 4096}
+            mutation_applied: {type: [boolean, 'null']}
+            error_code: {type: string}
+            rollback_attempted: {type: boolean}
+            rollback_verified: {type: boolean}
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: assign_face_materials
+    description: >
+      Assign 1 to 4096 explicit face_index/material_index records to an original,
+      single-user Object-mode mesh using the revision from inspect_face_materials.
+      All records are checked before mutation; exact readback verifies untouched
+      faces and slots. On failure restores indices and reports verified rollback
+      or an uncertain/remaining mutation. Does not create materials or slots.
+    source_file: scripts/assign_face_materials.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 5
+    next-tools:
+      on-success: [inspect_face_materials]
+      on-failure: [inspect_face_materials]
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name, assignments, expected_revision]
+      properties:
+        object_name: {type: string, minLength: 1, maxLength: 1024}
+        expected_revision:
+          type: string
+          pattern: '^face-materials-v1:[0-9a-f]{64}$'
+          description: Required geometry/effective-slot revision from inspect_face_materials; inspect again after reopen.
+        assignments:
+          type: array
+          minItems: 1
+          maxItems: 4096
+          uniqueItems: true
+          description: Each face may occur once only, including when the requested material agrees.
+          items:
+            type: object
+            additionalProperties: false
+            required: [face_index, material_index]
+            properties:
+              face_index: {type: integer, minimum: 0, maximum: 99999}
+              material_index: {type: integer, minimum: 0, maximum: 1023}
+    output_schema: *face_material_result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
