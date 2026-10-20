@@ -102,7 +102,8 @@ def test_transfer_projection_real_bake_and_settings_restoration(tmp_path, monkey
     high = bpy.data.objects.new("ProjectionHigh", mesh)
     bpy.context.collection.objects.link(high)
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    original_engine = scene.render.engine
+    assert original_engine != "CYCLES"
     scene.cycles.samples = 1
     bake = scene.render.bake
     fields = ("cage_extrusion", "max_ray_distance", "use_cage", "normal_space", "use_selected_to_active", "margin")
@@ -141,7 +142,7 @@ def test_transfer_projection_real_bake_and_settings_restoration(tmp_path, monkey
         pixels = list(image.pixels)
         rgb = {tuple(round(pixels[i + c] * 255) for c in range(3)) for i in range(0, len(pixels), 4)}
         colors.append(len(rgb))
-        assert scene.render.engine == "BLENDER_EEVEE_NEXT"
+        assert scene.render.engine == original_engine
         assert {name: getattr(bake, name) for name in fields} == before
     assert colors[0] == 1, colors  # This particular geometry is above zero-distance ray origins.
     assert colors[1] > 10, colors
@@ -161,5 +162,5 @@ def test_transfer_projection_real_bake_and_settings_restoration(tmp_path, monkey
         use_cage=True,
     )
     assert failed["success"] is False
-    assert scene.render.engine == "BLENDER_EEVEE_NEXT"
+    assert scene.render.engine == original_engine
     assert {name: getattr(bake, name) for name in fields} == before
