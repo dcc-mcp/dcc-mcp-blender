@@ -1,0 +1,57 @@
+---
+name: blender-audio
+description: "Export bounded VSE WAV audio in isolated owned Blender workers with explicit failure diagnostics"
+license: "MIT"
+allowed-tools: ["Bash", "Read"]
+metadata:
+  dcc-mcp:
+    dcc: blender
+    layer: domain
+    stage: export
+    version: "1.0.0"
+    tags: [blender, audio, wav, mixdown, isolation]
+    search-hint: "audio export, WAV, VSE mixdown, isolated audio job"
+    intent: "Export saved native audio scenes without executing native mixdown inside the interactive editor."
+    tools: tools.yaml
+---
+
+# blender-audio
+
+Choose an explicitly saved `.blend` and obtain its SHA256, then call
+`start_audio_export_job` with `scene_path`, `scene_sha256`,
+`use_saved_snapshot: true`, declared `input_files` (absolute path and SHA256),
+and a new job directory. It exports only this authorized disk snapshot.
+Unsaved live edits are neither saved nor exported; the response states this
+warning and identifies the exact source snapshot. The worker requires the
+saved scene external sound paths/hashes to match the declared input set
+exactly. Packed sound bytes are covered by the blend hash. Identical duplicate
+paths are normalized; conflicting hashes fail before launch. The first version supports at most sixty seconds of
+stereo WAV PCM (S24 or F32, 44.1/48 kHz). It never saves the live scene,
+overwrites an existing directory or retries a failed export. By default any sample-count discrepancy fails.
+
+Poll `get_audio_export_job`; terminate only the owned worker with
+`cancel_audio_export_job`. Timeout is enforced even without polling. A native
+abort is an export failure, not a reason to kill or restart the live editor.
+Logs, request and terminal receipt remain in the job directory. Adapter restart
+loses active registry ownership; do not infer a saved PID is still safe to kill.
+
+Success requires native full decode, finite samples, exact rate/channels and
+sample count, and stable input hashes. It does not establish waveform fidelity,
+absence of clipping, artistic quality or subjective listening acceptance.
+Independent PCM/reference comparison remains required. Blender native mixdown
+can fail with certain valid settings; isolation does not fix those native bugs.
+
+This capability is under development; real worker isolation and audio acceptance
+must be tested before production use. See issue #320.
+
+## Explicit native duplicate-block workaround
+
+`correct_duplicate_final_pcm_block: true` permits one narrowly verified correction.
+The original `audio.wav` remains unchanged. A separate `audio-corrected.wav` is
+created only when the surplus is exactly the predicted last accuracy block and
+its raw PCM bytes exactly duplicate the preceding final block. RIFF structure,
+format and sizes are checked; malformed, unexpected or nonidentical tails fail.
+The corrected file is fully decoded natively and must equal the original decoded
+prefix sample-for-sample. Both hashes and the correction details are returned.
+This is not unconditional trimming, gain fitting, retiming, or a native crash fix.
+A corrected result still needs independent reference and listening acceptance.

@@ -1,0 +1,53 @@
+{
+  "role": "Exact earlier tested candidate overlay, retained evidence; not the current implementation",
+  "base_official_release": "dcc-mcp-blender 0.2.22",
+  "base_revision": "1ba474f314ea2c5c35eeadc70bcd59d15775ea83",
+  "wheel_sha256": "fe494618af00e04925d7d99782a8c03224cc0aaeb7196a6d6c4143a1a4ee379d",
+  "files": [
+    {
+      "path": "dcc_mcp_blender/_audio_export_ops.py",
+      "sha256": "c06ae72b4139480025fada17f1b6b47232682e7ae748ee98928bea9e98188953",
+      "snapshot_path": "dcc_mcp_blender/_audio_export_ops.py.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/_audio_export_worker.py",
+      "sha256": "5e33ca7577845668f9c63b922e1ca44b91ef906d9971ae6d8ad53c07f02f8d4a",
+      "snapshot_path": "dcc_mcp_blender/_audio_export_worker.py.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/_audio_pcm_repair.py",
+      "sha256": "abb48e9f8b28e2c5b5f482d34abe55da7cf0372ed04750d1daf3224ea42a7be3",
+      "snapshot_path": "dcc_mcp_blender/_audio_pcm_repair.py.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/skills/blender-audio/SKILL.md",
+      "sha256": "fe7c8833a194af3617c34fef746fc51abb9870eb7cc7c7ea6db4dbdfc706cacf",
+      "snapshot_path": "dcc_mcp_blender/skills/blender-audio/SKILL.md.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/skills/blender-audio/tools.yaml",
+      "sha256": "5b71347fc586ad9e01f44a8342cd852c0903cce2c62c5bbe73befdaae3055aad",
+      "snapshot_path": "dcc_mcp_blender/skills/blender-audio/tools.yaml.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/skills/blender-audio/scripts/cancel_audio_export_job.py",
+      "sha256": "2c487b717a6fd7b2e84de9ffde75d18fa8c39f2c3930e1835fed7e137de4c96b",
+      "snapshot_path": "dcc_mcp_blender/skills/blender-audio/scripts/cancel_audio_export_job.py.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/skills/blender-audio/scripts/get_audio_export_job.py",
+      "sha256": "8a4e7d73847dc83128ec7ea89f18329dd4d14046782a1f35a4e8b7c0e369d4cb",
+      "snapshot_path": "dcc_mcp_blender/skills/blender-audio/scripts/get_audio_export_job.py.txt"
+    },
+    {
+      "path": "dcc_mcp_blender/skills/blender-audio/scripts/start_audio_export_job.py",
+      "sha256": "c2d48966c4cd6ce3fac11ed1a2000c871470ea79c4659491e5f86847afd6ebcd",
+      "snapshot_path": "dcc_mcp_blender/skills/blender-audio/scripts/start_audio_export_job.py.txt"
+    }
+  ],
+  "historical_limitations": [
+    "linked library dependency rejection and exceptional-wait cleanup hardened only afterwards",
+    "skill taxonomy export renamed interchange afterwards"
+  ],
+  "scope": "Non-executable historical source snapshots, not a second maintained runtime. Archive commit locates source; it was not the commit installed at experiment time."
+}

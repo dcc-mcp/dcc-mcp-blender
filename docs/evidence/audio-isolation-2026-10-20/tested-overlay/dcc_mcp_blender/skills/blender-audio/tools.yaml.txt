@@ -1,0 +1,118 @@
+tools:
+- name: start_audio_export_job
+  description: Start audio export job in an owned worker; no content-fidelity claim
+  source_file: scripts/start_audio_export_job.py
+  execution: sync
+  affinity: main
+  enforce_thread_affinity: true
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      job_directory:
+        type: string
+        minLength: 1
+      scene_sha256:
+        type: string
+        pattern: ^[0-9a-f]{64}$
+      start_frame:
+        type: integer
+      end_frame:
+        type: integer
+      sample_rate:
+        type: integer
+        enum:
+        - 44100
+        - 48000
+        default: 48000
+      sample_format:
+        type: string
+        enum:
+        - S24
+        - F32
+        default: S24
+      accuracy:
+        type: integer
+        minimum: 1
+        maximum: 65536
+        default: 1024
+      correct_duplicate_final_pcm_block:
+        type: boolean
+        default: false
+        description: Explicitly permit only exact predicted duplicate-final-PCM-block removal into a separate WAV; original native output is preserved. Other discrepancies fail.
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 600
+        default: 120
+      scene_path:
+        type: string
+        minLength: 1
+        description: Explicit saved blend snapshot; live scene is never implicitly
+          used.
+      use_saved_snapshot:
+        type: boolean
+        const: true
+        description: Acknowledge only saved content is exported; live edits are not
+          saved or exported.
+      input_files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            path:
+              type: string
+              minLength: 1
+            sha256:
+              type: string
+              pattern: ^[0-9a-f]{64}$
+          required:
+          - path
+          - sha256
+        maxItems: 256
+    required:
+    - job_directory
+    - scene_sha256
+    - start_frame
+    - end_frame
+    - scene_path
+    - use_saved_snapshot
+    - input_files
+  read_only: false
+  destructive: false
+  idempotent: false
+- name: get_audio_export_job
+  description: Get audio export job in an owned worker; no content-fidelity claim
+  source_file: scripts/get_audio_export_job.py
+  execution: sync
+  affinity: any
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      job_id:
+        type: string
+        minLength: 1
+    required:
+    - job_id
+  read_only: true
+  destructive: false
+  idempotent: true
+- name: cancel_audio_export_job
+  description: Cancel audio export job in an owned worker; no content-fidelity claim
+  source_file: scripts/cancel_audio_export_job.py
+  execution: sync
+  affinity: any
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      job_id:
+        type: string
+        minLength: 1
+    required:
+    - job_id
+  read_only: false
+  destructive: false
+  idempotent: false
