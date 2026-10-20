@@ -159,6 +159,21 @@ tools:
           type: integer
           minimum: 0
           default: 16
+        cage_extrusion:
+          type: number
+          minimum: 0
+          description: "Optional cage extrusion in Blender scene units; omitted preserves Blender behavior."
+        max_ray_distance:
+          type: number
+          minimum: 0
+          description: "Optional projection ray distance in Blender scene units; zero means unlimited."
+        use_cage:
+          type: boolean
+          description: "Optional Blender cage projection override. Use true with cage_extrusion for an extruded cage."
+        normal_space:
+          type: string
+          enum: [TANGENT, OBJECT]
+          description: "Optional normal-map coordinate space."
         dry_run:
           type: boolean
           default: false

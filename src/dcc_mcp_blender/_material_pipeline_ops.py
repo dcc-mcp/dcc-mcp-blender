@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -374,6 +375,7 @@ def _bake_one_map(
     margin: int,
     dry_run: bool,
     source_obj: Any = None,
+    projection_settings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     bake_type = SUPPORTED_BAKE_MAPS[map_name]
     info = {
@@ -401,7 +403,11 @@ def _bake_one_map(
         kwargs = {"type": bake_type, "margin": int(margin)}
         if source_obj is not None:
             kwargs["use_selected_to_active"] = True
-        bpy.ops.object.bake(**kwargs)
+            # Operator arguments avoid mutating the persistent scene bake settings.
+            kwargs.update(projection_settings or {})
+        result = bpy.ops.object.bake(**kwargs)
+        if result != {"FINISHED"}:
+            raise RuntimeError(f"Blender bake did not finish: {result!r}")
         _save_bake_image(image, path)
     finally:
         if previous_engine is not None:
@@ -813,10 +819,34 @@ def transfer_maps(
     resolution: int = 512,
     margin: int = 16,
     dry_run: bool = False,
+    cage_extrusion: Optional[float] = None,
+    max_ray_distance: Optional[float] = None,
+    use_cage: Optional[bool] = None,
+    normal_space: Optional[str] = None,
 ) -> dict:
     """Bake selected-to-active transfer maps from one mesh to another."""
     try:
         import bpy
+
+        projection_settings = {}
+        for name, value in (("cage_extrusion", cage_extrusion), ("max_ray_distance", max_ray_distance)):
+            if value is not None:
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or value < 0
+                ):
+                    return skill_error("Invalid projection setting", f"{name} must be a finite non-negative number.")
+                projection_settings[name] = float(value)
+        if use_cage is not None:
+            if not isinstance(use_cage, bool):
+                return skill_error("Invalid projection setting", "use_cage must be a boolean.")
+            projection_settings["use_cage"] = use_cage
+        if normal_space is not None:
+            if normal_space not in ("TANGENT", "OBJECT"):
+                return skill_error("Invalid projection setting", "normal_space must be TANGENT or OBJECT.")
+            projection_settings["normal_space"] = normal_space
 
         source, error = _ensure_mesh_object(bpy, source_object)
         if error:
@@ -836,7 +866,17 @@ def transfer_maps(
             )
         planned = [output_path / f"{source_object}_to_{target_object}_{map_name}.png" for map_name in map_names]
         outputs = [
-            _bake_one_map(bpy, target, map_name, path, int(resolution), int(margin), dry_run, source_obj=source)
+            _bake_one_map(
+                bpy,
+                target,
+                map_name,
+                path,
+                int(resolution),
+                int(margin),
+                dry_run,
+                source_obj=source,
+                projection_settings=projection_settings,
+            )
             for map_name, path in zip(map_names, planned)
         ]
         return skill_success(
@@ -847,7 +887,12 @@ def transfer_maps(
             written_files=[] if dry_run else [item["path"] for item in outputs],
             planned_files=[item["path"] for item in outputs],
             warnings=["Transfer maps use Blender selected-to-active baking; verify cages for production assets."],
-            bake_settings={"resolution": int(resolution), "margin": int(margin), "dry_run": bool(dry_run)},
+            bake_settings={
+                "resolution": int(resolution),
+                "margin": int(margin),
+                "dry_run": bool(dry_run),
+                "projection_overrides": projection_settings,
+            },
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")

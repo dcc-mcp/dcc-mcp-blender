@@ -162,6 +162,7 @@ def _make_bpy(*objects, materials=None, images=None):
     bpy.data.objects = _Collection(objects)
     bpy.data.materials = _MaterialCollection(materials or [])
     bpy.data.images = _ImageCollection(images or [])
+    bpy.ops.object.bake.return_value = {"FINISHED"}
     return bpy
 
 
@@ -399,3 +400,130 @@ class TestTextureBake:
         )
 
         assert result["success"] is False
+
+
+class TestTransferProjection:
+    def _call(self, bpy, tmp_path, **kwargs):
+        return load_and_call(
+            "blender-texture-bake/scripts/transfer_maps.py",
+            bpy,
+            source_object="Source",
+            target_object="Target",
+            output_dir=str(tmp_path),
+            **kwargs,
+        )
+
+    def test_explicit_projection_operator_arguments_and_scene_unchanged(self, tmp_path):
+        source, target = _FakeObject("Source"), _FakeObject("Target")
+        bpy = _make_bpy(source, target)
+        bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
+        bake = SimpleNamespace(cage_extrusion=0.7, max_ray_distance=0.8, use_cage=False, normal_space="OBJECT")
+        bpy.context.scene.render.bake = bake
+        settings = dict(cage_extrusion=0.02, max_ray_distance=0.05, use_cage=True, normal_space="TANGENT")
+        result = self._call(bpy, tmp_path, **settings)
+        assert result["success"] is True
+        bpy.ops.object.bake.assert_called_once_with(type="NORMAL", margin=16, use_selected_to_active=True, **settings)
+        assert result["context"]["bake_settings"]["projection_overrides"] == settings
+        assert vars(bake) == dict(cage_extrusion=0.7, max_ray_distance=0.8, use_cage=False, normal_space="OBJECT")
+        assert bpy.context.scene.render.engine == "BLENDER_EEVEE_NEXT"
+
+    def test_omission_preserves_operator_arguments(self, tmp_path):
+        bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+        result = self._call(bpy, tmp_path)
+        assert result["success"] is True
+        bpy.ops.object.bake.assert_called_once_with(type="NORMAL", margin=16, use_selected_to_active=True)
+        assert result["context"]["bake_settings"]["projection_overrides"] == {}
+
+    def test_zero_and_false_are_not_omitted(self, tmp_path):
+        bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+        settings = dict(cage_extrusion=0, max_ray_distance=0, use_cage=False, normal_space="OBJECT")
+        result = self._call(bpy, tmp_path, **settings)
+        assert result["success"] is True
+        bpy.ops.object.bake.assert_called_once_with(type="NORMAL", margin=16, use_selected_to_active=True, **settings)
+
+    def test_dry_run_reports_overrides_without_baking(self, tmp_path):
+        bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+        result = self._call(bpy, tmp_path, dry_run=True, cage_extrusion=0.02)
+        assert result["success"] is True
+        assert result["context"]["bake_settings"]["projection_overrides"] == {"cage_extrusion": 0.02}
+        bpy.ops.object.bake.assert_not_called()
+        assert not bpy.data.images
+        assert not list(tmp_path.iterdir())
+
+    def test_invalid_overrides_fail_before_side_effects(self, tmp_path):
+        for settings in (
+            {"cage_extrusion": -1},
+            {"max_ray_distance": float("nan")},
+            {"cage_extrusion": float("inf")},
+            {"cage_extrusion": True},
+            {"max_ray_distance": "1"},
+            {"use_cage": 1},
+            {"normal_space": "WORLD"},
+        ):
+            bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+            result = self._call(bpy, tmp_path, **settings)
+            assert result["success"] is False
+            bpy.ops.object.bake.assert_not_called()
+            assert not bpy.data.images
+
+    def test_failure_restores_render_engine_and_preserves_bake_settings(self, tmp_path):
+        bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+        bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
+        bake = SimpleNamespace(cage_extrusion=0.7)
+        bpy.context.scene.render.bake = bake
+        bpy.ops.object.bake.side_effect = RuntimeError("test bake failure")
+        result = self._call(bpy, tmp_path, cage_extrusion=0.02)
+        assert result["success"] is False
+        assert bpy.context.scene.render.engine == "BLENDER_EEVEE_NEXT"
+        assert bake.cage_extrusion == 0.7
+
+
+def test_transfer_projection_schema():
+    import jsonschema
+    import yaml
+
+    from tests.conftest import SKILLS_ROOT
+
+    tools = yaml.safe_load((SKILLS_ROOT / "blender-texture-bake" / "tools.yaml").read_text())["tools"]
+    schema = next(tool["input_schema"] for tool in tools if tool["name"] == "transfer_maps")
+    base = dict(source_object="High", target_object="Low", output_dir="/tmp/bake")
+    jsonschema.validate(base, schema)
+    jsonschema.validate(
+        dict(base, cage_extrusion=0.02, max_ray_distance=0, use_cage=False, normal_space="TANGENT"), schema
+    )
+    for name in ("cage_extrusion", "max_ray_distance", "use_cage", "normal_space"):
+        assert "default" not in schema["properties"][name]
+
+
+def test_cancelled_bake_does_not_save_output(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from dcc_mcp_blender import _material_pipeline_ops as ops
+
+    bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+    bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
+    bpy.ops.object.bake.return_value = {"CANCELLED"}
+    save = Mock()
+    monkeypatch.setattr(ops, "_save_bake_image", save)
+    result = TestTransferProjection()._call(bpy, tmp_path, cage_extrusion=0.02)
+    assert result["success"] is False
+    save.assert_not_called()
+    assert not list(tmp_path.iterdir())
+    assert bpy.context.scene.render.engine == "BLENDER_EEVEE_NEXT"
+
+
+def test_bake_exception_does_not_save_output(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from dcc_mcp_blender import _material_pipeline_ops as ops
+
+    bpy = _make_bpy(_FakeObject("Source"), _FakeObject("Target"))
+    bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
+    bpy.ops.object.bake.side_effect = RuntimeError("bake exception")
+    save = Mock()
+    monkeypatch.setattr(ops, "_save_bake_image", save)
+    result = TestTransferProjection()._call(bpy, tmp_path, cage_extrusion=0.02)
+    assert result["success"] is False
+    save.assert_not_called()
+    assert not list(tmp_path.iterdir())
+    assert bpy.context.scene.render.engine == "BLENDER_EEVEE_NEXT"
