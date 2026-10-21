@@ -140,13 +140,17 @@ def _append_common(
                 items = list(src_items)
             setattr(data_to, dataname, items)
 
+        # Blender replaces the assigned names with loaded IDs (or None) on exit.
+        # Read back actual names, including any collision suffix, not ID reprs.
+        loaded_names = [item.name for item in getattr(data_to, dataname) if item is not None]
+
         return skill_success(
-            f"{'Linked' if link else 'Appended'} {len(items)} {data_type_key} from {path.name}",
+            f"{'Linked' if link else 'Appended'} {len(loaded_names)} {data_type_key} from {path.name}",
             filepath=str(path),
             data_type=data_type_key,
-            names=items,
+            names=loaded_names,
             link=bool(link),
-            count=len(items),
+            count=len(loaded_names),
             prompt="Use blender-collection or blender-scene tools to organize the imported data.",
         )
     except ImportError:

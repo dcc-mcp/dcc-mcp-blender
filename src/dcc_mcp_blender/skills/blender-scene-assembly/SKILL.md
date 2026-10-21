@@ -53,6 +53,11 @@ and inspecting library references. Mirrors Maya's scene assembly surface.
 | `set_active_view_layer` | Set the active view layer |
 | `list_external_references` | List all external .blend file references |
 
+For append/link results, `context.names` contains the actual loaded data-block
+names, including any collision suffix. `context.count` counts those names, not
+requested names or failed loads. A completed call can return zero names; check
+the returned names/count to confirm the intended data was loaded.
+
 ## Common workflows
 
 - **Scene composition**: `merge_scene` to combine multiple .blend files
