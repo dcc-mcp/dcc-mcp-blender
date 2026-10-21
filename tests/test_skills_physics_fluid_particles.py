@@ -109,6 +109,9 @@ def test_add_fluid_modifier_creates_a_domain():
     assert modifier.type == "FLUID"
     assert modifier.fluid_type == "DOMAIN"
     assert result["context"]["fluid_type"] == "DOMAIN"
+    assert "bake_simulation does not support FLUID" in result["prompt"]
+    assert "fluid-specific bake operators via blender-scripting through DCC-MCP" in result["prompt"]
+    assert "the UI" not in result["prompt"]
 
 
 def test_add_fluid_modifier_accepts_flow_and_effector():
@@ -155,6 +158,9 @@ def test_set_fluid_settings_writes_domain_settings():
     assert modifier.domain_settings.resolution_max == 96
     assert modifier.domain_settings.viscosity_base == 0.5
     assert result["context"]["domain_applied"]["resolution_max"] == 96
+    assert "bake_simulation does not support FLUID" in result["prompt"]
+    assert "fluid-specific bake operators via blender-scripting through DCC-MCP" in result["prompt"]
+    assert "the UI" not in result["prompt"]
 
 
 def test_set_fluid_settings_without_a_domain_reports_missing_block():

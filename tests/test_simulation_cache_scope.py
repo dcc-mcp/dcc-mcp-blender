@@ -149,6 +149,39 @@ def test_unsupported_cache_preflight_stops_all_targets_before_mutation(tool):
     bpy.ops.ptcache.free_bake_all.assert_not_called()
 
 
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_fluid_bake_rejection_preserves_scene_and_cache_state(dry_run):
+    bpy = host()
+    target = bpy.data.objects.get("Target")
+    modifier = target.modifiers[0]
+    modifier.type = "FLUID"
+    before = vars(cache(bpy)).copy(), vars(cache(bpy, "Unrelated")).copy(), vars(bpy.context.scene).copy()
+    active_before = bpy.context.view_layer.objects.active
+
+    result = call(
+        "bake_simulation",
+        bpy,
+        object_name="Target",
+        modifier_name="Cloth",
+        frame_start=5,
+        frame_end=10,
+        dry_run=dry_run,
+    )
+
+    assert result["success"] is False
+    assert result["context"]["modifier_type"] == "FLUID"
+    assert result["context"]["mutation_state"] == "none"
+    assert (vars(cache(bpy)), vars(cache(bpy, "Unrelated")), vars(bpy.context.scene)) == before
+    assert bpy.context.view_layer.objects.active is active_before
+    target.select_set.assert_not_called()
+    bpy.ops.object.select_all.assert_not_called()
+    bpy.context.temp_override.assert_not_called()
+    bpy.ops.ptcache.bake.assert_not_called()
+    bpy.ops.ptcache.free_bake.assert_not_called()
+    bpy.ops.ptcache.bake_all.assert_not_called()
+    bpy.ops.ptcache.free_bake_all.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

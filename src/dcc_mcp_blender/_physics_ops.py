@@ -1517,7 +1517,11 @@ def add_fluid_modifier(
             applied=applied,
             not_applied=list(skipped),
             skipped=list(skipped),
-            prompt="Use set_fluid_settings to tune domain options, then bake_simulation.",
+            prompt=(
+                "Use set_fluid_settings to tune domain options. "
+                "bake_simulation does not support FLUID; use Blender's fluid-specific bake "
+                "operators via blender-scripting through DCC-MCP."
+            ),
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
@@ -1600,7 +1604,10 @@ def set_fluid_settings(
             domain_applied=domain_applied,
             not_applied=list(skipped),
             skipped=list(skipped),
-            prompt="Use bake_simulation to cache the result.",
+            prompt=(
+                "bake_simulation does not support FLUID; use Blender's fluid-specific bake "
+                "operators via blender-scripting through DCC-MCP."
+            ),
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
