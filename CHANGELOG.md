@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.23](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.22...v0.2.23) (2026-10-21)
+
+
+### Features
+
+* add bounded per-face material assignment and readback ([0b926c1](https://github.com/dcc-mcp/dcc-mcp-blender/commit/0b926c1ebb203700364772efd5f7e24c001b5aad))
+* **audio:** isolate saved-snapshot WAV export jobs ([b41274e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b41274e443b4eab438317c27373af66a1adcde2a))
+* expose selected-to-active bake projection controls ([6ade29d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/6ade29d51a9e782642168613143f08d5367fe0bc))
+* **render:** submit saved scenes as isolated render jobs ([2ac59b5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2ac59b5f4a332f9306520229f1daa412d4a0b567))
+
+
+### Bug Fixes
+
+* allow empty sequencers in portable scene copies ([458d838](https://github.com/dcc-mcp/dcc-mcp-blender/commit/458d838baba20bad6acae4112b62d896830ca80f))
+* compare PNG file timestamps through consistent APIs ([1ba474f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/1ba474f314ea2c5c35eeadc70bcd59d15775ea83))
+* correct fluid-specific bake guidance ([c779cb9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c779cb9703949ec4512d42237b2f5802ecbe1840))
+* validate PNG render output before resuming ([80c9710](https://github.com/dcc-mcp/dcc-mcp-blender/commit/80c97106be58b01c996599f0869a6adc133c4573))
+* verify scene save completion and file readback ([029a378](https://github.com/dcc-mcp/dcc-mcp-blender/commit/029a378a268a0d2b3b93a89cdf97f2faa5be6ab4))
+
+
+### Documentation
+
+* **audio:** archive exact tested candidate as non-executable evidence ([b87c854](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b87c854d66a649018f0b7d05b482b9d97a20a7c1))
+
 ## [0.2.22](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.21...v0.2.22) (2026-10-17)
 
 
