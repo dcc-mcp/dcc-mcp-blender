@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.24](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.23...v0.2.24) (2026-10-21)
+
+
+### Bug Fixes
+
+* report loaded data block names for append and link ([b68b6d6](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b68b6d66ea046a5280ca0a54a1cd03db863ea469))
+
 ## [0.2.23](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.22...v0.2.23) (2026-10-21)
 
 
