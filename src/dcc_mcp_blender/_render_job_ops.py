@@ -757,10 +757,15 @@ def _terminate_process_tree(process: Any) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
+        # ``taskkill`` is a console-subsystem executable: spawning it from a
+        # GUI Blender or from a console-less standalone worker flashes a black
+        # console window. Windows does not propagate the parent's console
+        # suppression to children, so it must be requested per spawn.
         subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
             check=False,
             capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return
     try:

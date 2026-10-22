@@ -692,3 +692,35 @@ def test_completed_job_exposes_no_failure_fields(tmp_path):
     assert result["message"] == "Render job status"
     assert result["context"]["status"] == "completed"
     assert "stderr_tail" not in result["context"]
+
+
+def test_windows_terminate_hides_taskkill_console(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(jobs.os, "name", "nt")
+    monkeypatch.setattr(jobs.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(
+        jobs.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    jobs._terminate_process_tree(SimpleNamespace(pid=4321, poll=lambda: None))
+
+    assert calls[0][0] == ["taskkill", "/PID", "4321", "/T", "/F"]
+    # A console-subsystem taskkill must never inherit a visible console.
+    assert calls[0][1]["creationflags"] == 0x08000000
+
+
+def test_terminate_skips_already_exited_process(monkeypatch):
+    calls = []
+    monkeypatch.setattr(jobs.os, "name", "nt")
+    monkeypatch.setattr(
+        jobs.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append(command),
+    )
+
+    jobs._terminate_process_tree(SimpleNamespace(pid=4321, poll=lambda: 0))
+
+    assert calls == []
