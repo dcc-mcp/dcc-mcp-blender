@@ -10,7 +10,7 @@ metadata:
     stage: render
     version: "1.0.1"
     tags: [blender, render, viewport, camera, AOV, denoise, exr, border]
-    search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range, fractional frame rate, fps, timebase"
+    search-hint: "render, viewport screenshot, output, resolution, camera, cycles, eevee, render preview, AOV, render pass, denoise, multilayer EXR, border render, frame range, fractional frame rate, fps, timebase, CPU render threads, thread budget"
     search-aliases: [saved scene render, render blend filepath, render scene, render preview, viewport capture, screenshot, set render resolution, render settings, cycles render, eevee render, image output, render engine, render pass, AOV switch, cryptomatte, denoise, denoising, multilayer exr, exr codec, render region, border render, frame range, render status, fractional frame rate, fps, timebase]
     intent: "Configure render settings, render live or saved scenes, submit/query/cancel isolated animation jobs, and capture viewport images."
     recall-context:
@@ -155,6 +155,40 @@ through `start_render_job` would drop the camera and pass list — change
 A recovered job reads only log files that sit directly inside `job_directory`
 and are not symlinks: the directory is caller-supplied, and a receipt there
 proves nothing about the files beside it.
+
+## Render CPU thread settings
+
+Use `set_render_settings(threads=2)` to select native `FIXED` render CPU threads,
+or pass both `threads_mode="FIXED"` and an integer `threads` count. Explicit
+`FIXED` without a count is rejected. Use `threads_mode="AUTO"` without a count
+to return thread selection to Blender; combining `AUTO` with `threads` is an
+error. Omitting both inputs preserves the existing settings. No default resets
+the scene, and no per-job thread override is added.
+
+The tool validates types, available enum values, writable RNA properties and
+live host integer bounds before changing settings. Boolean, fractional, string,
+non-positive and out-of-range counts are rejected, not coerced or clamped.
+`set_render_settings` and `get_render_info` return actual `threads_mode` and
+`threads` readback. These are native effective settings, not raw saved values
+or a measurement of active OS threads. In `AUTO`, Blender's `threads` getter
+reports its host-selected count. A process thread override can also affect the
+count and make the mode getter report `FIXED`. Missing readback fields are
+reported as `null`, not invented. AUTO does not write the stored fixed count.
+
+If native assignment fails or readback does not match the requested mode and
+FIXED count, the tool returns an error with current readback and
+`thread_settings_may_have_changed=true`; other settings have not been changed.
+It does not pretend to restore hidden state from effective RNA getters. This
+is not a globally transactional setter. Native details are defined by
+[Blender's RNA thread getters](https://github.com/blender/blender/blob/blender-v4.5-release/source/blender/makesrna/intern/rna_scene.cc#L1251-L1267).
+
+These are Blender render CPU thread settings, not a whole-process, denoiser,
+GPU or OS resource cap, and they do not promise faster renders. Existing
+`start_render_job` saves the scene by default (`save_before_render=true`), so
+configure threads before submitting the job. With `save_before_render=false`,
+the worker uses the last saved scene, not unsaved thread edits. These settings
+change future scene renders, not an already running worker. Host acceptance
+and saved-scene round-trip still require native Blender testing.
 
 ## Output configuration
 
