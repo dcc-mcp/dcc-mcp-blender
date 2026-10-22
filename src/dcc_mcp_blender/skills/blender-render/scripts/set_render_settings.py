@@ -8,6 +8,7 @@ from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_
 
 from dcc_mcp_blender._frame_rate import frame_rate_info, validate_frame_rate
 from dcc_mcp_blender._image_format import set_image_format
+from dcc_mcp_blender._render_threads import apply_render_threads, render_thread_info, validate_render_threads
 
 VALID_ENGINES = {"CYCLES", "BLENDER_EEVEE", "BLENDER_EEVEE_NEXT", "BLENDER_WORKBENCH"}
 
@@ -22,6 +23,8 @@ def set_render_settings(
     output_path: Optional[str] = None,
     file_format: Optional[str] = None,
     fps_base: Optional[float] = None,
+    threads_mode: Optional[str] = None,
+    threads: Optional[int] = None,
 ) -> dict:
     """Configure render settings for the current scene.
 
@@ -33,6 +36,9 @@ def set_render_settings(
         fps: Native integer frame-rate numerator (1-32767).
         fps_base: Native frame-rate denominator; effective rate is fps / fps_base.
             Omit to preserve the current base, including fractional frame rates.
+        threads_mode: AUTO or FIXED. FIXED requires threads; AUTO forbids it.
+        threads: Native render CPU thread count; implies FIXED when mode is omitted.
+            Omit both thread inputs to preserve the current settings.
         samples: Number of render samples (Cycles or EEVEE).
         output_path: Output file path for renders.
         file_format: Output file format, e.g. PNG, JPEG, EXR.
@@ -51,6 +57,11 @@ def set_render_settings(
         except ValueError as exc:
             return skill_error("Invalid frame rate", str(exc))
 
+        try:
+            thread_update = validate_render_threads(render, threads_mode, threads)
+        except ValueError as exc:
+            return skill_error("Invalid render threads", str(exc))
+
         if engine:
             engine = engine.upper()
             if engine not in VALID_ENGINES:
@@ -58,6 +69,23 @@ def set_render_settings(
                     f"Invalid engine: {engine}",
                     f"Valid engines: {', '.join(sorted(VALID_ENGINES))}",
                 )
+
+        # Keep unexpected native assignment/readback failures ahead of all
+        # existing settings. RNA effective getters cannot restore hidden state.
+        try:
+            apply_render_threads(render, thread_update)
+        except Exception as exc:
+            return skill_error(
+                "Render thread settings could not be verified",
+                str(exc),
+                **render_thread_info(render),
+                requested_threads_mode=thread_update.get("threads_mode"),
+                requested_threads=thread_update.get("threads"),
+                thread_settings_may_have_changed=True,
+                prompt="Thread settings may have changed; other render settings were not changed. Check native thread settings and host thread overrides before retrying.",
+            )
+
+        if engine:
             render.engine = engine
 
         if resolution_x is not None:
@@ -90,6 +118,7 @@ def set_render_settings(
             resolution_y=render.resolution_y,
             resolution_percentage=render.resolution_percentage,
             **frame_rate_info(render),
+            **render_thread_info(render),
             output_path=render.filepath,
             prompt="Settings applied. Use render_scene to render.",
         )

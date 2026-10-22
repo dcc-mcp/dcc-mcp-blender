@@ -20,7 +20,7 @@ tools:
     destructive: false
     idempotent: false
   - name: set_render_settings
-    description: "Configure render settings (engine, resolution, fractional frame rate, samples, output path)"
+    description: "Configure render settings (engine, resolution, fractional frame rate, render CPU threads, samples, output path)"
     source_file: scripts/set_render_settings.py
     execution: sync
     affinity: main
@@ -56,6 +56,14 @@ tools:
           minimum: 0.000009999999747378752
           maximum: 1000000
           description: Native frame-rate denominator, validated against host RNA bounds (approximately 0.00001 to 1000000). Use fps 24 and fps_base 1.001 for approximately 23.976 fps. Omit to preserve the current base.
+        threads_mode:
+          type: string
+          enum: [AUTO, FIXED]
+          description: Native Blender render CPU thread mode. FIXED requires threads; AUTO forbids threads and does not write the stored fixed count. Omit both inputs to preserve existing settings. Not a process-wide or OS resource limit.
+        threads:
+          type: integer
+          minimum: 1
+          description: Native render CPU thread count, checked against actual host RNA bounds before any setting changes. Implies FIXED if threads_mode is omitted; cannot be combined with AUTO. Does not cap all Blender or denoiser threads.
         samples:
           type: integer
           minimum: 1
@@ -72,7 +80,7 @@ tools:
     destructive: false
     idempotent: true
   - name: get_render_info
-    description: "Return current render settings, including native fps, fps_base, and effective_fps (fps / fps_base)"
+    description: "Return current render settings, including native fps, fps_base, effective_fps (fps / fps_base), threads_mode and threads as exposed by native RNA (AUTO/host overrides affect readback)"
     source_file: scripts/get_render_info.py
     execution: sync
     affinity: main
