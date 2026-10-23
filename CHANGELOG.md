@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.25](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.24...v0.2.25) (2026-10-23)
+
+
+### Features
+
+* **render:** expose native CPU thread controls ([567fec6](https://github.com/dcc-mcp/dcc-mcp-blender/commit/567fec69dfb3aed03ffd5c6e71c73ff01c740146))
+
+
+### Bug Fixes
+
+* suppress console window when cancelling background render jobs ([712dbe5](https://github.com/dcc-mcp/dcc-mcp-blender/commit/712dbe55d73d3e14899cdbb90ceac568581284ed))
+
 ## [0.2.24](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.23...v0.2.24) (2026-10-21)
 
 
