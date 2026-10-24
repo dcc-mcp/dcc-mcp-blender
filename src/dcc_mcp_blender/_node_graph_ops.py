@@ -7,6 +7,13 @@ from typing import Any, Mapping, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._compositor_compat import (
+    compositor_tree,
+    modern_compositor,
+    require_local_scene,
+    require_single_user_tree,
+)
+
 _SHADER_KINDS = {"shader", "material"}
 _GEOMETRY_KINDS = {"geometry", "geometry_nodes", "node_group"}
 _MODIFIER_KINDS = {"geometry_modifier", "modifier"}
@@ -195,7 +202,9 @@ def _new_modifier(obj: Any, name: str = "Geometry Nodes") -> Any:
     return obj.modifiers.new(name=name, type="NODES")
 
 
-def _resolve_node_tree(bpy: Any, node_tree_ref: Mapping[str, Any]) -> tuple[Any | None, dict[str, Any], dict | None]:
+def _resolve_node_tree(
+    bpy: Any, node_tree_ref: Mapping[str, Any], *, write: bool = False
+) -> tuple[Any | None, dict[str, Any], dict | None]:
     if not isinstance(node_tree_ref, Mapping):
         return None, {}, skill_error("Invalid node_tree_ref", "node_tree_ref must be an object.")
     kind = str(node_tree_ref.get("kind") or node_tree_ref.get("type") or "").lower()
@@ -233,11 +242,17 @@ def _resolve_node_tree(bpy: Any, node_tree_ref: Mapping[str, Any]) -> tuple[Any 
         group = _collection_get(bpy.data.node_groups, str(group_name))
         if group is None:
             return None, {}, skill_error(f"Node group not found: {group_name}", f"No node group named '{group_name}'.")
+        if write and getattr(group, "bl_idname", None) == "CompositorNodeTree":
+            require_single_user_tree(group)
         return group, {"kind": "geometry", "group_name": str(group_name)}, None
 
     if kind in _COMPOSITOR_KINDS:
-        scene = bpy.context.scene
-        if not getattr(scene, "use_nodes", False) or getattr(scene, "node_tree", None) is None:
+        scene_name = node_tree_ref.get("scene_name")
+        scene = _collection_get(bpy.data.scenes, str(scene_name)) if scene_name else bpy.context.scene
+        if scene is None:
+            return None, {}, skill_error(f"Scene not found: {scene_name}", "Choose an existing scene.")
+        tree = compositor_tree(bpy, scene)
+        if tree is None or (not modern_compositor(bpy, scene) and not getattr(scene, "use_nodes", False)):
             return (
                 None,
                 {},
@@ -246,7 +261,11 @@ def _resolve_node_tree(bpy: Any, node_tree_ref: Mapping[str, Any]) -> tuple[Any 
                     "Enable compositor nodes (scene.use_nodes = True) before accessing the node tree.",
                 ),
             )
-        return scene.node_tree, {"kind": "compositor"}, None
+        if write:
+            require_local_scene(scene)
+            if modern_compositor(bpy, scene):
+                require_single_user_tree(tree)
+        return tree, {"kind": "compositor", "scene_name": scene.name}, None
 
     if kind in _MODIFIER_KINDS:
         object_name = node_tree_ref.get("object_name") or node_tree_ref.get("owner_name")
@@ -694,7 +713,7 @@ def create_node(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref)
+        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref, write=True)
         if error:
             return error
         if name and _collection_get(node_tree.nodes, name) is not None:
@@ -724,7 +743,7 @@ def delete_node(node_tree_ref: Mapping[str, Any], node_name: str) -> dict:
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref)
+        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref, write=True)
         if error:
             return error
         node = _collection_get(node_tree.nodes, node_name)
@@ -801,7 +820,7 @@ def connect_nodes(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref)
+        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref, write=True)
         if error:
             return error
         source = _collection_get(node_tree.nodes, from_node)
@@ -846,7 +865,7 @@ def disconnect_nodes(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref)
+        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref, write=True)
         if error:
             return error
         removed = []
@@ -884,7 +903,7 @@ def set_node_input(node_tree_ref: Mapping[str, Any], node_name: str, socket: str
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref)
+        node_tree, resolved, error = _resolve_node_tree(bpy, node_tree_ref, write=True)
         if error:
             return error
         node = _collection_get(node_tree.nodes, node_name)
@@ -1246,12 +1265,12 @@ def get_compositor_node_tree() -> dict:
         import bpy
 
         scene = bpy.context.scene
-        if not getattr(scene, "use_nodes", False):
+        if not modern_compositor(bpy, scene) and not getattr(scene, "use_nodes", False):
             return skill_error(
                 "Compositor nodes not enabled",
                 "Enable compositor nodes (scene.use_nodes = True) before accessing the node tree.",
             )
-        node_tree = getattr(scene, "node_tree", None)
+        node_tree = compositor_tree(bpy, scene)
         if node_tree is None:
             return skill_error(
                 "No compositor node tree",
@@ -1311,8 +1330,8 @@ def list_all_node_graphs() -> dict:
 
         # Compositor node tree
         scene = bpy.context.scene
-        if getattr(scene, "use_nodes", False) and getattr(scene, "node_tree", None) is not None:
-            nt = scene.node_tree
+        nt = compositor_tree(bpy, scene)
+        if nt is not None and (modern_compositor(bpy, scene) or getattr(scene, "use_nodes", False)):
             graphs.append(
                 {
                     "kind": "compositor",

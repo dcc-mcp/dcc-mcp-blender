@@ -1,6 +1,6 @@
 tools:
   - name: setup_compositor_tree
-    description: "Enable scene.use_nodes and optionally build a Render Layers -> Composite compositor tree."
+    description: "Enable render compositing and optionally build Render Layers -> native output (Composite on 4.5, Group Output on 5.0-5.2)."
     source_file: scripts/setup_compositor_tree.py
     execution: sync
     affinity: main
@@ -17,11 +17,11 @@ tools:
           type: string
           enum: [default, empty]
           default: default
-          description: default wires Render Layers -> Composite; empty only enables the compositor.
+          description: default wires Render Layers -> native output; empty only enables the compositor.
         clear:
           type: boolean
           default: false
-          description: Remove every existing node before applying the template.
+          description: Clear this scene before applying the template; on 5.0-5.2 replace its group binding without deleting the old datablock.
     output_schema: &compositor_result_schema
       type: object
       additionalProperties: true
@@ -46,7 +46,7 @@ tools:
       open_world_hint: false
 
   - name: set_compositor_enabled
-    description: "Enable or disable compositor nodes for a scene without changing the graph."
+    description: "Enable or disable render compositing for a scene without changing the graph; uses the actual render switch on 5.0-5.2."
     source_file: scripts/set_compositor_enabled.py
     execution: sync
     affinity: main
