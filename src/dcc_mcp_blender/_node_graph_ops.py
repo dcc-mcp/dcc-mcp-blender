@@ -252,7 +252,10 @@ def _resolve_node_tree(
         if scene is None:
             return None, {}, skill_error(f"Scene not found: {scene_name}", "Choose an existing scene.")
         tree = compositor_tree(bpy, scene)
-        if tree is None or (not modern_compositor(bpy, scene) and not getattr(scene, "use_nodes", False)):
+        modern = modern_compositor(bpy, scene)
+        if modern and tree is None:
+            return None, {}, skill_error("No compositor node group", "Run setup_compositor_tree first.")
+        if tree is None or (not modern and not getattr(scene, "use_nodes", False)):
             return (
                 None,
                 {},
@@ -1328,24 +1331,32 @@ def list_all_node_graphs() -> dict:
                     }
                 )
 
-        # Compositor node tree
+        # An unavailable compositor must not hide unrelated material/geometry
+        # graphs. Catch only the version/feature gate, not native tree failures.
         scene = bpy.context.scene
-        nt = compositor_tree(bpy, scene)
-        if nt is not None and (modern_compositor(bpy, scene) or getattr(scene, "use_nodes", False)):
-            graphs.append(
-                {
-                    "kind": "compositor",
-                    "name": "Compositor",
-                    "type": "compositor",
-                    "node_count": len(_iter_collection(nt.nodes)),
-                    "link_count": len(_iter_collection(nt.links)),
-                }
-            )
+        unavailable_graphs = []
+        try:
+            modern = modern_compositor(bpy, scene)
+        except ValueError as exc:
+            unavailable_graphs.append({"kind": "compositor", "reason": str(exc)})
+        else:
+            nt = compositor_tree(bpy, scene)
+            if nt is not None and (modern or getattr(scene, "use_nodes", False)):
+                graphs.append(
+                    {
+                        "kind": "compositor",
+                        "name": "Compositor",
+                        "type": "compositor",
+                        "node_count": len(_iter_collection(nt.nodes)),
+                        "link_count": len(_iter_collection(nt.links)),
+                    }
+                )
 
         return skill_success(
             f"Found {len(graphs)} node graph(s)",
             node_graphs=graphs,
             count=len(graphs),
+            unavailable_graphs=unavailable_graphs,
             prompt="Use list_nodes or get_compositor_node_tree to inspect a specific graph.",
         )
     except ImportError:

@@ -33,8 +33,8 @@ tools:
           type: string
         context:
           type: object
-    # clear=true drops every existing node, so this is destructive even though
-    # the non-clearing path only adds nodes. Keep a dedicated annotations block:
+    # clear=true replaces this scene's graph (5.0-5.2 retain the old datablock),
+    # so it is destructive even when shared data survives. Keep a dedicated block:
     # the shared anchor below is reused by non-destructive tools.
     read_only: false
     destructive: true
@@ -72,7 +72,7 @@ tools:
       open_world_hint: false
 
   - name: clear_compositor_tree
-    description: "Remove every node and link from the scene compositor tree."
+    description: "Clear this scene's compositor graph; on 5.0-5.2 rebind a new empty group and preserve the old datablock."
     source_file: scripts/clear_compositor_tree.py
     execution: sync
     affinity: main

@@ -416,3 +416,42 @@ def test_failed_enable_restores_replaced_link_and_mute_state():
     assert links[0].from_socket is source and links[0].to_socket is target
     assert links[0].is_muted
     assert bpy.context.scene.render.use_compositing is False
+
+
+def test_modern_missing_group_has_actionable_setup_hint():
+    bpy = modern_bpy()
+    with patch.dict("sys.modules", bpy=bpy):
+        result = graph.list_nodes({"kind": "compositor"})
+    assert not result["success"]
+    assert "setup_compositor_tree" in str(result)
+    assert "scene.use_nodes" not in str(result)
+
+
+@pytest.mark.parametrize("unsupported", ["future_version", "missing_feature"])
+def test_unsupported_compositor_keeps_other_graph_discovery(unsupported):
+    bpy = modern_bpy()
+    bpy.data.materials = [SimpleNamespace(name="Material", use_nodes=True, node_tree=FakeNodeTree())]
+    geometry = ModernTree("Geometry")
+    geometry.bl_idname = "GeometryNodeTree"
+    bpy.data.node_groups.items.append(geometry)
+    if unsupported == "future_version":
+        bpy.app.version = (5, 3, 0)
+    else:
+        del bpy.context.scene.compositing_node_group
+    with patch.dict("sys.modules", bpy=bpy):
+        result = graph.list_all_node_graphs()
+        assert result["success"], result
+        context = result["context"]
+        assert context["count"] == 2
+        assert {item["kind"] for item in context["node_graphs"]} == {"shader", "geometry"}
+        assert context["unavailable_graphs"][0]["kind"] == "compositor"
+        assert context["unavailable_graphs"][0]["reason"]
+        assert not comp.setup_compositor_tree()["success"]
+
+
+@pytest.mark.parametrize("error", [ValueError("unexpected native tree failure"), RuntimeError("native failure")])
+def test_graph_discovery_does_not_swallow_unrelated_native_errors(error):
+    bpy = modern_bpy()
+    with patch.dict("sys.modules", bpy=bpy), patch.object(graph, "compositor_tree", side_effect=error):
+        result = graph.list_all_node_graphs()
+    assert not result["success"]
