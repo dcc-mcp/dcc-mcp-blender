@@ -10,10 +10,19 @@ module stays importable outside Blender.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Sequence
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._compositor_compat import (
+    compositor_enabled,
+    compositor_tree,
+    modern_compositor,
+    require_local_scene,
+    require_single_user_tree,
+    set_compositor_state,
+)
 from dcc_mcp_blender._node_graph_ops import (
     _collection_get,
     _create_node_in_tree,
@@ -176,7 +185,13 @@ def resolve_compositor_node_type(node_type: str) -> str | None:
         return None
     if key in _NODE_TYPE_ALIASES:
         return _NODE_TYPE_ALIASES[key]
-    # Accept any compositor node id even when it is missing from the catalogue.
+    # Accept only the unified ShaderNode ids derived from this compositor
+    # catalogue, not arbitrary shader-only nodes (for example TexImage).
+    unified = {"ShaderNode" + item[0][len("CompositorNode") :] for item in _COMPOSITOR_NODE_CATALOG}
+    for current_id in unified | {"NodeGroupOutput"}:
+        if key == _normalise_key(current_id):
+            return current_id
+    # Preserve support for compositor ids absent from the curated catalogue.
     if key.startswith("compositornode") and len(key) > len("compositornode"):
         return str(node_type).strip()
     return None
@@ -185,9 +200,9 @@ def resolve_compositor_node_type(node_type: str) -> str | None:
 def list_compositor_node_types(category: str | None = None, search: str | None = None) -> dict:
     """List the compositor node type catalogue used by ``create_compositor_node``.
 
-    The catalogue is static and not filtered by Blender version, so an entry may
-    still fail to instantiate on an older Blender; ``create_compositor_node``
-    surfaces that as a version-aware error.
+    Native RNA availability and known replacement ids are included when a host
+    is available. A registered type still needs to support the target tree;
+    creation validates that without publishing an unsuccessful new group.
 
     Args:
         category: Optional category filter, for example ``filter`` or ``matte``.
@@ -201,20 +216,37 @@ def list_compositor_node_types(category: str | None = None, search: str | None =
         )
     needle = str(search).lower() if search else None
     node_types = []
+    host = None
+    try:
+        import bpy
+
+        host = bpy
+    except ImportError:
+        pass
+    if host is not None:
+        try:
+            modern_compositor(host, host.context.scene)
+        except ValueError as exc:
+            return skill_error(str(exc), "Use a supported Blender compositor API.")
     for node_id, label, entry_category, aliases in _COMPOSITOR_NODE_CATALOG:
         if wanted and _normalise_key(entry_category) != wanted:
             continue
-        haystack = " ".join((node_id, label, entry_category, *aliases)).lower()
+        resolved_id = _host_node_type(host, host.context.scene, node_id) if host is not None else node_id
+        haystack = " ".join((node_id, resolved_id, label, entry_category, *aliases)).lower()
         if needle and needle not in haystack:
             continue
-        node_types.append(
-            {
-                "id": node_id,
-                "label": label,
-                "category": entry_category,
-                "aliases": list(aliases),
-            }
-        )
+        native_types = getattr(host, "types", None) if host is not None else None
+        entry = {
+            "id": resolved_id,
+            "label": label,
+            "category": entry_category,
+            "aliases": list(aliases),
+        }
+        if resolved_id != node_id:
+            entry["legacy_id"] = node_id
+        if native_types is not None:
+            entry["registered"] = getattr(native_types, resolved_id, None) is not None
+        node_types.append(entry)
     return skill_success(
         f"Found {len(node_types)} compositor node type(s)",
         category=category,
@@ -244,33 +276,66 @@ def _scene_ref(scene: Any) -> dict:
     return {"kind": "compositor", "scene_name": getattr(scene, "name", None)}
 
 
-def _resolve_compositor_tree(bpy: Any, scene_name: str | None, *, ensure: bool = False) -> tuple:
-    """Resolve ``scene.node_tree``, optionally enabling compositor nodes first."""
+def _resolve_compositor_tree(bpy: Any, scene_name: str | None, *, ensure: bool = False, write: bool = False) -> tuple:
+    """Resolve a tree without enabling modern render output as a read side effect."""
     scene, error = _resolve_scene(bpy, scene_name)
     if error:
         return None, {}, error
-    if not getattr(scene, "use_nodes", False):
+    modern = modern_compositor(bpy, scene)
+    if not modern and not compositor_enabled(bpy, scene):
         if not ensure:
             return (
                 None,
                 {},
-                skill_error(
-                    "Compositor nodes not enabled",
-                    "Run setup_compositor_tree (or set_compositor_enabled) to enable scene.use_nodes.",
-                ),
+                skill_error("Compositor nodes not enabled", "Run setup_compositor_tree to enable compositing."),
             )
-        scene.use_nodes = True
-    node_tree = getattr(scene, "node_tree", None)
+        set_compositor_state(bpy, scene, True)
+    node_tree = compositor_tree(bpy, scene)
     if node_tree is None:
-        return (
-            None,
-            {},
-            skill_error(
-                "No compositor node tree",
-                "The scene has no compositor node tree even though use_nodes is enabled.",
-            ),
-        )
+        return None, {}, skill_error("No compositor node tree", "Run setup_compositor_tree first.")
+    if write:
+        require_local_scene(scene)
+        if modern:
+            require_single_user_tree(node_tree)
     return node_tree, _scene_ref(scene), None
+
+
+def _host_node_type(bpy: Any, scene: Any, node_type: str) -> str:
+    if not modern_compositor(bpy, scene):
+        return node_type
+    if node_type == "CompositorNodeComposite":
+        return "NodeGroupOutput"
+    if node_type == "CompositorNodeMath":
+        return "ShaderNodeMath"
+    # Unified nodes keep their suffix. Only offer the replacement when native
+    # RNA says it exists and the former id does not; creation still validates
+    # whether the type is allowed in this particular compositor tree.
+    types = getattr(bpy, "types", None)
+    if types is not None and node_type.startswith("CompositorNode"):
+        replacement = "ShaderNode" + node_type[len("CompositorNode") :]
+        if getattr(types, node_type, None) is None and getattr(types, replacement, None) is not None:
+            return replacement
+    return node_type
+
+
+def _ensure_output_socket(tree: Any) -> None:
+    outputs = [item for item in tree.interface.items_tree if getattr(item, "in_out", None) == "OUTPUT"]
+    if outputs:
+        if getattr(outputs[0], "socket_type", None) != "NodeSocketColor":
+            raise ValueError(
+                "The first compositor group output must be a Color socket; existing interface was not changed"
+            )
+    else:
+        tree.interface.new_socket(name="Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+
+
+def _group_output_input(tree: Any, node: Any) -> Any:
+    outputs = [item for item in tree.interface.items_tree if getattr(item, "in_out", None) == "OUTPUT"]
+    return _get_socket(node.inputs, outputs[0].identifier) or _get_socket(node.inputs, outputs[0].name)
+
+
+def _discard_group(bpy: Any, tree: Any) -> None:
+    bpy.data.node_groups.remove(tree)
 
 
 def _ensure_compositor_node(node_tree: Any, node_type: str, preferred_name: str) -> tuple:
@@ -281,6 +346,10 @@ def _ensure_compositor_node(node_tree: Any, node_type: str, preferred_name: str)
     node. The preferred name is only applied when it is still free, so Blender's
     own de-duplication ("Composite.001") survives.
     """
+    if node_type == "NodeGroupOutput":
+        for candidate in _iter_collection(node_tree.nodes):
+            if _node_type(candidate) == node_type and getattr(candidate, "is_active_output", False):
+                return candidate, False
     existing = _collection_get(node_tree.nodes, preferred_name)
     if existing is not None and _node_type(existing) == node_type:
         return existing, False
@@ -319,21 +388,22 @@ def _existing_link(node_tree: Any, from_node: str, from_socket: str, to_node: st
 
 
 def set_compositor_enabled(scene_name: str | None = None, enabled: bool = True) -> dict:
-    """Enable or disable compositor nodes for a scene."""
+    """Toggle actual render compositing, preserving the existing node group."""
     try:
         import bpy
 
         scene, error = _resolve_scene(bpy, scene_name)
         if error:
             return error
-        scene.use_nodes = bool(enabled)
-        node_tree = getattr(scene, "node_tree", None)
-        node_count = len(_iter_collection(getattr(node_tree, "nodes", []))) if node_tree is not None else 0
+        set_compositor_state(bpy, scene, bool(enabled))
+        node_tree = compositor_tree(bpy, scene)
+        actual = compositor_enabled(bpy, scene)
         return skill_success(
-            f"{'Enabled' if enabled else 'Disabled'} compositor nodes for {getattr(scene, 'name', scene_name)}",
+            f"{'Enabled' if actual else 'Disabled'} compositor nodes for {getattr(scene, 'name', scene_name)}",
             scene_name=getattr(scene, "name", scene_name),
-            use_nodes=bool(enabled),
-            node_count=node_count,
+            use_nodes=actual,
+            enabled=actual,
+            node_count=len(_iter_collection(getattr(node_tree, "nodes", []))) if node_tree is not None else 0,
             prompt="Use setup_compositor_tree to build a starter graph.",
         )
     except ImportError:
@@ -343,91 +413,151 @@ def set_compositor_enabled(scene_name: str | None = None, enabled: bool = True) 
 
 
 def setup_compositor_tree(scene_name: str | None = None, template: str = "default", clear: bool = False) -> dict:
-    """Enable compositor nodes and optionally build a starter node tree.
-
-    Args:
-        scene_name: Target scene; defaults to the active scene.
-        template: ``default`` wires Render Layers -> Composite, ``empty`` only
-            enables the compositor.
-        clear: Remove every existing node before applying the template.
-    """
+    """Build Render Layers -> native output; publish new 5.x groups only on success."""
     wanted = str(template or "default").lower()
     if wanted not in _VALID_TEMPLATES:
         return skill_error(
-            f"Unsupported compositor template: {template}",
-            f"Available templates: {', '.join(_VALID_TEMPLATES)}",
+            f"Unsupported compositor template: {template}", f"Available templates: {', '.join(_VALID_TEMPLATES)}"
         )
+    owned_tree = None
+    scene = None
+    previous_tree = None
+    before_nodes = before_sockets = before_links = None
     try:
         import bpy
 
         scene, error = _resolve_scene(bpy, scene_name)
         if error:
             return error
-        scene.use_nodes = True
-        node_tree = getattr(scene, "node_tree", None)
+        modern = modern_compositor(bpy, scene)
+        require_local_scene(scene)
+        was_enabled = compositor_enabled(bpy, scene)
+        previous_tree = compositor_tree(bpy, scene)
+        if modern and previous_tree is not None and not clear:
+            require_single_user_tree(previous_tree)
+        removed = len(_iter_collection(previous_tree.nodes)) if clear and previous_tree is not None else 0
+        if modern and (previous_tree is None or clear):
+            # A clear operation must not delete nodes from another scene sharing
+            # the same group. Keep the old datablock intact; replace this binding.
+            owned_tree = bpy.data.node_groups.new(f"{scene.name} Compositor", "CompositorNodeTree")
+            node_tree = owned_tree
+        else:
+            if not modern:
+                set_compositor_state(bpy, scene, True)
+            node_tree = compositor_tree(bpy, scene)
         if node_tree is None:
-            return skill_error("No compositor node tree", "The scene has no compositor node tree.")
-
-        removed = 0
-        if clear:
-            for node in list(_iter_collection(node_tree.nodes)):
+            raise ValueError("The scene has no compositor node tree")
+        before_nodes = list(node_tree.nodes)
+        before_sockets = list(node_tree.interface.items_tree) if modern else []
+        before_links = [
+            (link.from_socket, link.to_socket, getattr(link, "is_muted", False)) for link in node_tree.links
+        ]
+        # Preflight an existing output interface before any destructive work.
+        if modern and wanted == "default":
+            _ensure_output_socket(node_tree)
+        if clear and not modern:
+            for node in list(node_tree.nodes):
                 _remove_node(node_tree, node)
-                removed += 1
-
-        created: list = []
+        created = []
         link = None
         if wanted == "default":
+            output_type = "NodeGroupOutput" if modern else _COMPOSITE_NODE
             render_layers, made_rl = _ensure_compositor_node(node_tree, _R_LAYERS_NODE, "Render Layers")
-            composite, made_comp = _ensure_compositor_node(node_tree, _COMPOSITE_NODE, "Composite")
+            composite, made_comp = _ensure_compositor_node(node_tree, output_type, "Composite")
             if made_rl:
-                created.append(getattr(render_layers, "name", "Render Layers"))
+                render_layers.scene = scene
+                created.append(render_layers.name)
             if made_comp:
-                created.append(getattr(composite, "name", "Composite"))
+                created.append(composite.name)
             source = _get_socket(render_layers.outputs, "Image")
-            target = _get_socket(composite.inputs, "Image")
+            target = _group_output_input(node_tree, composite) if modern else _get_socket(composite.inputs, "Image")
             if source is None or target is None:
-                return skill_error(
-                    "Could not wire the default compositor tree",
-                    "The Render Layers or Composite node has no Image socket in this Blender version.",
-                )
-            if not _existing_link(
-                node_tree,
-                getattr(render_layers, "name", ""),
-                "Image",
-                getattr(composite, "name", ""),
-                "Image",
-            ):
+                raise ValueError("The native render/output nodes have no compatible Image sockets")
+            if not any(item.from_socket == source and item.to_socket == target for item in node_tree.links):
                 link = _link_info(node_tree.links.new(source, target))
-
+        if owned_tree is not None:
+            scene.compositing_node_group = owned_tree
+        set_compositor_state(bpy, scene, True)
         return skill_success(
-            f"Compositor tree ready for {getattr(scene, 'name', scene_name)} ({wanted} template)",
-            scene_name=getattr(scene, "name", scene_name),
+            f"Compositor tree ready for {scene.name} ({wanted} template)",
+            scene_name=scene.name,
             template=wanted,
-            use_nodes=True,
+            use_nodes=compositor_enabled(bpy, scene),
             cleared_nodes=removed,
             created_nodes=created,
             node_count=len(_iter_collection(node_tree.nodes)),
             link=link,
+            tree_name=getattr(node_tree, "name", None),
             prompt="Use create_compositor_node, connect_compositor_nodes, and set_compositor_node_value.",
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        # Owned groups were staged; restoring the binding removes all changes.
+        # Non-clearing additions to an existing tree can also be rolled back.
+        try:
+            if owned_tree is not None:
+                try:
+                    if scene.compositing_node_group == owned_tree:
+                        scene.compositing_node_group = previous_tree
+                finally:
+                    _discard_group(bpy, owned_tree)
+            elif before_nodes is not None and not clear:
+                for item in list(node_tree.nodes):
+                    if item not in before_nodes:
+                        _remove_node(node_tree, item)
+                # Keep untouched native links (and their mute state/identity).
+                # links.new may replace an existing single-input connection;
+                # only recreate those original links that actually disappeared.
+                endpoints = [(source, target) for source, target, _muted in before_links]
+                for item in list(node_tree.links):
+                    if (item.from_socket, item.to_socket) not in endpoints:
+                        _remove_link(node_tree, item)
+                for source, target, muted in before_links:
+                    if not any(item.from_socket == source and item.to_socket == target for item in node_tree.links):
+                        restored = node_tree.links.new(source, target)
+                        if hasattr(restored, "is_muted"):
+                            restored.is_muted = muted
+                if modern:
+                    for item in list(node_tree.interface.items_tree):
+                        if item not in before_sockets:
+                            node_tree.interface.remove(item)
+            if scene is not None and "was_enabled" in locals():
+                set_compositor_state(bpy, scene, was_enabled)
+        except Exception as rollback_error:
+            return skill_exception(
+                exc,
+                message="Failed to set up compositor; rollback failed",
+                prompt=f"Inspect before retrying: {rollback_error}",
+            )
         return skill_exception(exc, message="Failed to set up the compositor tree")
 
 
 def clear_compositor_tree(scene_name: str | None = None) -> dict:
-    """Remove every node (and therefore every link) from the compositor tree."""
+    """Clear this scene, without destroying another scene's shared 5.x group."""
+    replacement = None
+    previous = None
+    scene = None
     try:
         import bpy
 
+        scene, error = _resolve_scene(bpy, scene_name)
+        if error:
+            return error
         node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name)
         if error:
             return error
-        removed = 0
-        for node in list(_iter_collection(node_tree.nodes)):
-            _remove_node(node_tree, node)
-            removed += 1
+        require_local_scene(scene)
+        removed = len(_iter_collection(node_tree.nodes))
+        if modern_compositor(bpy, scene):
+            previous = node_tree
+            replacement = bpy.data.node_groups.new(f"{scene.name} Compositor", "CompositorNodeTree")
+            scene.compositing_node_group = replacement
+            if scene.compositing_node_group != replacement:
+                raise ValueError("Blender did not retain the cleared compositor group")
+        else:
+            for node in list(_iter_collection(node_tree.nodes)):
+                _remove_node(node_tree, node)
         return skill_success(
             f"Cleared compositor tree for {resolved.get('scene_name')}",
             node_tree_ref=resolved,
@@ -437,6 +567,19 @@ def clear_compositor_tree(scene_name: str | None = None) -> dict:
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        if replacement is not None:
+            try:
+                try:
+                    if scene.compositing_node_group == replacement:
+                        scene.compositing_node_group = previous
+                finally:
+                    _discard_group(bpy, replacement)
+            except Exception as rollback_error:
+                return skill_exception(
+                    exc,
+                    message="Failed to clear compositor; rollback failed",
+                    prompt=f"Inspect before retrying: {rollback_error}",
+                )
         return skill_exception(exc, message="Failed to clear the compositor tree")
 
 
@@ -463,39 +606,83 @@ def create_compositor_node(
             if isinstance(location, (str, bytes)) or len(location) != 2:
                 return skill_error("Invalid location", "location must be [x, y].")
             node_location = (float(location[0]), float(location[1]))
+            if not all(math.isfinite(value) for value in node_location):
+                return skill_error("Invalid location", "location values must be finite.")
         except (TypeError, ValueError, KeyError, OverflowError):
             return skill_error("Invalid location", "location must be [x, y].")
+    owned_tree = None
+    node = None
+    node_tree = None
+    original_sockets = None
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True)
+        scene, error = _resolve_scene(bpy, scene_name)
         if error:
             return error
+        modern = modern_compositor(bpy, scene)
+        require_local_scene(scene)
+        resolved_type = _host_node_type(bpy, scene, resolved_type)
+        node_tree = compositor_tree(bpy, scene)
+        if modern and node_tree is None:
+            owned_tree = bpy.data.node_groups.new(f"{scene.name} Compositor", "CompositorNodeTree")
+            node_tree = owned_tree
+        elif modern:
+            require_single_user_tree(node_tree)
+        elif not modern:
+            node_tree, _resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True)
+            if error:
+                return error
         if name and _collection_get(node_tree.nodes, str(name)) is not None:
             return skill_error(f"Node already exists: {name}", "Choose a unique node name.")
+        original_sockets = list(node_tree.interface.items_tree) if modern else []
+        if modern and resolved_type == "NodeGroupOutput":
+            _ensure_output_socket(node_tree)
         node = _create_node_in_tree(node_tree, resolved_type)
+        if resolved_type == _R_LAYERS_NODE:
+            node.scene = scene
         if name:
             node.name = str(name)
             node.label = str(name)
         if node_location is not None:
             node.location = node_location
+        record = _node_info(node)
+        if owned_tree is not None:
+            scene.compositing_node_group = owned_tree
         return skill_success(
             f"Created compositor node {getattr(node, 'name', resolved_type)}",
-            node_tree_ref=resolved,
+            node_tree_ref=_scene_ref(scene),
             node_type=resolved_type,
-            node=_node_info(node),
+            node=record,
             prompt="Use connect_compositor_nodes or set_compositor_node_value next.",
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
+        try:
+            if owned_tree is not None:
+                try:
+                    if scene.compositing_node_group == owned_tree:
+                        scene.compositing_node_group = None
+                finally:
+                    _discard_group(bpy, owned_tree)
+            elif node_tree is not None:
+                if node is not None:
+                    _remove_node(node_tree, node)
+                if original_sockets is not None and modern:
+                    for item in list(node_tree.interface.items_tree):
+                        if item not in original_sockets:
+                            node_tree.interface.remove(item)
+        except Exception as rollback_error:
+            return skill_exception(
+                exc,
+                message="Failed to create compositor node; rollback failed",
+                prompt=f"Inspect before retrying: {rollback_error}",
+            )
         return skill_exception(
             exc,
             message=f"Failed to create compositor node {node_type}",
-            prompt=(
-                f"Blender rejected {resolved_type}; this node type may not exist in the running "
-                "Blender version. Use list_compositor_node_types to pick an alternative."
-            ),
+            prompt=f"Blender rejected {resolved_type}; this type may be unavailable in this Blender version.",
         )
 
 
@@ -504,7 +691,7 @@ def delete_compositor_node(node_name: str, scene_name: str | None = None) -> dic
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name)
+        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, write=True)
         if error:
             return error
         node = _collection_get(node_tree.nodes, str(node_name))
@@ -535,7 +722,7 @@ def connect_compositor_nodes(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True)
+        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True, write=True)
         if error:
             return error
         source_node = _collection_get(node_tree.nodes, str(from_node))
@@ -586,7 +773,7 @@ def disconnect_compositor_nodes(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name)
+        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, write=True)
         if error:
             return error
         removed = []
@@ -629,7 +816,7 @@ def set_compositor_node_value(
     try:
         import bpy
 
-        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True)
+        node_tree, resolved, error = _resolve_compositor_tree(bpy, scene_name, ensure=True, write=True)
         if error:
             return error
         node = _collection_get(node_tree.nodes, str(node_name))
