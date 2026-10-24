@@ -6,6 +6,7 @@ all compositor setup, graph mutations and enable operations use typed tools.
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
@@ -59,7 +60,25 @@ def _state():
 
 
 def test_native_compositor_create_read_update_remove_and_reopen(tmp_path):
-    _ok(comp.setup_compositor_tree())
+    if bpy.app.version < (5, 0, 0):
+        bpy.context.scene.use_nodes = True
+        legacy = _tree()
+        original = {node.as_pointer() for node in legacy.nodes}
+        print(
+            "COMPOSITOR_LEGACY_DEFAULT "
+            + json.dumps(
+                {
+                    "version": list(bpy.app.version),
+                    "nodes": [(node.name, node.bl_idname) for node in legacy.nodes],
+                    "links": [(link.from_node.name, link.to_node.name) for link in legacy.links],
+                }
+            )
+        )
+        _ok(comp.setup_compositor_tree())
+        assert {node.as_pointer() for node in legacy.nodes} == original
+    # Native legacy defaults may include extra nodes. Request our minimal
+    # template explicitly before asserting its exact node count.
+    _ok(comp.setup_compositor_tree(clear=True))
     tree = _tree()
     pointer = tree.as_pointer()
     output_type = "NodeGroupOutput" if bpy.app.version >= (5, 0, 0) else "CompositorNodeComposite"
@@ -121,7 +140,7 @@ def test_native_invalid_calls_do_not_change_existing_graph():
 
 def test_native_named_scene_isolation():
     other = bpy.data.scenes.new("Other")
-    _ok(comp.setup_compositor_tree(scene_name=other.name))
+    _ok(comp.setup_compositor_tree(scene_name=other.name, clear=True))
     _ok(comp.create_compositor_node("blur", name="Other Blur", scene_name=other.name))
     assert _tree() is None
     result = _ok(graph.list_nodes({"kind": "compositor", "scene_name": other.name}))
@@ -151,6 +170,9 @@ def test_native_compositor_changes_decoded_output_pixels(tmp_path):
     scene.camera = camera
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
+    # 5.2 defaults the compositor to GPU independently of the Cycles device.
+    # This CPU acceptance test must not require a runner's OpenGL/Metal driver.
+    scene.render.compositor_device = "CPU"
     scene.cycles.samples = 1
     scene.cycles.use_denoising = False
     scene.render.resolution_x = scene.render.resolution_y = 8
@@ -169,6 +191,7 @@ def test_native_compositor_changes_decoded_output_pixels(tmp_path):
     _ok(comp.connect_compositor_nodes("Color Input", "Image", output.name, output.inputs[0].identifier))
 
     def render_pixels(name):
+        assert scene.render.compositor_device == "CPU"
         scene.render.filepath = str(tmp_path / name)
         bpy.ops.render.render(write_still=True)
         image = bpy.data.images.load(scene.render.filepath, check_existing=False)
@@ -176,6 +199,20 @@ def test_native_compositor_changes_decoded_output_pixels(tmp_path):
             assert tuple(image.size) == (8, 8)
             pixels = list(image.pixels)
             assert len(pixels) == 8 * 8 * 4 and all(math.isfinite(v) for v in pixels)
+            print(
+                "COMPOSITOR_PIXEL_EVIDENCE "
+                + json.dumps(
+                    {
+                        "version": list(bpy.app.version),
+                        "device": scene.render.compositor_device,
+                        "phase": name,
+                        "enabled": _enabled(),
+                        "size": list(image.size),
+                        "red_max": max(pixels[::4]),
+                        "red_sum": sum(pixels[::4]),
+                    }
+                )
+            )
             return pixels
         finally:
             bpy.data.images.remove(image)
