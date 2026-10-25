@@ -130,6 +130,80 @@ class TestMeshSceneOpsE2E:
         assert cleaned["success"] is True, cleaned
         assert cleaned["context"]["readback"]["remaining_modifiers"] == []
 
+    def test_remaining_shared_modeling_verbs_need_no_raw_scripting(self):
+        create_mod = load_skill("blender-mesh-ops", "create_primitive")
+        body = create_mod.create_primitive(
+            primitive_type="cube",
+            name="TypedAssemblyBody",
+            rotation=[0.1, 0.2, 0.3],
+            scale=[1.5, 0.75, 2.0],
+            size=2.0,
+        )
+        parent = create_mod.create_primitive(
+            primitive_type="cube",
+            name="TypedAssemblyRoot",
+            location=[3.0, 0.0, 0.0],
+            size=0.25,
+        )
+        assert body["success"] is True, body
+        assert parent["success"] is True, parent
+
+        inset_mod = load_skill("blender-mesh-ops", "inset")
+        inset = inset_mod.inset(
+            object_name="TypedAssemblyBody",
+            face_indices=[0],
+            thickness=0.1,
+        )
+        assert inset["success"] is True, inset
+        assert inset["context"]["readback"]["verified"] is True
+
+        loop_mod = load_skill("blender-mesh-ops", "add_edge_loop")
+        loop = loop_mod.add_edge_loop(
+            object_name="TypedAssemblyBody",
+            edge_indices=[0],
+            cuts=1,
+        )
+        assert loop["success"] is True, loop
+        assert loop["context"]["readback"]["verified"] is True
+
+        pivot_mod = load_skill("blender-mesh-ops", "set_pivot")
+        pivot = pivot_mod.set_pivot(
+            object_name="TypedAssemblyBody",
+            position=[0.25, 0.0, 0.0],
+        )
+        assert pivot["success"] is True, pivot
+        assert pivot["context"]["readback"]["position"] == pytest.approx([0.25, 0.0, 0.0], abs=1e-6)
+        assert pivot["context"]["readback"]["verified"] is True
+
+        group_mod = load_skill("blender-mesh-ops", "group_parent")
+        grouped = group_mod.group_parent(
+            object_names=["TypedAssemblyBody"],
+            group_name="TypedAssembly",
+            parent_name="TypedAssemblyRoot",
+        )
+        assert grouped["success"] is True, grouped
+        assert grouped["context"]["readback"]["members"] == ["TypedAssemblyBody"]
+        assert grouped["context"]["readback"]["parented"] == ["TypedAssemblyBody"]
+        assert grouped["context"]["readback"]["verified"] is True
+
+        freeze_mod = load_skill("blender-mesh-ops", "modeling_freeze_transforms")
+        frozen = freeze_mod.freeze_transforms(object_name="TypedAssemblyBody")
+        assert frozen["success"] is True, frozen
+        assert frozen["context"]["readback"]["rotation"] == [0.0, 0.0, 0.0]
+        assert frozen["context"]["readback"]["scale"] == [1.0, 1.0, 1.0]
+        assert frozen["context"]["readback"]["verified"] is True
+
+        uv_mod = load_skill("blender-mesh-ops", "uv_project")
+        projected = uv_mod.uv_project(
+            object_name="TypedAssemblyBody",
+            projection="planar",
+            axis="z",
+            margin=0.01,
+        )
+        assert projected["success"] is True, projected
+        assert projected["context"]["readback"]["uv_coordinate_count"] > 0
+        assert projected["context"]["readback"]["verified"] is True
+
     def test_applied_modifiers_boolean_and_uvs_prove_real_mesh_digest_changes(self):
         from dcc_mcp_blender._modeling_common import uv_state
 
