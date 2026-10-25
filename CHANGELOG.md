@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.26](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.25...v0.2.26) (2026-10-24)
+
+
+### Bug Fixes
+
+* support Blender 5.0-5.2 compositor compatibility ([#333](https://github.com/dcc-mcp/dcc-mcp-blender/issues/333)) ([088b4fd](https://github.com/dcc-mcp/dcc-mcp-blender/commit/088b4fd93ef244a633b6c0d675e543bae4817fed))
+
 ## [0.2.25](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.24...v0.2.25) (2026-10-23)
 
 
