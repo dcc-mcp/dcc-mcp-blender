@@ -109,6 +109,10 @@ class BlenderServerOptions:
     # Execution options (new in 0.17+)
     dispatcher: Optional[Any] = None  # BaseDccCallableDispatcher
     execution_bridge: Optional[Any] = None  # HostExecutionBridge
+    #: Timeout budget (ms) for the default main-thread dispatcher. ``None``
+    #: resolves through ``DCC_MCP_BLENDER_MAIN_THREAD_TIMEOUT_MS`` / the 30 s
+    #: default. Ignored when a caller supplies its own dispatcher or bridge.
+    main_thread_timeout_ms: Optional[int] = None
     gateway_remote_host: Optional[str] = None
     gateway_remote_port: Optional[int] = None
 
@@ -121,6 +125,8 @@ class BlenderServerOptions:
             not isinstance(self.gateway_remote_host, str) or not self.gateway_remote_host.strip()
         ):
             raise ValueError("gateway_remote_host must be a nonempty bind address or None")
+        if self.main_thread_timeout_ms is not None:
+            _env.validate_main_thread_timeout_ms(self.main_thread_timeout_ms)
 
     def to_core_options(self) -> DccServerOptions:
         """Convert to core DccServerOptions using from_env()."""
@@ -241,6 +247,7 @@ class BlenderMcpServer(DccServerBase):
         execution_bridge: Optional[Any] = None,
         options: Optional[BlenderServerOptions] = None,
         *,
+        main_thread_timeout_ms: Optional[int] = None,
         gateway_remote_host: Optional[str] = None,
         gateway_remote_port: Optional[int] = None,
     ) -> None:
@@ -262,6 +269,7 @@ class BlenderMcpServer(DccServerBase):
                 enable_workflows=enable_workflows,
                 dispatcher=dispatcher,
                 execution_bridge=execution_bridge,
+                main_thread_timeout_ms=main_thread_timeout_ms,
                 gateway_remote_host=gateway_remote_host,
                 gateway_remote_port=gateway_remote_port,
             )
@@ -270,7 +278,11 @@ class BlenderMcpServer(DccServerBase):
             from .dispatcher import create_dispatcher
 
             try:
-                default_dispatcher = create_dispatcher(ui_mode=not self.is_background())
+                # Tools that declare ``timeout_hint_secs: 0`` (as bundled import
+                # tools do) fall back to this budget. Let operators raise it for
+                # long-running main-thread work instead of a fixed 30 s cap.
+                timeout_ms = _env.resolve_main_thread_timeout_ms(options.main_thread_timeout_ms)
+                default_dispatcher = create_dispatcher(ui_mode=not self.is_background(), timeout_ms=timeout_ms)
             except Exception as exc:
                 raise RuntimeError("Blender main-thread dispatcher initialization failed") from exc
             # Do not mutate caller-owned options, which may be reused for another server.
@@ -801,6 +813,7 @@ def start_server(
     dispatcher: Optional[Any] = None,
     execution_bridge: Optional[Any] = None,
     *,
+    main_thread_timeout_ms: Optional[int] = None,
     gateway_remote_host: Optional[str] = None,
     gateway_remote_port: Optional[int] = None,
 ) -> BlenderMcpServer:
@@ -829,6 +842,9 @@ def start_server(
         enable_workflows: Enable workflow MCP tools (``None`` = env).
         dispatcher: Optional host dispatcher for main-thread execution.
         execution_bridge: Optional execution bridge supplied by dcc-mcp-core.
+        main_thread_timeout_ms: Timeout budget (ms) for the default main-thread
+            dispatcher; ``None`` uses ``DCC_MCP_BLENDER_MAIN_THREAD_TIMEOUT_MS``
+            or the 30 s default. Ignored when ``dispatcher``/``execution_bridge`` is supplied.
         gateway_remote_host: Embedded gateway's second listener bind address (``None`` = Core default/env).
         gateway_remote_port: Embedded second listener port (``0`` disables it; ``None`` = Core default/env).
 

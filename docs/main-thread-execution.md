@@ -22,6 +22,18 @@ Discovery proves that a service is registered. `dcc` and
 queue. Unsupported routes, submission failures, cancellations and callbacks
 from an earlier binding cannot make readiness succeed.
 
+## Timeout budget
+
+Bundled tools declare `timeout_hint_secs: 0`, which falls back to the
+dispatcher's default budget of 30 s. A main-thread import, bake or render that
+legitimately needs longer would otherwise be cut off with the same timeout
+symptom as issue #287. Raise the budget for the default dispatcher with
+`start_server(main_thread_timeout_ms=120000)`,
+`BlenderServerOptions(main_thread_timeout_ms=...)`, or the
+`DCC_MCP_BLENDER_MAIN_THREAD_TIMEOUT_MS` environment variable (explicit value >
+env > 30 s default). A per-tool `timeout_hint_secs` still takes precedence, and
+a caller-supplied dispatcher or execution bridge keeps its own budget.
+
 Stopping invalidates readiness, shuts down queued work and detaches the timer
 even if Core teardown fails. Timer callbacks retained across uninstall or
 reinstall cannot drain a new generation. A stopped server cannot be restarted;
