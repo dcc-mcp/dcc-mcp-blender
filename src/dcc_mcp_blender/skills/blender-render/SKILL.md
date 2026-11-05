@@ -42,6 +42,15 @@ multi-layer EXR or display-ready PNG / JPEG / TIFF / BMP output so the
 interactive Blender process remains responsive; poll with `get_render_job` and
 cancel only through the returned job id.
 
+`start_render_job` launches a detached worker and returns a `job_id`
+immediately. `dcc-mcp-cli --wait` polls the core `jobs_get_status` registry,
+which does not track these owned background processes, so it returns before the
+render finishes. Poll `get_render_job(job_id)` to completion instead (the tool's
+`next-tools` hint names the same path) and stop a running job only through
+`cancel_render_job(job_id)`. Because `output_format` already supports
+display-ready containers, no separate EXR-to-PNG conversion pass is needed
+before video encoding.
+
 `start_render_job` accepts the output containers
 `OPEN_EXR_MULTILAYER`, `OPEN_EXR`, `PNG`, `JPEG`, `TIFF`, `BMP`. Omit
 `output_format` to reuse the scene's `render.image_settings.file_format`. A
