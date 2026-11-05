@@ -156,15 +156,29 @@ When editing an existing MCP config, preserve unrelated servers. Merge only the
 `blender` server entry unless the user asks for a different server name.
 
 The setup script enforces this when `--mcp-config <path>` is given (JSON
-`mcpServers` or Codex TOML `mcp_servers`). It keeps every existing server and
-field, allocates a free name when the requested name is already taken by an
-unrelated product, keeps the existing name when a dcc-mcp-blender entry is
-already present, and is idempotent. Product detection is scoped to each single
-server, so one server's URL or marker never leaks into another. Invalid or
-ambiguous TOML is refused (TOML files must use a `.toml` suffix) and the merged
-result is validated before writing, so a broken config is never saved.
-`--dry-run` prints the selected name without writing. No real config is touched
-unless `--mcp-config` is explicit.
+`mcpServers` or Codex TOML `mcp_servers`):
+
+- It keeps every existing server and field, allocates a free name when the
+  requested name is taken by an unrelated product, and is idempotent.
+- Product identity is scoped to a single server and uses the parsed, **exact**
+  `url` value or an explicit `dcc-mcp-blender` / `dcc_mcp_blender` marker. A
+  sibling's URL or marker never leaks into another server, and a URL such as
+  `.../mcp-other` is not mistaken for `.../mcp`.
+- An existing product entry is a **no-op**: its name and every field (including
+  its own `url`, `command`, `args`, `env`, timeouts and custom keys) survive
+  verbatim in both JSON and TOML. A changed `--mcp-url` never rewrites it.
+- On Python 3.11+ (or with the `tomli` backport) a real TOML parser is
+  authoritative and validates both input and merged output. On stock Python 3.7
+  the fallback scanner is root-scoped and refuses multiline strings, nested
+  `mcp_servers` tables and other ambiguous input rather than guessing. TOML
+  files must use a `.toml` suffix; invalid input is refused, never saved.
+- Written strings are TOML-escaped (Unicode kept literal, control characters and
+  DEL escaped), and writes are guarded against changes since planning, preserve
+  file mode and follow symlinks, and stage privately before an atomic replace.
+  Errors propagate and never report false success.
+- `--dry-run` prints the selected name without writing. `--mcp-config` may not
+  point at the generated `mcp-streamable-http.json` snippet (that path is
+  refused). No real config is touched unless `--mcp-config` is explicit.
 
 ## User Hand-Off: Start Blender
 
