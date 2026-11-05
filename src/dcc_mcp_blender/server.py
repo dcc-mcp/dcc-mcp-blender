@@ -253,6 +253,13 @@ class BlenderMcpServer(DccServerBase):
     ) -> None:
         if options is not None and (gateway_remote_host is not None or gateway_remote_port is not None):
             raise ValueError("Pass remote gateway settings inside BlenderServerOptions when options is provided")
+        if options is not None and main_thread_timeout_ms is not None:
+            # ``main_thread_timeout_ms`` is a convenience keyword for the no-options
+            # construction path. When ``options`` is supplied, the budget is read
+            # only from ``options.main_thread_timeout_ms`` below; silently dropping
+            # the keyword would make the caller's budget ineffective. Reject the
+            # ambiguous combination instead, matching the gateway_remote_* contract.
+            raise ValueError("Pass main_thread_timeout_ms inside BlenderServerOptions when options is provided")
         if options is None:
             options = BlenderServerOptions(
                 port=port,
