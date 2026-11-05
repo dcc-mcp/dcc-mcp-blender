@@ -99,7 +99,11 @@ def test_tool_timeout_hint_still_overrides_configured_default():
 # ── End-to-end: the resolved budget reaches the server's dispatcher ───────────
 
 
-def test_default_gui_dispatcher_uses_30s_budget():
+def test_default_gui_dispatcher_uses_30s_budget(monkeypatch):
+    # The server resolves its budget from the environment, so a host-level
+    # DCC_MCP_BLENDER_MAIN_THREAD_TIMEOUT_MS must not bleed into this default
+    # assertion. Isolate the env to prove the built-in 30 s fallback.
+    monkeypatch.delenv(_env.ENV_MAIN_THREAD_TIMEOUT_MS, raising=False)
     with patch.dict(sys.modules, {"bpy": _gui_bpy()}):
         server = BlenderMcpServer(port=0, gateway_port=0, enable_gateway_failover=False)
         try:
@@ -147,5 +151,37 @@ def test_explicit_dispatcher_is_not_overridden_by_budget():
             # not replace it or raise while resolving.
             assert server._pump_dispatcher is supplied
             assert server._pump_dispatcher.timeout_ms == 45000
+        finally:
+            server.stop()
+
+
+# ── options / keyword mutual exclusion ─────────────────────────────────────────
+
+
+def test_options_and_timeout_keyword_are_mutually_exclusive():
+    # A caller-supplied ``options`` object is authoritative. Passing the
+    # ``main_thread_timeout_ms`` convenience keyword alongside it used to be
+    # silently ignored, so the requested budget never reached the dispatcher.
+    # Reject the ambiguous combination (like the gateway_remote_* kwargs).
+    options = BlenderServerOptions(port=0, main_thread_timeout_ms=120000)
+    with patch.dict(sys.modules, {"bpy": _gui_bpy()}):
+        with pytest.raises(ValueError, match="main_thread_timeout_ms"):
+            BlenderMcpServer(options=options, main_thread_timeout_ms=60000)
+
+
+def test_options_budget_reaches_default_gui_dispatcher(monkeypatch):
+    # The supported path: put the budget inside ``options`` with no keyword.
+    monkeypatch.delenv(_env.ENV_MAIN_THREAD_TIMEOUT_MS, raising=False)
+    options = BlenderServerOptions(
+        port=0,
+        gateway_port=0,
+        enable_gateway_failover=False,
+        main_thread_timeout_ms=120000,
+    )
+    with patch.dict(sys.modules, {"bpy": _gui_bpy()}):
+        server = BlenderMcpServer(options=options)
+        try:
+            assert isinstance(server._pump_dispatcher, BlenderUiDispatcher)
+            assert server._pump_dispatcher.timeout_ms == 120000
         finally:
             server.stop()
