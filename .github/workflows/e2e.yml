@@ -66,6 +66,12 @@ jobs:
   e2e:
     name: E2E Blender ${{ matrix.blender-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
+    # Bound a stalled job. macOS arm64 (macos-latest) runners are capacity
+    # constrained and can leave a job queued until GitHub cancels it with no
+    # steps or logs ("The job was not acquired by Runner of type hosted").
+    # Re-run the affected check when that happens rather than treating it as a
+    # Blender/product failure.
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
