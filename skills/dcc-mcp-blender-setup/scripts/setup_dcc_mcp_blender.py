@@ -268,19 +268,20 @@ def write_json(path: Path, payload: dict) -> None:
 # ``tool_timeout_sec`` ...) survives verbatim, and a product entry that is
 # already configured keeps its name and makes repeated runs a no-op.
 #
-# The scanner is deliberately regex based (no tomllib): it works on Python
-# 3.7+ and covers standard tables, quoted keys, inline tables, dotted keys,
-# root-level inline tables and trailing comments in one code path.
+# Product identity is always scoped to ONE server: a root inline table is split
+# into per-server value spans, so a sibling's URL/marker can never be mistaken
+# for another server's. On Python 3.11+ (or with the ``tomli`` backport) a real
+# TOML parser is authoritative and both the input and the merged output are
+# validated before writing; on stock Python 3.7 the pure-stdlib scanner below
+# is used and refuses ambiguous input rather than guessing. Either way no
+# invalid TOML is written and parse failures never report success.
 
 PRODUCT_MARKERS = ("dcc-mcp-blender", "dcc_mcp_blender")
 
 _KEY_PATTERN = r"""(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))"""
-_TOML_CHILD_HEADER = re.compile(r"^\s*\[\s*mcp_servers\s*\.\s*" + _KEY_PATTERN + r"\s*\]\s*$")
-_TOML_PARENT_HEADER = re.compile(r"^\s*\[\s*mcp_servers\s*\]\s*$")
-_TOML_ANY_HEADER = re.compile(r"^\s*\[")
-_TOML_INLINE_ENTRY = re.compile(r"^\s*" + _KEY_PATTERN + r"\s*=\s*\{")
-_TOML_DOTTED_KEY = re.compile(r"^\s*mcp_servers\s*\.\s*" + _KEY_PATTERN + r"\s*[.=]")
+_KEY_SEGMENT = re.compile(_KEY_PATTERN)
 _TOML_ROOT_INLINE = re.compile(r"(?m)^\s*mcp_servers\s*=\s*\{")
+_TOML_HEADER = re.compile(r"^\s*\[\s*(.+?)\s*\]\s*$")
 
 
 def _key_from_match(match: Any) -> str:
@@ -399,43 +400,288 @@ def _inline_table_names(body: str) -> List[str]:
     return names
 
 
-def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
-    """Return ``{server_name: raw_text}`` for every ``mcp_servers`` entry.
+def _load_toml_parser():
+    """Return a real TOML parser when importable, else ``None``.
 
-    Only names and the raw text needed for product detection are extracted;
-    values are never rewritten here, so every existing field is preserved.
+    ``tomllib`` is stdlib on 3.11+; ``tomli`` is an optional backport. The
+    import is lazy and guarded, so stock Python 3.7 keeps working through the
+    pure-stdlib fallback scanner.
     """
-    lines = [_strip_toml_comment(line) for line in text.splitlines()]
+    try:
+        import tomllib
+
+        return tomllib
+    except ImportError:
+        pass
+    try:
+        import tomli
+
+        return tomli
+    except ImportError:
+        return None
+
+
+def _parse_toml_servers(text: str, parser: Any):
+    """Authoritative, per-server scoped entries from a real TOML parser.
+
+    Returns ``None`` when no parser is importable (Python 3.7 fallback), or a
+    ``{name: scoped_text}`` dict. Each server's text is a serialization of only
+    that server's own value, so product detection can never inherit a sibling's
+    URL or marker. Invalid TOML is refused instead of guessed.
+    """
+    if parser is None:
+        return None
+    try:
+        data = parser.loads(text)
+    except ValueError as exc:
+        raise ValueError("Refusing to merge invalid TOML MCP config: %s" % exc) from exc
+    servers = data.get("mcp_servers", {})
+    if not isinstance(servers, dict):
+        raise ValueError("Refusing to merge: mcp_servers must be a TOML table")
+    return dict(
+        (str(name), value if isinstance(value, str) else json.dumps(value, sort_keys=True))
+        for name, value in servers.items()
+    )
+
+
+def _validate_toml_output(content: str, chosen: str, changed: bool, mcp_url: str, parser: Any) -> None:
+    """Refuse to write a merged result that is not valid TOML or lacks our entry.
+
+    This is the guard against writing ``Cannot declare ... twice`` output: the
+    exact string that would be written is parsed before ``apply_mcp_config``.
+    """
+    if parser is None:
+        return
+    try:
+        merged = parser.loads(content)
+    except ValueError as exc:
+        raise ValueError("Refusing to write invalid TOML MCP config: %s" % exc) from exc
+    if not changed:
+        return
+    servers = merged.get("mcp_servers", {})
+    entry = servers.get(chosen) if isinstance(servers, dict) else None
+    if not isinstance(entry, dict) or entry.get("url") != mcp_url:
+        raise ValueError("Refusing to write: merged config is missing the product server entry")
+
+
+def _split_statements(cleaned: str) -> List[str]:
+    """Split comment-stripped TOML into top-level statements.
+
+    A statement ends at a newline outside any inline table, array or quoted
+    string, so multi-line inline tables stay inside one statement. Unbalanced
+    delimiters are refused rather than silently mis-scoped.
+    """
+    statements: List[str] = []
+    start = 0
+    depth = 0
+    quote = ""
+    index = 0
+    length = len(cleaned)
+    while index < length:
+        char = cleaned[index]
+        if quote:
+            if char == "\\" and quote == '"':
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+        elif char in ('"', "'"):
+            quote = char
+        elif char == "#":  # defensive; comments are stripped beforehand
+            while index < length and cleaned[index] != "\n":
+                index += 1
+            continue
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+            if depth < 0:
+                raise ValueError("Unbalanced delimiters in MCP config")
+        elif char == "\n" and depth == 0:
+            statements.append(cleaned[start:index])
+            start = index + 1
+        index += 1
+    if depth != 0 or quote:
+        raise ValueError("Unbalanced delimiters in MCP config")
+    statements.append(cleaned[start:])
+    return statements
+
+
+def _parse_key_path(text: str) -> List[str]:
+    """Split a (possibly dotted, possibly quoted) TOML key into its segments."""
+    segments: List[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        while index < length and text[index] in " \t.":
+            index += 1
+        if index >= length:
+            break
+        match = _KEY_SEGMENT.match(text, index)
+        if not match:
+            raise ValueError("Cannot parse TOML key path %r" % text)
+        segments.append(_key_from_match(match))
+        index = match.end()
+    return segments
+
+
+def _top_level_eq(text: str) -> int:
+    """Return the index of the ``=`` separating key from value, or ``-1``."""
+    quote = ""
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if quote:
+            if char == "\\" and quote == '"':
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+        elif char in ('"', "'"):
+            quote = char
+        elif char == "=":
+            return index
+        index += 1
+    return -1
+
+
+def _split_inline_pairs(body: str) -> List[Tuple[str, str]]:
+    """Split an inline-table body into ``(name, value_text)`` pairs.
+
+    ``value_text`` is the exact slice belonging to that single server, so
+    product detection never sees a sibling's fields. Nested ``{}``/``[]``,
+    quoted strings and comments are honoured; unbalanced input is refused.
+    """
+    pairs: List[Tuple[str, str]] = []
+    key_assignment = re.compile(_KEY_PATTERN + r"\s*=")
+    index = 0
+    length = len(body)
+    while index < length:
+        char = body[index]
+        if char in " \t\r\n,":
+            index += 1
+            continue
+        if char == "#":
+            while index < length and body[index] != "\n":
+                index += 1
+            continue
+        match = key_assignment.match(body, index)
+        if not match:
+            raise ValueError("Cannot parse inline MCP table entry")
+        name = _key_from_match(match)
+        index = match.end()  # just past '='
+        value_start = index
+        depth = 0
+        quote = ""
+        while index < length:
+            c = body[index]
+            if quote:
+                if c == "\\":
+                    index += 2
+                    continue
+                if c == quote:
+                    quote = ""
+            elif c in ('"', "'"):
+                quote = c
+            elif c == "#":
+                while index < length and body[index] != "\n":
+                    index += 1
+                continue
+            elif c in "{[":
+                depth += 1
+            elif c in "}]":
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("Unbalanced inline MCP table")
+            elif c == "," and depth == 0:
+                break
+            index += 1
+        if depth != 0 or quote:
+            raise ValueError("Unbalanced inline MCP table")
+        pairs.append((name, body[value_start:index]))
+    return pairs
+
+
+def _inline_body(text: str, start: int) -> str:
+    """Return the body of the inline table whose ``{`` is at/after *start*."""
+    open_index = text.find("{", start)
+    if open_index < 0:
+        raise ValueError("Expected an inline MCP table")
+    body = _balanced_body(text, open_index)
+    if body is None:
+        raise ValueError("Unbalanced inline MCP table")
+    return body
+
+
+def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
+    """Return ``{server_name: scoped_raw_text}`` for every ``mcp_servers`` entry.
+
+    Each server receives only its own key/value text, so product detection can
+    never inherit a sibling's URL or marker (the root-inline bug). Dotted
+    subfield keys inside ``[mcp_servers]`` are recognised as well. Values are
+    never rewritten here; every existing field survives verbatim.
+
+    This is the Python 3.7 fallback scanner. It covers standard tables, quoted
+    keys, inline/dotted/root-inline/dotted-subfield forms, multi-line inline
+    tables and trailing comments, and raises ``ValueError`` on ambiguous or
+    unbalanced input instead of guessing.
+    """
+    cleaned = "\n".join(_strip_toml_comment(line) for line in text.splitlines())
     entries: Dict[str, List[str]] = {}
+
+    def add(name: str, chunk: str) -> None:
+        if chunk.strip():
+            entries.setdefault(name, []).append(chunk)
+
+    mode = "root"
     current = ""
-    in_parent = False
-    for line in lines:
-        match = _TOML_CHILD_HEADER.match(line)
-        if match:
-            current = _key_from_match(match)
-            entries.setdefault(current, []).append(line)
-            in_parent = False
+    for statement in _split_statements(cleaned):
+        stripped = statement.strip()
+        if not stripped:
             continue
-        if _TOML_ANY_HEADER.match(line):
-            in_parent = bool(_TOML_PARENT_HEADER.match(line))
-            current = ""
+        if stripped.startswith("["):
+            header = _TOML_HEADER.match(stripped)
+            if not header:
+                raise ValueError("Cannot parse MCP config table header")
+            segments = _parse_key_path(header.group(1))
+            if segments and segments[0] == "mcp_servers":
+                if len(segments) == 1:
+                    mode = "parent"
+                    current = ""
+                else:
+                    mode = "child"
+                    current = segments[1]
+                    add(current, stripped)
+            else:
+                mode = "other"
+                current = ""
             continue
-        if in_parent:
-            match = _TOML_INLINE_ENTRY.match(line)
-            if match:
-                entries.setdefault(_key_from_match(match), []).append(line)
-        dotted = _TOML_DOTTED_KEY.match(line)
-        if dotted:
-            entries.setdefault(_key_from_match(dotted), []).append(line)
-        elif current:
-            entries[current].append(line)
-    cleaned = "\n".join(lines)
-    span = _root_inline_span(cleaned)
-    if span:
-        body = cleaned[span[0] : span[1]]
-        for name in _inline_table_names(body):
-            entries.setdefault(name, []).append(body)
-    return dict((name, "\n".join(parts)) for name, parts in entries.items())
+        eq = _top_level_eq(stripped)
+        if eq < 0:
+            continue
+        lhs = stripped[:eq]
+        rhs = stripped[eq + 1 :]
+        segments = _parse_key_path(lhs)
+        if not segments:
+            continue
+        if segments[0] == "mcp_servers":
+            if len(segments) == 1 and "{" in rhs:
+                # Root inline table: split per server so no shared body leaks.
+                body = _inline_body(rhs, 0)
+                for name, value_text in _split_inline_pairs(body):
+                    add(name, value_text)
+            elif len(segments) >= 2:
+                # Root dotted key: mcp_servers.blender.field = ...
+                add(segments[1], statement)
+            continue
+        if mode == "parent":
+            # Inside [mcp_servers]: the FIRST key segment is the server name.
+            add(segments[0], statement)
+        elif mode == "child" and current:
+            add(current, statement)
+        # root / non-mcp statements are ignored.
+    return dict((name, "\n".join(chunks)) for name, chunks in entries.items())
 
 
 def is_product_entry(raw_text: str, mcp_url: str) -> bool:
@@ -527,10 +773,22 @@ def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
     fmt = "toml" if path.suffix.lower() == ".toml" else "json"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     parsed: Any = None
+    toml_parser = None
     if fmt == "toml":
-        entries = scan_toml_mcp_servers(text)
+        # A real parser is authoritative when available (3.11+ / tomli); the
+        # scoped stdlib scanner is the Python 3.7 fallback. Either way the
+        # merged output is validated before anything is written.
+        toml_parser = _load_toml_parser()
+        entries = _parse_toml_servers(text, toml_parser)
+        if entries is None:
+            entries = scan_toml_mcp_servers(text)
     else:
-        parsed = json.loads(text) if text.strip() else {"mcpServers": {}}
+        try:
+            parsed = json.loads(text) if text.strip() else {"mcpServers": {}}
+        except json.JSONDecodeError:
+            if path.suffix.lower() != ".json":
+                raise ValueError("Cannot parse %s as JSON; TOML MCP configs must use a .toml suffix" % path) from None
+            raise
         if not isinstance(parsed, dict):
             raise ValueError("MCP config must be a JSON object")
         servers = parsed.get("mcpServers") or {}
@@ -544,6 +802,7 @@ def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
         is_upgrade = False
     if fmt == "toml":
         changed, content = _build_toml_content(text, chosen, is_upgrade, mcp_url)
+        _validate_toml_output(content, chosen, changed, mcp_url, toml_parser)
     else:
         changed, content = _build_json_content(text, parsed, chosen, mcp_url)
     if changed:

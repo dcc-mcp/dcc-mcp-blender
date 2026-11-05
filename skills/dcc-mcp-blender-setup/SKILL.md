@@ -159,8 +159,12 @@ The setup script enforces this when `--mcp-config <path>` is given (JSON
 `mcpServers` or Codex TOML `mcp_servers`). It keeps every existing server and
 field, allocates a free name when the requested name is already taken by an
 unrelated product, keeps the existing name when a dcc-mcp-blender entry is
-already present, and is idempotent. `--dry-run` prints the selected name
-without writing. No real config is touched unless `--mcp-config` is explicit.
+already present, and is idempotent. Product detection is scoped to each single
+server, so one server's URL or marker never leaks into another. Invalid or
+ambiguous TOML is refused (TOML files must use a `.toml` suffix) and the merged
+result is validated before writing, so a broken config is never saved.
+`--dry-run` prints the selected name without writing. No real config is touched
+unless `--mcp-config` is explicit.
 
 ## User Hand-Off: Start Blender
 

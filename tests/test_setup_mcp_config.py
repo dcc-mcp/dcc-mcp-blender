@@ -312,6 +312,169 @@ def test_simulated_client_config_roundtrip(setup_script, tmp_path, platform_name
     assert data["mcpServers"]["blender-2"]["url"] == MCP_URL
 
 
+# --- Exact-head NACK regressions: valid TOML forms that were mis-detected ---
+
+
+def test_parent_dotted_subfields_are_detected_and_output_is_valid_toml(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    original = '[mcp_servers]\nblender.command = "uvx"\nblender.args = ["a"]\n'
+    config.write_text(original, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert "blender" in plan["existing_names"], plan
+    assert plan["chosen_name"] == "blender-2"
+    assert plan["changed"] is True
+    assert setup_script.apply_mcp_config(plan) == "blender-2"
+
+    merged = _read(config)
+    for line in original.splitlines():
+        assert line in merged  # every existing field survives verbatim
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        data = tomllib.loads(merged)  # raised TOMLDecodeError before the fix
+        assert data["mcp_servers"]["blender"]["command"] == "uvx"
+        assert data["mcp_servers"]["blender"]["args"] == ["a"]
+        assert data["mcp_servers"]["blender-2"]["url"] == MCP_URL
+
+    second = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert second["chosen_name"] == "blender-2"
+    assert second["changed"] is False
+
+
+@pytest.mark.parametrize(
+    "original",
+    [
+        '[mcp_servers]\n"blender".command = "uvx"\n',
+        '[mcp_servers]\nblender.env.BLENDER_PATH = "/opt/blender"\n',
+        '[mcp_servers]\nblender.command = "uvx"\n"blender".args = ["a"]\n',
+    ],
+)
+def test_parent_dotted_subfield_variants(tmp_path, setup_script, original):
+    config = tmp_path / "config.toml"
+    config.write_text(original, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert "blender" in plan["existing_names"], plan
+    assert plan["chosen_name"] == "blender-2"
+    setup_script.apply_mcp_config(plan)
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        tomllib.loads(_read(config))  # merged output must stay parseable
+
+
+def test_scanner_detects_parent_dotted_subfields(setup_script):
+    entries = setup_script.scan_toml_mcp_servers('[mcp_servers]\nblender.command = "uvx"\nblender.args = ["a"]\n')
+    assert set(entries) == {"blender"}
+    assert "command" in entries["blender"]
+
+
+def test_root_inline_scopes_product_detection_to_each_server(setup_script):
+    body = 'mcp_servers = { blender = { command = "uvx" }, core = { url = "%s" } }' % MCP_URL
+    entries = setup_script.scan_toml_mcp_servers(body)
+    assert set(entries) == {"blender", "core"}
+    assert MCP_URL not in entries["blender"]  # sibling URL must not leak
+    assert not setup_script.is_product_entry(entries["blender"], MCP_URL)
+    assert setup_script.is_product_entry(entries["core"], MCP_URL)
+
+
+def test_root_inline_multiple_servers_keeps_real_product_entry(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    original = 'mcp_servers = { blender = { command = "uvx" }, core = { url = "%s" } }\n' % MCP_URL
+    config.write_text(original, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "core"
+    assert plan["chosen_name"] != "blender"  # unrelated server is not product identity
+    assert plan["changed"] is False
+    assert setup_script.apply_mcp_config(plan) == "core"
+    assert _read(config) == original
+
+
+def test_root_inline_marker_sibling_does_not_hijack_blender(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    original = 'mcp_servers = { blender = { command = "uvx" }, note = { command = "dcc-mcp-blender" } }\n'
+    config.write_text(original, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "note"
+    assert plan["chosen_name"] != "blender"
+    assert plan["changed"] is False
+
+
+def test_root_inline_write_then_rerun_is_idempotent(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    config.write_text('mcp_servers = { blender = { command = "uvx" } }\n', encoding="utf-8")
+
+    first = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert first["chosen_name"] == "blender-2"
+    assert first["changed"] is True
+    setup_script.apply_mcp_config(first)
+    after_first = _read(config)
+
+    second = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert second["chosen_name"] == "blender-2"  # unrelated blender must not steal identity
+    assert second["changed"] is False
+    assert setup_script.apply_mcp_config(second) == "blender-2"
+    assert _read(config) == after_first
+
+
+def test_parent_inline_multi_entry_scopes_product_detection(setup_script):
+    original = '[mcp_servers]\nblender = { command = "uvx" }\ncore = { url = "%s" }\n' % MCP_URL
+    entries = setup_script.scan_toml_mcp_servers(original)
+    assert set(entries) == {"blender", "core"}
+    assert MCP_URL not in entries["blender"]
+    assert not setup_script.is_product_entry(entries["blender"], MCP_URL)
+    assert setup_script.is_product_entry(entries["core"], MCP_URL)
+
+
+def test_standard_table_multiline_array_is_scoped(setup_script):
+    original = '[mcp_servers.blender]\ncommand = "uvx"\nargs = [\n  "a",\n  "b",\n]\nurl = "%s"\n' % MCP_URL
+    entries = setup_script.scan_toml_mcp_servers(original)
+    assert "blender" in entries
+    assert setup_script.is_product_entry(entries["blender"], MCP_URL)
+
+
+def test_invalid_toml_is_refused_without_writing(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    original = 'mcp_servers = { blender = { command = "uvx" \n'  # unbalanced
+    config.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError):
+        setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert _read(config) == original
+
+
+def test_unknown_suffix_toml_content_is_refused_clearly(tmp_path, setup_script):
+    config = tmp_path / "config.conf"
+    original = '[mcp_servers]\nblender.command = "uvx"\n'
+    config.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError):
+        setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert _read(config) == original
+
+
+def test_python37_fallback_scanner_matches_authoritative_parser(tmp_path, setup_script, monkeypatch):
+    # Simulate stock Python 3.7 (no tomllib / no tomli): the scoped stdlib
+    # scanner must still produce correct names and idempotent, valid output.
+    monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    cases = [
+        '[mcp_servers]\nblender.command = "uvx"\nblender.args = ["a"]\n',
+        'mcp_servers = { blender = { command = "uvx" }, core = { url = "%s" } }\n' % MCP_URL,
+        'mcp_servers = { blender = { command = "uvx" } }\n',
+    ]
+    for original in cases:
+        config = tmp_path / "config.toml"
+        config.write_text(original, encoding="utf-8")
+        first = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        setup_script.apply_mcp_config(first)
+        second = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        assert second["changed"] is False
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            tomllib.loads(_read(config))
+
+
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="ast feature_version requires Python 3.8+")
 def test_setup_script_and_tests_stay_python37_syntax_compatible():
     ast.parse(_read(SETUP_SCRIPT), filename=str(SETUP_SCRIPT), feature_version=(3, 7))
