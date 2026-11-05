@@ -8,7 +8,7 @@
 
 **One MCP control plane for every DCC: an AI agent turns one prompt into a finished Blender material in 60 seconds.**
 
-**Try this →** [Blender material 60s Showcase](https://dcc-mcp.github.io/showcase/): the shortest path from one prompt to a rendered material in a live Blender session, powered by [`dcc-mcp-core`](https://github.com/dcc-mcp/dcc-mcp-core). See [Quick Start](#quick-start) for the full setup path.
+**Try this →** [Blender material 60s Showcase](https://dcc-mcp.github.io/showcase/): the shortest path from one prompt to a rendered material in a live Blender session, powered by [`dcc-mcp-core`](https://github.com/dcc-mcp/dcc-mcp-core). Install the add-on from [Installation](#installation), then connect with [Quick Start](#quick-start).
 
 **Related:** [dcc-mcp-core](https://github.com/dcc-mcp/dcc-mcp-core) · [Showcase](https://dcc-mcp.github.io/showcase/) · [All host adapters](https://dcc-mcp.github.io/ecosystem)
 
