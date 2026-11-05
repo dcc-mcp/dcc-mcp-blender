@@ -15,6 +15,10 @@ Run (one case per invocation, so a hard crash is directly observable):
 The script prints exactly one JSON object between RESULT_JSON_START / _END
 markers. A SIGABRT inside the encoder kills Blender before the marker is
 printed; the companion ``run_matrix.py`` records that as the crash case.
+
+Verdicts: SURPLUS (decoded > requested), EXACT (decoded == requested),
+SHORT (decoded < requested), NO_OUTPUT (no file produced). A SHORT or
+NO_OUTPUT result is never reported as an EXACT control.
 """
 
 import argparse
@@ -105,11 +109,20 @@ def main(argv):
     start_s, end_s = args.frames.split("-", 1)
     start_frame, end_frame = int(start_s), int(end_s)
 
+    fps_int = int(args.fps)
+    if args.fps <= 0 or fps_int <= 0:
+        raise SystemExit("error: --fps must be >= 1 (got %r)" % (args.fps,))
+
     scene = bpy.context.scene
     scene.frame_start = start_frame
     scene.frame_end = end_frame
-    scene.render.fps = int(args.fps)
-    scene.render.fps_base = args.fps / int(args.fps)
+    # Blender's effective frame rate is fps / fps_base. Set fps_base so the
+    # effective rate equals --fps exactly, including fractional rates (e.g.
+    # 23.976): fps_int / (fps_int / fps) == fps. The original
+    # fps / int(fps) form made the effective rate int(fps)**2 / fps, which
+    # would mismatch the requested duration for non-integer frame rates.
+    scene.render.fps = fps_int
+    scene.render.fps_base = fps_int / args.fps
 
     # Mirrors sound_mixdown_exec: (end_frame - start_frame + 1) * rate / fps.
     requested = int((end_frame - start_frame + 1) * args.mixrate / args.fps)
@@ -164,8 +177,8 @@ def main(argv):
                 nframes = info["nframes"]
                 result["wav_fmt"] = info["fmt"]
                 result["decoded_samples"] = nframes
-                result["surplus_samples"] = nframes - requested
                 extra = nframes - requested
+                result["surplus_samples"] = extra
                 if extra > 0:
                     fa = info["fmt"]["block_align"]
                     payload = info["data"]
@@ -176,13 +189,17 @@ def main(argv):
                         result["surplus_is_exact_duplicate_of_final_block"] = (
                             prev_block == last_block
                         )
-                result["verdict"] = "SURPLUS" if extra > 0 else "EXACT"
+                result["verdict"] = (
+                    "SURPLUS" if extra > 0 else ("SHORT" if extra < 0 else "EXACT")
+                )
         else:
             total = flac_total_samples(out)
             result["flac_total_samples"] = total
             if total is not None:
                 result["surplus_samples"] = total - requested
-                result["verdict"] = "SURPLUS" if total > requested else "EXACT"
+                result["verdict"] = (
+                    "SURPLUS" if total > requested else ("SHORT" if total < requested else "EXACT")
+                )
     else:
         result["file_exists"] = False
         result["verdict"] = "NO_OUTPUT"

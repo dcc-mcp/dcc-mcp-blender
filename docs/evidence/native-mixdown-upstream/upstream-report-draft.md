@@ -19,7 +19,8 @@ operator when writing WAV/PCM:
    and that block is a byte-for-byte duplicate of the preceding final block.
 2. Certain `accuracy` / sample-format combinations abort the whole Blender
    process (0xC0000409 on Windows, `SIGABRT` equivalent), leaving a zero-byte
-   output file.
+   output file (recorded as `file_exists=true`, `output_bytes=0`,
+   `output_state=zero_byte` in `results.json` for all 25 abort cases).
 
 Both are reproducible on an **empty scene** — no sound strips, no source files
 are required, because the scene mixes down to silence of the requested length.
@@ -82,6 +83,9 @@ when `requested` is an exact multiple of `accuracy`.
 | 1-100 | 240 | S24 | process abort, zero-byte output |
 | 1-1 | 2000 (>= requested) | S24 | process abort, zero-byte output |
 
+Each abort row is backed by a `results.json` record with `output_state=zero_byte`,
+`output_bytes=0`, and `crash_class=no_result_nonzero_exit`.
+
 On 4.5.13 the reported error is:
 
 ```
@@ -89,8 +93,11 @@ aud::FileException: File couldn't be written, filling the audio frame failed wit
 ```
 
 accompanied by exit `-6` / `SIGABRT`. On 5.1.1 the same parameter sets abort
-with `0xC0000409` and no Python traceback. A compressed-codec control (FLAC)
-with the same parameters completes with the exact requested sample count, which
+with `0xC0000409` and no Python traceback; the harness records the exit status,
+`crash_class`, `exit_signature`, `stdout_tail` / `stderr_tail` and the post-run
+output-file state (a zero-byte file for all 25 abort cases), so each abort is
+attributable rather than assumed. A compressed-codec control (FLAC) with the
+same parameters completes with the exact requested sample count, which
 isolates the problem to the PCM branch of the writer.
 
 **Expected:** either a valid file of the requested length, or a clean operator
@@ -158,21 +165,28 @@ operator error instead of allowing an exception to escape the destructor.
 ## Notes on defect 2
 
 The abort boundary is parameter-dependent and build-specific. On 5.1.1 with
-48 kHz stereo, fps 24, the measured bad region for 24/32-bit and float PCM
-formats was `accuracy` values that are not multiples of 32, `accuracy == 1`,
-and `accuracy >= requested_samples`. The internal root cause was not
-established by this reproducer; one plausible mechanism is an exception thrown
-from `encode()` inside `~FFMPEGWriter()` (an exception escaping a destructor
-terminates the process), given `avcodec_fill_audio_frame` can fail with the
-quoted message. Upstream confirmation is requested.
+48 kHz stereo, fps 24, the **measured** bad region was: `accuracy == 1`
+(U8 / S16 / S24); for S24, non-multiples of 32 and
+`accuracy >= requested_samples`; and for S32 / F32 / F64, `accuracy=240`
+(abort) versus `480` / `1024` (surplus). Generalizing "all non-multiples of 32
+abort" or "`accuracy >= requested_samples` aborts regardless of format" to
+S32 / F32 / F64 or to untested formats is **extrapolated**, not measured, and
+is explicitly labelled as such in the accompanying docs. The internal root
+cause was not established by this reproducer; one plausible mechanism is an
+exception thrown from `encode()` inside `~FFMPEGWriter()` (an exception
+escaping a destructor terminates the process), given `avcodec_fill_audio_frame`
+can fail with the quoted message. Upstream confirmation is requested.
 
 ## Attachments / references
 
 - `reproduce_native_mixdown.py` — single-case reproducer (standard library only).
 - `run_matrix.py` — subprocess-per-case harness used for crash isolation during
   measurement. It is observation plumbing, not a proposed fix.
+- `cases.json` — committed 58-case input list; `run_matrix.py` regenerates
+  `results.json` / `results.md` from it on the same Blender build.
 - `results.json` / `results.md` — 58 measured cases (30 surplus, 3 exact
-  compressed controls, 25 aborts).
+  compressed controls, 25 aborts), with per-case exit status and output-file
+  state for attribution.
 
 No third-party decoder, no audio quality/subjective listening claim, and no MP3
 acceptance is involved in this report.
