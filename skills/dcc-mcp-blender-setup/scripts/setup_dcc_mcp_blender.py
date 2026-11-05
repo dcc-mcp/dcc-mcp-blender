@@ -6,11 +6,12 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 DEFAULT_MCP_URL = "http://127.0.0.1:9765/mcp"
 STARTUP_SCRIPT_NAME = "dcc_mcp_blender_startup.py"
@@ -258,6 +259,323 @@ def write_json(path: Path, payload: dict) -> None:
     print("Wrote %s" % path)
 
 
+# --- MCP host config merge -------------------------------------------------
+#
+# Operators may point this script at an existing MCP host config instead of
+# pasting the generated snippet. Never replace that file: an unrelated server
+# already using the requested name keeps its own entry, every existing field
+# (``command`` / ``args`` / ``env`` / ``startup_timeout_sec`` /
+# ``tool_timeout_sec`` ...) survives verbatim, and a product entry that is
+# already configured keeps its name and makes repeated runs a no-op.
+#
+# The scanner is deliberately regex based (no tomllib): it works on Python
+# 3.7+ and covers standard tables, quoted keys, inline tables, dotted keys,
+# root-level inline tables and trailing comments in one code path.
+
+PRODUCT_MARKERS = ("dcc-mcp-blender", "dcc_mcp_blender")
+
+_KEY_PATTERN = r"""(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))"""
+_TOML_CHILD_HEADER = re.compile(r"^\s*\[\s*mcp_servers\s*\.\s*" + _KEY_PATTERN + r"\s*\]\s*$")
+_TOML_PARENT_HEADER = re.compile(r"^\s*\[\s*mcp_servers\s*\]\s*$")
+_TOML_ANY_HEADER = re.compile(r"^\s*\[")
+_TOML_INLINE_ENTRY = re.compile(r"^\s*" + _KEY_PATTERN + r"\s*=\s*\{")
+_TOML_DOTTED_KEY = re.compile(r"^\s*mcp_servers\s*\.\s*" + _KEY_PATTERN + r"\s*[.=]")
+_TOML_ROOT_INLINE = re.compile(r"(?m)^\s*mcp_servers\s*=\s*\{")
+
+
+def _key_from_match(match: Any) -> str:
+    """Return the captured TOML key (quoted or bare) from a regex match."""
+    return match.group(1) or match.group(2) or match.group(3)
+
+
+def _strip_toml_comment(line: str) -> str:
+    """Remove a trailing ``#`` comment while honouring quoted strings."""
+    quote = ""
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote:
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char == "#":
+            return line[:index]
+    return line
+
+
+def _balanced_body(text: str, open_index: int) -> Optional[str]:
+    """Return the body of the inline table opened at *open_index*."""
+    depth = 0
+    quote = ""
+    index = open_index
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+        elif char in ('"', "'"):
+            quote = char
+        elif char == "#":
+            while index < len(text) and text[index] != "\n":
+                index += 1
+            continue
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_index + 1 : index]
+        index += 1
+    return None
+
+
+def _root_inline_span(text: str) -> Optional[Tuple[int, int]]:
+    """Return ``(body_start, body_end)`` for a root ``mcp_servers = {...}``."""
+    match = _TOML_ROOT_INLINE.search(text)
+    if not match:
+        return None
+    open_index = text.index("{", match.start())
+    body = _balanced_body(text, open_index)
+    if body is None:
+        return None
+    return open_index + 1, open_index + 1 + len(body)
+
+
+def _inline_table_names(body: str) -> List[str]:
+    """Return top-level keys of a TOML inline-table body.
+
+    Nested ``{...}`` values are skipped so fields such as ``command`` are not
+    mistaken for MCP server names.
+    """
+    names: List[str] = []
+    key_assignment = re.compile(_KEY_PATTERN + r"\s*=")
+    index = 0
+    depth = 0
+    while index < len(body):
+        # Try a key assignment before treating a quote as a string value, so
+        # quoted keys such as "my-server" are recognised as top-level names.
+        if depth == 0:
+            match = key_assignment.match(body, index)
+            if match:
+                names.append(_key_from_match(match))
+                index = match.end()
+                continue
+        char = body[index]
+        if char in ('"', "'"):
+            quote = char
+            index += 1
+            while index < len(body):
+                if body[index] == "\\":
+                    index += 2
+                    continue
+                if body[index] == quote:
+                    index += 1
+                    break
+                index += 1
+            continue
+        if char == "#":
+            while index < len(body) and body[index] != "\n":
+                index += 1
+            continue
+        if char in ("{", "["):
+            depth += 1
+            index += 1
+            continue
+        if char in ("}", "]"):
+            depth -= 1
+            index += 1
+            continue
+        index += 1
+    return names
+
+
+def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
+    """Return ``{server_name: raw_text}`` for every ``mcp_servers`` entry.
+
+    Only names and the raw text needed for product detection are extracted;
+    values are never rewritten here, so every existing field is preserved.
+    """
+    lines = [_strip_toml_comment(line) for line in text.splitlines()]
+    entries: Dict[str, List[str]] = {}
+    current = ""
+    in_parent = False
+    for line in lines:
+        match = _TOML_CHILD_HEADER.match(line)
+        if match:
+            current = _key_from_match(match)
+            entries.setdefault(current, []).append(line)
+            in_parent = False
+            continue
+        if _TOML_ANY_HEADER.match(line):
+            in_parent = bool(_TOML_PARENT_HEADER.match(line))
+            current = ""
+            continue
+        if in_parent:
+            match = _TOML_INLINE_ENTRY.match(line)
+            if match:
+                entries.setdefault(_key_from_match(match), []).append(line)
+        dotted = _TOML_DOTTED_KEY.match(line)
+        if dotted:
+            entries.setdefault(_key_from_match(dotted), []).append(line)
+        elif current:
+            entries[current].append(line)
+    cleaned = "\n".join(lines)
+    span = _root_inline_span(cleaned)
+    if span:
+        body = cleaned[span[0] : span[1]]
+        for name in _inline_table_names(body):
+            entries.setdefault(name, []).append(body)
+    return dict((name, "\n".join(parts)) for name, parts in entries.items())
+
+
+def is_product_entry(raw_text: str, mcp_url: str) -> bool:
+    """Recognise an entry written by this product (URL or explicit marker)."""
+    if mcp_url and mcp_url in raw_text:
+        return True
+    return any(marker in raw_text for marker in PRODUCT_MARKERS)
+
+
+def free_server_name(desired: str, existing_names: Iterable[str]) -> str:
+    """Allocate a collision-free name without touching unrelated entries."""
+    taken = set(existing_names)
+    if desired not in taken:
+        return desired
+    index = 2
+    while "%s-%d" % (desired, index) in taken:
+        index += 1
+    return "%s-%d" % (desired, index)
+
+
+def mcp_config_path_for(platform_name: str, home: str, env: Optional[dict] = None) -> Path:
+    """Resolve a Claude Desktop MCP config path for a simulated platform.
+
+    ``platform_name`` is explicit so callers and tests never depend on the host
+    OS. This is a path resolver only; it never reads or writes a real config.
+    """
+    env = env or {}
+    user_home = Path(home)
+    if platform_name == "win32":
+        base = Path(env.get("APPDATA", str(user_home / "AppData" / "Roaming")))
+        return base / "Claude" / "claude_desktop_config.json"
+    if platform_name == "darwin":
+        return user_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    if platform_name == "linux":
+        base = Path(env.get("XDG_CONFIG_HOME", str(user_home / ".config")))
+        return base / "Claude" / "claude_desktop_config.json"
+    raise ValueError("Unsupported platform: %s" % platform_name)
+
+
+def _toml_quote(value: str) -> str:
+    """JSON string escaping is also valid for TOML basic strings."""
+    return json.dumps(value)
+
+
+def _toml_key(name: str) -> str:
+    if re.match(r"^[A-Za-z0-9_-]+$", name):
+        return name
+    return _toml_quote(name)
+
+
+def _build_toml_content(text: str, chosen: str, is_upgrade: bool, mcp_url: str) -> Tuple[bool, str]:
+    """Append (or insert) our entry while preserving all existing text."""
+    if is_upgrade:
+        # An existing product entry keeps its identity and every field verbatim.
+        return False, text
+    span = _root_inline_span(text)
+    if span:
+        body = text[span[0] : span[1]]
+        separator = ", " if body.strip() else ""
+        addition = "%s%s = { url = %s }" % (separator, _toml_key(chosen), _toml_quote(mcp_url))
+        return True, text[: span[1]] + addition + text[span[1] :]
+    suffix = "" if (not text or text.endswith("\n")) else "\n"
+    entry = "\n[mcp_servers.%s]\nurl = %s\n" % (_toml_key(chosen), _toml_quote(mcp_url))
+    return True, text + suffix + entry
+
+
+def _build_json_content(text: str, parsed: Any, chosen: str, mcp_url: str) -> Tuple[bool, str]:
+    data = parsed if isinstance(parsed, dict) else {}
+    servers = data.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        raise ValueError("mcpServers must be a JSON object")
+    existing = servers.get(chosen)
+    entry = {"url": mcp_url}
+    if isinstance(existing, dict):
+        entry = dict(existing)
+        entry["url"] = mcp_url
+    servers[chosen] = entry
+    content = json.dumps(data, indent=2) + "\n"
+    return content != text, content
+
+
+def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
+    """Build a non-mutating plan for adding/updating our MCP server entry.
+
+    The chosen name is computed once here and reused by both the dry-run text
+    and the success message, so the two can never disagree.
+    """
+    path = Path(config_path)
+    fmt = "toml" if path.suffix.lower() == ".toml" else "json"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    parsed: Any = None
+    if fmt == "toml":
+        entries = scan_toml_mcp_servers(text)
+    else:
+        parsed = json.loads(text) if text.strip() else {"mcpServers": {}}
+        if not isinstance(parsed, dict):
+            raise ValueError("MCP config must be a JSON object")
+        servers = parsed.get("mcpServers") or {}
+        entries = dict((str(name), json.dumps(value, sort_keys=True)) for name, value in servers.items())
+    product_names = [name for name in entries if is_product_entry(entries[name], mcp_url)]
+    if product_names:
+        chosen = desired_name if desired_name in product_names else product_names[0]
+        is_upgrade = True
+    else:
+        chosen = free_server_name(desired_name, entries.keys())
+        is_upgrade = False
+    if fmt == "toml":
+        changed, content = _build_toml_content(text, chosen, is_upgrade, mcp_url)
+    else:
+        changed, content = _build_json_content(text, parsed, chosen, mcp_url)
+    if changed:
+        dry_run_text = 'Would configure MCP server "%s" in %s' % (chosen, path)
+        success_text = 'Configured MCP server "%s" in %s' % (chosen, path)
+    else:
+        dry_run_text = 'No change: MCP server "%s" is already configured in %s' % (chosen, path)
+        success_text = 'MCP server "%s" is already configured in %s' % (chosen, path)
+    return {
+        "path": path,
+        "format": fmt,
+        "chosen_name": chosen,
+        "desired_name": desired_name,
+        "is_upgrade": is_upgrade,
+        "changed": changed,
+        "content": content,
+        "existing_names": sorted(entries.keys()),
+        "dry_run_text": dry_run_text,
+        "success_text": success_text,
+    }
+
+
+def apply_mcp_config(plan: dict, dry_run: bool = False) -> str:
+    """Apply *plan* and return the chosen name. Errors propagate; no fake success."""
+    if dry_run or not plan["changed"]:
+        return plan["chosen_name"]
+    path = plan["path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(plan["content"], encoding="utf-8")
+    return plan["chosen_name"]
+
+
 def write_mcp_snippets(out_dir: Path, server_name: str, mcp_url: str) -> None:
     payload = {"mcpServers": {server_name: {"url": mcp_url}}}
     write_json(out_dir / "mcp-streamable-http.json", payload)
@@ -316,18 +634,40 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--startup-scripts-dir",
         help="Override Blender's per-user scripts directory (the parent of startup/).",
     )
+    parser.add_argument(
+        "--mcp-config",
+        help="Existing MCP host config (JSON or TOML) to merge into instead of replacing.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --mcp-config, print the planned change and selected name without writing.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     repo_root = find_repo_root()
-    blender_python = resolve_blender_python(args.blender_python)
     out_dir = (repo_root / args.out_dir).resolve()
 
     print("Repository: %s" % repo_root)
-    print("Blender Python: %s" % blender_python)
     print("MCP URL: %s" % args.mcp_url)
+
+    config_path = Path(args.mcp_config).expanduser() if args.mcp_config else None
+    plan = None
+    if config_path is not None:
+        plan = plan_mcp_config(config_path, args.server_name, args.mcp_url)
+
+    if args.dry_run:
+        if plan is not None:
+            print(plan["dry_run_text"])
+        else:
+            print("Dry run: would write MCP snippets to %s (no files written)." % out_dir)
+        return 0
+
+    blender_python = resolve_blender_python(args.blender_python)
+    print("Blender Python: %s" % blender_python)
 
     install_package(
         blender_python,
@@ -339,7 +679,11 @@ def main(argv: list[str]) -> int:
     if not args.skip_install:
         verify_import(blender_python)
     startup_path = install_startup_script(blender_python, args.startup_scripts_dir)
-    write_mcp_snippets(out_dir, args.server_name, args.mcp_url)
+    snippet_name = plan["chosen_name"] if plan is not None else args.server_name
+    write_mcp_snippets(out_dir, snippet_name, args.mcp_url)
+    if plan is not None:
+        apply_mcp_config(plan)
+        print(plan["success_text"])
 
     print("")
     print("Next:")

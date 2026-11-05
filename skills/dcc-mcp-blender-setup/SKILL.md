@@ -155,6 +155,13 @@ Multiple Blender instances register their exact endpoints automatically; use
 When editing an existing MCP config, preserve unrelated servers. Merge only the
 `blender` server entry unless the user asks for a different server name.
 
+The setup script enforces this when `--mcp-config <path>` is given (JSON
+`mcpServers` or Codex TOML `mcp_servers`). It keeps every existing server and
+field, allocates a free name when the requested name is already taken by an
+unrelated product, keeps the existing name when a dcc-mcp-blender entry is
+already present, and is idempotent. `--dry-run` prints the selected name
+without writing. No real config is touched unless `--mcp-config` is explicit.
+
 ## User Hand-Off: Start Blender
 
 After pip setup and MCP JSON generation, tell the user:
