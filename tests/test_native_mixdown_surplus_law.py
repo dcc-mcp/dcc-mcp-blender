@@ -4,6 +4,10 @@ The records in ``docs/evidence/native-mixdown-upstream/results.json`` come from
 the standalone, add-on-free reproducer shipped in that directory. A change to
 the predicted surplus formula should fail here instead of silently accepting a
 WAV whose final block was duplicated by Blender's native PCM encoder.
+
+This module also guards the evidence chain itself: the committed ``cases.json``
+must reproduce the measured case set, and every abnormal-termination record
+must carry verifiable exit-status and output-file attribution.
 """
 
 import json
@@ -13,13 +17,16 @@ import unittest
 
 from dcc_mcp_blender._audio_pcm_repair import remove_verified_duplicate_final_block as repair
 
-_RESULTS_PATH = os.path.join(
+_EVIDENCE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "docs",
     "evidence",
     "native-mixdown-upstream",
-    "results.json",
 )
+_RESULTS_PATH = os.path.join(_EVIDENCE_DIR, "results.json")
+_CASES_PATH = os.path.join(_EVIDENCE_DIR, "cases.json")
+
+_ABNORMAL_VERDICTS = ("CRASH", "TIMEOUT", "NO_RESULT")
 
 
 def _predicted_extra(requested_frames, accuracy):
@@ -40,6 +47,11 @@ def _fixture(expected_frames, accuracy):
 def _load_cases():
     with open(_RESULTS_PATH, "r", encoding="utf-8") as handle:
         return json.load(handle)["cases"]
+
+
+def _load_case_defs():
+    with open(_CASES_PATH, "r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 class NativeMixdownSurplusLaw(unittest.TestCase):
@@ -79,6 +91,58 @@ class NativeMixdownSurplusLaw(unittest.TestCase):
         for case in cases:
             self.assertIs(case["abnormal"], True, case["name"])
             self.assertIsNone(case["decoded_samples"], case["name"])
+
+    def test_cases_file_reproduces_measured_case_set(self):
+        """The documented full-matrix command must cover every measured case."""
+        measured = _load_cases()
+        defs = _load_case_defs()
+        self.assertEqual(len(defs), len(measured))
+        self.assertEqual([d["name"] for d in defs], [c["name"] for c in measured])
+        for d, c in zip(defs, measured):
+            self.assertEqual(d.get("sweep", "matrix"), c.get("sweep"), d["name"])
+            for key in ("frames", "accuracy", "format", "channels", "mixrate", "fps", "container", "codec"):
+                self.assertEqual(d[key], c["params"][key], (d["name"], key))
+
+    def test_abnormal_cases_have_attributable_output_state(self):
+        """Crash records must prove missing / zero-byte / partial, not assume it."""
+        cases = [c for c in _load_cases() if c["verdict"] in _ABNORMAL_VERDICTS]
+        self.assertGreaterEqual(len(cases), 10)
+        for case in cases:
+            for key in (
+                "crash_class",
+                "exit_signature",
+                "stdout_tail",
+                "stderr_tail",
+                "file_exists",
+                "output_bytes",
+                "output_state",
+            ):
+                self.assertIn(key, case, (case["name"], key))
+            self.assertIsNotNone(case["crash_class"], case["name"])
+            self.assertIsInstance(case["file_exists"], bool, case["name"])
+            if case["file_exists"]:
+                self.assertIsInstance(case["output_bytes"], int, case["name"])
+                self.assertEqual(
+                    case["output_state"],
+                    "zero_byte" if case["output_bytes"] == 0 else "nonzero",
+                    case["name"],
+                )
+            else:
+                self.assertIsNone(case["output_bytes"], case["name"])
+                self.assertEqual(case["output_state"], "missing", case["name"])
+
+    def test_verdict_matches_surplus_sign(self):
+        """A short output must never be recorded as EXACT."""
+        for case in _load_cases():
+            surplus = case.get("surplus_samples")
+            if surplus is None:
+                continue
+            if surplus > 0:
+                self.assertEqual(case["verdict"], "SURPLUS", case["name"])
+            elif surplus < 0:
+                self.assertEqual(case["verdict"], "SHORT", case["name"])
+            else:
+                self.assertEqual(case["verdict"], "EXACT", case["name"])
 
 
 if __name__ == "__main__":
