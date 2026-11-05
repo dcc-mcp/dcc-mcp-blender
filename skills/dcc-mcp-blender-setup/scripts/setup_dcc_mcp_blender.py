@@ -281,18 +281,22 @@ def write_json(path: Path, payload: dict) -> None:
 # authoritative and both the input and the merged output are validated before
 # writing. On stock Python 3.7 the pure-stdlib scanner is used; it is root-scoped
 # and refuses multiline strings, nested mcp_servers tables and other ambiguous
-# input rather than guessing. Written strings are TOML-escaped (Unicode kept
-# literal, control chars/DEL escaped), and writes are guarded against TOCTOU
-# changes, preserve file mode/symlink target, and stage privately + os.replace
-# atomically. Either way no invalid TOML is written and errors never fake success.
+# input rather than guessing. Root inline table keys (bare or quoted) are parsed
+# by the same key-path parser as the scanner, so a valid quoted-root config is
+# merged in place instead of producing a duplicate declaration. Written strings
+# are TOML-escaped (Unicode kept literal, control chars/DEL escaped), and writes
+# are guarded against TOCTOU changes, preserve file mode/symlink target, and
+# stage privately + os.replace atomically. Either way no invalid TOML is written
+# and errors never fake success.
 
 PRODUCT_MARKERS = ("dcc-mcp-blender", "dcc_mcp_blender")
 
 _KEY_PATTERN = r"""(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))"""
 _KEY_SEGMENT = re.compile(_KEY_PATTERN)
-_TOML_ROOT_INLINE = re.compile(r"(?m)^\s*mcp_servers\s*=\s*\{")
 _TOML_HEADER = re.compile(r"^\s*\[\s*(.+?)\s*\]\s*$")
-# A root-level key can only appear before the first table header.
+# A root-level key can only appear before the first table header. There is
+# deliberately no separate root-inline regex: _root_inline_span parses the LHS
+# with _parse_key_path so quoted keys cannot drift between scanner and builder.
 _FIRST_TABLE_HEADER = re.compile(r"(?m)^[ \t]*\[")
 
 
@@ -497,23 +501,59 @@ def _balanced_body(text: str, open_index: int) -> Optional[str]:
     return None
 
 
+def _root_inline_open_brace(line: str, eq: int, offset: int) -> int:
+    """Return the absolute index of the inline-table ``{`` after *eq*, or -1.
+
+    Strings are skipped as whole tokens and a trailing comment ends the line,
+    so a ``{`` inside a string or comment is never mistaken for the table.
+    """
+    index = eq + 1
+    length = len(line)
+    while index < length:
+        char = line[index]
+        if char in ('"', "'"):
+            end = _string_end(line, index)
+            if end is None:
+                return -1
+            index = end
+            continue
+        if char == "#":
+            return -1
+        if char == "{":
+            return offset + index
+        index += 1
+    return -1
+
+
 def _root_inline_span(text: str) -> Optional[Tuple[int, int]]:
     """Return ``(body_start, body_end)`` for a ROOT ``mcp_servers = {...}``.
 
-    A root-level key can only sit before the first table header; an
-    ``mcp_servers = {...}`` under ``[profiles.dev]`` belongs to that table and
-    must not be treated as the root config (Python 3.7 fallback correctness).
+    The LHS key is resolved with ``_parse_key_path`` -- the SAME key-path
+    parser used by ``scan_toml_mcp_servers`` -- so bare, 'single-quoted',
+    "double-quoted" and escaped-quoted spellings of ``mcp_servers`` are all
+    recognised identically by the scanner and the builder. A root-level key
+    can only sit before the first table header; an ``mcp_servers = {...}``
+    under ``[profiles.dev]`` belongs to that table and must not be treated as
+    the root config (Python 3.7 fallback correctness).
     """
     header = _FIRST_TABLE_HEADER.search(text)
     root_text = text[: header.start()] if header else text
-    match = _TOML_ROOT_INLINE.search(root_text)
-    if not match:
-        return None
-    open_index = match.end() - 1  # the regex ends at the opening brace
-    body = _balanced_body(text, open_index)
-    if body is None:
-        return None
-    return open_index + 1, open_index + 1 + len(body)
+    offset = 0
+    for line in root_text.splitlines(keepends=True):
+        eq = _top_level_eq(line)
+        if eq >= 0:
+            try:
+                is_root_key = _parse_key_path(line[:eq]) == ["mcp_servers"]
+            except ValueError:
+                is_root_key = False
+            if is_root_key:
+                open_index = _root_inline_open_brace(line, eq, offset)
+                if open_index >= 0:
+                    body = _balanced_body(text, open_index)
+                    if body is not None:
+                        return open_index + 1, open_index + 1 + len(body)
+        offset += len(line)
+    return None
 
 
 def _inline_table_names(body: str) -> List[str]:

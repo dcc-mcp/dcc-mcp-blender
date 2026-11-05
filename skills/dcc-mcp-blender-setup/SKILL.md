@@ -160,6 +160,9 @@ The setup script enforces this when `--mcp-config <path>` is given (JSON
 
 - It keeps every existing server and field, allocates a free name when the
   requested name is taken by an unrelated product, and is idempotent.
+- Root inline `mcp_servers` keys are resolved through the same key-path parser
+  used by the scanner, so bare, single-quoted, double-quoted and escaped-quoted
+  spellings all merge in place instead of producing a duplicate declaration.
 - Product identity is scoped to a single server and uses the parsed, **exact**
   `url` value or an explicit `dcc-mcp-blender` / `dcc_mcp_blender` marker. A
   sibling's URL or marker never leaks into another server, and a URL such as

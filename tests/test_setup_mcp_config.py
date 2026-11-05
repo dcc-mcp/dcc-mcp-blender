@@ -838,6 +838,207 @@ def test_main_non_dry_run_merges_config_and_writes_matching_snippet(tmp_path, se
     assert snippet["mcpServers"]["blender-2"]["url"] == MCP_URL
 
 
+# --- quoted root mcp_servers key: scanner/builder consistency ---------------
+#
+# A quoted root key is valid TOML and is already understood by the real parser
+# and by scan_toml_mcp_servers (via _parse_key_path). The builder must agree:
+# otherwise it appends [mcp_servers.blender-2] beside an existing inline table
+# and produces "Cannot declare ... twice" (or writes that invalid file on the
+# Python 3.7 fallback). The escaped spelling proves this is not a broadened
+# regex but a shared key-path decision.
+
+ROOT_INLINE_KEYS = {
+    "bare": "mcp_servers",
+    "double_quoted": '"mcp_servers"',
+    "single_quoted": "'mcp_servers'",
+    "escaped_quoted": '"mcp_serv\\u0065rs"',
+}
+ROOT_INLINE_KEY_IDS = list(ROOT_INLINE_KEYS)
+QUOTED_ROOT_INLINE_TOML = (
+    '%s = { blender = { command = "uvx", args = ["--flag"], '
+    'startup_timeout_sec = 45 }, filesystem = { command = "npx" } }\n'
+)
+
+
+@pytest.mark.parametrize("key_id", ROOT_INLINE_KEY_IDS, ids=ROOT_INLINE_KEY_IDS)
+def test_root_inline_span_uses_key_path_parser_for_quoted_keys(setup_script, key_id):
+    text = '%s = { blender = { command = "uvx" } }\n' % ROOT_INLINE_KEYS[key_id]
+    span = setup_script._root_inline_span(text)
+    assert span is not None
+    assert 'command = "uvx"' in text[span[0] : span[1]]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '"mcp_servers_extra" = { blender = { command = "uvx" } }\n',
+        "'mcp_servers_extra' = { blender = { command = 'uvx' } }\n",
+        '"mcp_servers".blender = { command = "uvx" }\n',
+        '[profiles.dev]\n"mcp_servers" = { blender = { command = "uvx" } }\n',
+        '# "mcp_servers" = { blender = { command = "uvx" } }\n',
+    ],
+    ids=["double_other", "single_other", "dotted", "nested", "comment"],
+)
+def test_root_inline_span_ignores_non_root_and_unrelated_keys(setup_script, text):
+    assert setup_script._root_inline_span(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'note = "a{b"\n"mcp_servers" = { blender = { command = "uvx" } }\n',
+        '# ignored = {\n"mcp_servers" = { blender = { command = "uvx" } }\n',
+    ],
+    ids=["brace_in_string", "brace_in_comment"],
+)
+def test_root_inline_open_brace_ignores_strings_and_comments(setup_script, text):
+    span = setup_script._root_inline_span(text)
+    assert span is not None
+    assert 'command = "uvx"' in text[span[0] : span[1]]
+
+
+def test_root_inline_span_offsets_stay_correct_across_newlines(setup_script):
+    text = '"mcp_servers" = {\n  blender = { command = "uvx" },\n}\n'
+    span = setup_script._root_inline_span(text)
+    assert span is not None
+    assert 'command = "uvx"' in text[span[0] : span[1]]
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+@pytest.mark.parametrize("key_id", ROOT_INLINE_KEY_IDS, ids=ROOT_INLINE_KEY_IDS)
+def test_quoted_root_inline_key_merges_in_place(tmp_path, setup_script, monkeypatch, no_parser, key_id):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    config.write_text(QUOTED_ROOT_INLINE_TOML % ROOT_INLINE_KEYS[key_id], encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["existing_names"] == ["blender", "filesystem"], plan
+    assert plan["chosen_name"] == "blender-2", plan  # name conflict -> free name
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    merged = _read(config)
+    assert "[mcp_servers.blender-2]" not in merged  # inserted inline, never appended
+    assert 'command = "uvx"' in merged  # every existing field survives verbatim
+    assert 'args = ["--flag"]' in merged
+    assert 'filesystem = { command = "npx" }' in merged  # unrelated server kept
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        servers = tomllib.loads(merged)["mcp_servers"]  # post-write TOML must be valid
+        assert servers["blender"]["command"] == "uvx"
+        assert servers["blender"]["args"] == ["--flag"]
+        assert servers["blender"]["startup_timeout_sec"] == 45
+        assert servers["filesystem"]["command"] == "npx"
+        assert servers["blender-2"]["url"] == MCP_URL
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+@pytest.mark.parametrize("key_id", ROOT_INLINE_KEY_IDS, ids=ROOT_INLINE_KEY_IDS)
+def test_quoted_root_inline_key_merge_is_idempotent(tmp_path, setup_script, monkeypatch, no_parser, key_id):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    config.write_text(QUOTED_ROOT_INLINE_TOML % ROOT_INLINE_KEYS[key_id], encoding="utf-8")
+    first = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    setup_script.apply_mcp_config(first)
+    merged = _read(config)
+
+    second = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert second["is_upgrade"] is True, second
+    assert second["changed"] is False, second
+    assert second["chosen_name"] == "blender-2", second
+    assert second["content"] == merged, second
+    setup_script.apply_mcp_config(second)
+    assert _read(config) == merged
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+@pytest.mark.parametrize("key_id", ROOT_INLINE_KEY_IDS, ids=ROOT_INLINE_KEY_IDS)
+def test_quoted_root_inline_key_product_entry_is_no_op(tmp_path, setup_script, monkeypatch, no_parser, key_id):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '%s = { blender = { url = "%s", command = "custom" } }\n' % (
+        ROOT_INLINE_KEYS[key_id],
+        MCP_URL,
+    )
+    config.write_text(original, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["is_upgrade"] is True, plan
+    assert plan["changed"] is False, plan
+    assert plan["chosen_name"] == "blender", plan
+    assert setup_script.apply_mcp_config(plan) == "blender"
+    assert _read(config) == original  # name and every existing field verbatim
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        assert tomllib.loads(original)["mcp_servers"]["blender"]["command"] == "custom"
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+@pytest.mark.parametrize("key", ['"mcp_servers_extra"', "'mcp_servers_extra'"], ids=["double", "single"])
+def test_quoted_unrelated_root_key_is_not_treated_as_mcp_servers(tmp_path, setup_script, monkeypatch, no_parser, key):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    config.write_text('%s = { blender = { command = "uvx" } }\n' % key, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "blender", plan
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    merged = _read(config)
+    assert "[mcp_servers.blender]" in merged
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        data = tomllib.loads(merged)
+        assert data["mcp_servers_extra"]["blender"]["command"] == "uvx"
+        assert data["mcp_servers"]["blender"]["url"] == MCP_URL
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+@pytest.mark.parametrize(
+    "original",
+    [
+        '"mcp_servers" = { blender = { command = "uvx" }\n',
+        "'mcp_servers' = { blender = { command = \"uvx\" }\n",
+    ],
+    ids=["double_unbalanced", "single_unbalanced"],
+)
+def test_invalid_quoted_root_config_is_refused_without_write(tmp_path, setup_script, monkeypatch, no_parser, original):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    config.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError):
+        setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert _read(config) == original  # no write, no fake success
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+def test_nested_quoted_mcp_servers_keeps_root_scope(tmp_path, setup_script, monkeypatch, no_parser):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[profiles.dev]\n"mcp_servers" = { blender = { command = "uvx" } }\n'
+    config.write_text(original, encoding="utf-8")
+    if no_parser:
+        with pytest.raises(ValueError, match="nested mcp_servers"):
+            setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        assert _read(config) == original
+    else:
+        plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        assert plan["chosen_name"] == "blender", plan
+        setup_script.apply_mcp_config(plan)
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            data = tomllib.loads(_read(config))
+            assert data["mcp_servers"]["blender"]["url"] == MCP_URL
+            assert data["profiles"]["dev"]["mcp_servers"]["blender"]["command"] == "uvx"
+
+
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="ast feature_version requires Python 3.8+")
 def test_setup_script_and_tests_stay_python37_syntax_compatible():
     ast.parse(_read(SETUP_SCRIPT), filename=str(SETUP_SCRIPT), feature_version=(3, 7))
