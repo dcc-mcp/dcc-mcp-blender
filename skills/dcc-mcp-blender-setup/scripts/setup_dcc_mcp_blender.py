@@ -8,8 +8,10 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -268,13 +270,21 @@ def write_json(path: Path, payload: dict) -> None:
 # ``tool_timeout_sec`` ...) survives verbatim, and a product entry that is
 # already configured keeps its name and makes repeated runs a no-op.
 #
-# Product identity is always scoped to ONE server: a root inline table is split
-# into per-server value spans, so a sibling's URL/marker can never be mistaken
-# for another server's. On Python 3.11+ (or with the ``tomli`` backport) a real
-# TOML parser is authoritative and both the input and the merged output are
-# validated before writing; on stock Python 3.7 the pure-stdlib scanner below
-# is used and refuses ambiguous input rather than guessing. Either way no
-# invalid TOML is written and parse failures never report success.
+# Product identity is always scoped to ONE server and uses the parsed, EXACT
+# ``url`` value (never a raw-text substring) or an explicit product marker. A
+# root inline table is split into per-server value spans, so a sibling's
+# URL/marker can never be mistaken for another server's. An existing product
+# entry is a no-op: its name AND every field (including its url) survive
+# verbatim, and repeated runs stay idempotent.
+#
+# On Python 3.11+ (or with the ``tomli`` backport) a real TOML parser is
+# authoritative and both the input and the merged output are validated before
+# writing. On stock Python 3.7 the pure-stdlib scanner is used; it is root-scoped
+# and refuses multiline strings, nested mcp_servers tables and other ambiguous
+# input rather than guessing. Written strings are TOML-escaped (Unicode kept
+# literal, control chars/DEL escaped), and writes are guarded against TOCTOU
+# changes, preserve file mode/symlink target, and stage privately + os.replace
+# atomically. Either way no invalid TOML is written and errors never fake success.
 
 PRODUCT_MARKERS = ("dcc-mcp-blender", "dcc_mcp_blender")
 
@@ -282,55 +292,202 @@ _KEY_PATTERN = r"""(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))"""
 _KEY_SEGMENT = re.compile(_KEY_PATTERN)
 _TOML_ROOT_INLINE = re.compile(r"(?m)^\s*mcp_servers\s*=\s*\{")
 _TOML_HEADER = re.compile(r"^\s*\[\s*(.+?)\s*\]\s*$")
+# A root-level key can only appear before the first table header.
+_FIRST_TABLE_HEADER = re.compile(r"(?m)^[ \t]*\[")
+
+
+def _string_end(text: str, start: int) -> Optional[int]:
+    """Return the index just past the TOML string opened at *start*, else ``None``.
+
+    Basic and literal single-line strings, and triple-quoted multiline strings,
+    are all recognised. Only basic (double-quoted) strings interpret a backslash
+    as an escape; TOML literal strings do not, so a trailing backslash before a
+    closing single quote is not mistaken for an escaped quote.
+    """
+    quote = text[start]
+    if quote not in ('"', "'"):
+        return None
+    basic = quote == '"'
+    length = len(text)
+    if text.startswith(quote * 3, start):
+        delimiter = quote * 3
+        index = start + 3
+        while index < length:
+            if basic and text[index] == "\\":
+                index += 2
+                continue
+            if text.startswith(delimiter, index):
+                return index + 3
+            index += 1
+        return None
+    index = start + 1
+    while index < length:
+        char = text[index]
+        if basic and char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            return index + 1
+        if char == "\n":
+            return None  # a single-line string cannot contain a raw newline
+        index += 1
+    return None
+
+
+def _decode_toml_string(token: str) -> str:
+    """Decode one TOML/JSON string token for identity comparisons."""
+    if token.startswith("'"):
+        if token.startswith("'''") and token.endswith("'''"):
+            inner = token[3:-3]
+            return inner[1:] if inner.startswith("\n") else inner
+        return token[1:-1]
+    try:
+        # JSON escapes are a subset of TOML basic-string escapes; this also
+        # decodes \uXXXX in quoted keys so the fallback matches a real parser.
+        return json.loads(token)
+    except (ValueError, TypeError):
+        if token.startswith('"""') and token.endswith('"""'):
+            inner = token[3:-3]
+            return inner[1:] if inner.startswith("\n") else inner
+        return token[1:-1]
+
+
+def _iter_string_leaves(value: Any) -> Iterable[str]:
+    """Yield every string scalar inside a parsed (JSON-like) value."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_string_leaves(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_string_leaves(item)
+
+
+def _toml_fragment_identity(text: str) -> Tuple[Optional[str], List[str]]:
+    """Return ``(url_value, string_values)`` for one scoped TOML fragment.
+
+    A small string-aware tokenizer finds a ``url`` key (bare, dotted or quoted,
+    followed by ``=``/``:``) and its EXACT string value, and collects every
+    decoded string for marker detection. Strings are skipped wholesale, so a
+    url-like word inside a value is never treated as a field key. This is used
+    only by the Python 3.7 fallback scanner, where no real TOML parser exists.
+    """
+    tokens: List[Tuple[str, str]] = []
+    values: List[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char == "#":
+            newline = text.find("\n", index)
+            index = length if newline < 0 else newline + 1
+            continue
+        if char in ('"', "'"):
+            end = _string_end(text, index)
+            if end is None:
+                break
+            decoded = _decode_toml_string(text[index:end])
+            tokens.append(("str", decoded))
+            values.append(decoded)
+            index = end
+            continue
+        if char in "=:":
+            tokens.append(("sep", char))
+        elif char in ",{}[]\n":
+            tokens.append(("punct", char))
+        elif not char.isspace():
+            end = index
+            while end < length and (text[end].isalnum() or text[end] in "_-."):
+                end += 1
+            tokens.append(("word", text[index:end]))
+            index = end
+            continue
+        index += 1
+    url: Optional[str] = None
+    for position, (kind, value) in enumerate(tokens):
+        is_url_key = (kind == "word" and value.split(".")[-1] == "url") or (kind == "str" and value == "url")
+        if is_url_key and position + 2 < len(tokens):
+            if tokens[position + 1][0] == "sep" and tokens[position + 2][0] == "str":
+                url = tokens[position + 2][1]
+                break
+    return url, values
+
+
+def _entry_identity(raw_text: str) -> Tuple[Optional[str], List[str]]:
+    """Return ``(url_value, string_values)`` for one scoped server entry.
+
+    ``raw_text`` is either a JSON-serialized server value (authoritative parser
+    or JSON config) or a raw TOML fragment (Python 3.7 fallback). For JSON the
+    parsed ``url`` field is read directly, so a value such as ``.../mcp-other``
+    is never mistaken for ``.../mcp`` by a substring test.
+    """
+    try:
+        parsed = json.loads(raw_text)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        url = parsed.get("url")
+        return (url if isinstance(url, str) else None), list(_iter_string_leaves(parsed))
+    return _toml_fragment_identity(raw_text)
 
 
 def _key_from_match(match: Any) -> str:
-    """Return the captured TOML key (quoted or bare) from a regex match."""
-    return match.group(1) or match.group(2) or match.group(3)
+    """Return the captured TOML key (quoted or bare) from a regex match.
+
+    Double-quoted basic keys are decoded (e.g. ``"bl\\u0065nder"`` -> ``blender``)
+    so the Python 3.7 fallback resolves the same key as an authoritative parser.
+    """
+    if match.group(1) is not None:
+        return _decode_toml_string('"' + match.group(1) + '"')
+    if match.group(2) is not None:
+        return match.group(2)
+    return match.group(3)
 
 
 def _strip_toml_comment(line: str) -> str:
-    """Remove a trailing ``#`` comment while honouring quoted strings."""
-    quote = ""
-    escaped = False
-    for index, char in enumerate(line):
-        if escaped:
-            escaped = False
-            continue
-        if char == "\\" and quote:
-            escaped = True
-            continue
-        if quote:
-            if char == quote:
-                quote = ""
-            continue
+    """Remove a trailing ``#`` comment while honouring TOML string boundaries."""
+    index = 0
+    length = len(line)
+    while index < length:
+        char = line[index]
         if char in ('"', "'"):
-            quote = char
-        elif char == "#":
+            end = _string_end(line, index)
+            if end is None:
+                # Unterminated string on this line; multiline strings are
+                # refused before the line-oriented fallback scanner runs.
+                return line
+            index = end
+            continue
+        if char == "#":
             return line[:index]
+        index += 1
     return line
 
 
 def _balanced_body(text: str, open_index: int) -> Optional[str]:
-    """Return the body of the inline table opened at *open_index*."""
+    """Return the body of the inline table opened at *open_index*.
+
+    Basic/literal/triple-quoted strings are skipped as whole tokens, so a
+    literal string ending in a backslash, or a multiline triple-quoted string,
+    cannot hide the closing ``}`` from the brace counter.
+    """
     depth = 0
-    quote = ""
     index = open_index
-    while index < len(text):
+    length = len(text)
+    while index < length:
         char = text[index]
-        if quote:
-            if char == "\\":
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-        elif char in ('"', "'"):
-            quote = char
-        elif char == "#":
-            while index < len(text) and text[index] != "\n":
+        if char in ('"', "'"):
+            end = _string_end(text, index)
+            if end is None:
+                return None
+            index = end
+            continue
+        if char == "#":
+            while index < length and text[index] != "\n":
                 index += 1
             continue
-        elif char == "{":
+        if char == "{":
             depth += 1
         elif char == "}":
             depth -= 1
@@ -341,11 +498,18 @@ def _balanced_body(text: str, open_index: int) -> Optional[str]:
 
 
 def _root_inline_span(text: str) -> Optional[Tuple[int, int]]:
-    """Return ``(body_start, body_end)`` for a root ``mcp_servers = {...}``."""
-    match = _TOML_ROOT_INLINE.search(text)
+    """Return ``(body_start, body_end)`` for a ROOT ``mcp_servers = {...}``.
+
+    A root-level key can only sit before the first table header; an
+    ``mcp_servers = {...}`` under ``[profiles.dev]`` belongs to that table and
+    must not be treated as the root config (Python 3.7 fallback correctness).
+    """
+    header = _FIRST_TABLE_HEADER.search(text)
+    root_text = text[: header.start()] if header else text
+    match = _TOML_ROOT_INLINE.search(root_text)
     if not match:
         return None
-    open_index = text.index("{", match.start())
+    open_index = match.end() - 1  # the regex ends at the opening brace
     body = _balanced_body(text, open_index)
     if body is None:
         return None
@@ -356,15 +520,14 @@ def _inline_table_names(body: str) -> List[str]:
     """Return top-level keys of a TOML inline-table body.
 
     Nested ``{...}`` values are skipped so fields such as ``command`` are not
-    mistaken for MCP server names.
+    mistaken for MCP server names. Strings (basic, literal and triple-quoted)
+    are skipped as whole tokens via ``_string_end``.
     """
     names: List[str] = []
     key_assignment = re.compile(_KEY_PATTERN + r"\s*=")
     index = 0
     depth = 0
     while index < len(body):
-        # Try a key assignment before treating a quote as a string value, so
-        # quoted keys such as "my-server" are recognised as top-level names.
         if depth == 0:
             match = key_assignment.match(body, index)
             if match:
@@ -373,16 +536,10 @@ def _inline_table_names(body: str) -> List[str]:
                 continue
         char = body[index]
         if char in ('"', "'"):
-            quote = char
-            index += 1
-            while index < len(body):
-                if body[index] == "\\":
-                    index += 2
-                    continue
-                if body[index] == quote:
-                    index += 1
-                    break
-                index += 1
+            end = _string_end(body, index)
+            if end is None:
+                break
+            index = end
             continue
         if char == "#":
             while index < len(body) and body[index] != "\n":
@@ -447,51 +604,55 @@ def _parse_toml_servers(text: str, parser: Any):
 def _validate_toml_output(content: str, chosen: str, changed: bool, mcp_url: str, parser: Any) -> None:
     """Refuse to write a merged result that is not valid TOML or lacks our entry.
 
-    This is the guard against writing ``Cannot declare ... twice`` output: the
-    exact string that would be written is parsed before ``apply_mcp_config``.
+    With a real parser this is the guard against writing ``Cannot declare ...
+    twice`` output. On the Python 3.7 fallback (no parser) the merged text is
+    re-scanned with the scoped scanner and our entry must still be present with
+    the exact URL, so a broken merge never reports success without a backstop.
     """
-    if parser is None:
-        return
-    try:
-        merged = parser.loads(content)
-    except ValueError as exc:
-        raise ValueError("Refusing to write invalid TOML MCP config: %s" % exc) from exc
     if not changed:
         return
-    servers = merged.get("mcp_servers", {})
-    entry = servers.get(chosen) if isinstance(servers, dict) else None
-    if not isinstance(entry, dict) or entry.get("url") != mcp_url:
+    if parser is not None:
+        try:
+            merged = parser.loads(content)
+        except ValueError as exc:
+            raise ValueError("Refusing to write invalid TOML MCP config: %s" % exc) from exc
+        servers = merged.get("mcp_servers", {})
+        entry = servers.get(chosen) if isinstance(servers, dict) else None
+        if not isinstance(entry, dict) or entry.get("url") != mcp_url:
+            raise ValueError("Refusing to write: merged config is missing the product server entry")
+        return
+    entries = scan_toml_mcp_servers(content)
+    url, _ = _entry_identity(entries.get(chosen, ""))
+    if url != mcp_url:
         raise ValueError("Refusing to write: merged config is missing the product server entry")
 
 
 def _split_statements(cleaned: str) -> List[str]:
     """Split comment-stripped TOML into top-level statements.
 
-    A statement ends at a newline outside any inline table, array or quoted
-    string, so multi-line inline tables stay inside one statement. Unbalanced
-    delimiters are refused rather than silently mis-scoped.
+    A statement ends at a newline outside any inline table, array or string, so
+    multi-line inline tables stay inside one statement. Every string is skipped
+    as a whole token via ``_string_end`` (literal strings do not treat ``\\`` as
+    an escape). Unbalanced delimiters are refused rather than mis-scoped.
     """
     statements: List[str] = []
     start = 0
     depth = 0
-    quote = ""
     index = 0
     length = len(cleaned)
     while index < length:
         char = cleaned[index]
-        if quote:
-            if char == "\\" and quote == '"':
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-        elif char in ('"', "'"):
-            quote = char
-        elif char == "#":  # defensive; comments are stripped beforehand
+        if char in ('"', "'"):
+            end = _string_end(cleaned, index)
+            if end is None:
+                raise ValueError("Unbalanced string in MCP config")
+            index = end
+            continue
+        if char == "#":  # defensive; comments are stripped beforehand
             while index < length and cleaned[index] != "\n":
                 index += 1
             continue
-        elif char in "{[":
+        if char in "{[":
             depth += 1
         elif char in "}]":
             depth -= 1
@@ -501,7 +662,7 @@ def _split_statements(cleaned: str) -> List[str]:
             statements.append(cleaned[start:index])
             start = index + 1
         index += 1
-    if depth != 0 or quote:
+    if depth != 0:
         raise ValueError("Unbalanced delimiters in MCP config")
     statements.append(cleaned[start:])
     return statements
@@ -527,20 +688,17 @@ def _parse_key_path(text: str) -> List[str]:
 
 def _top_level_eq(text: str) -> int:
     """Return the index of the ``=`` separating key from value, or ``-1``."""
-    quote = ""
     index = 0
     length = len(text)
     while index < length:
         char = text[index]
-        if quote:
-            if char == "\\" and quote == '"':
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-        elif char in ('"', "'"):
-            quote = char
-        elif char == "=":
+        if char in ('"', "'"):
+            end = _string_end(text, index)
+            if end is None:
+                return -1
+            index = end
+            continue
+        if char == "=":
             return index
         index += 1
     return -1
@@ -573,22 +731,19 @@ def _split_inline_pairs(body: str) -> List[Tuple[str, str]]:
         index = match.end()  # just past '='
         value_start = index
         depth = 0
-        quote = ""
         while index < length:
             c = body[index]
-            if quote:
-                if c == "\\":
-                    index += 2
-                    continue
-                if c == quote:
-                    quote = ""
-            elif c in ('"', "'"):
-                quote = c
-            elif c == "#":
+            if c in ('"', "'"):
+                end = _string_end(body, index)
+                if end is None:
+                    raise ValueError("Unbalanced inline MCP table")
+                index = end
+                continue
+            if c == "#":
                 while index < length and body[index] != "\n":
                     index += 1
                 continue
-            elif c in "{[":
+            if c in "{[":
                 depth += 1
             elif c in "}]":
                 depth -= 1
@@ -597,7 +752,7 @@ def _split_inline_pairs(body: str) -> List[Tuple[str, str]]:
             elif c == "," and depth == 0:
                 break
             index += 1
-        if depth != 0 or quote:
+        if depth != 0:
             raise ValueError("Unbalanced inline MCP table")
         pairs.append((name, body[value_start:index]))
     return pairs
@@ -626,7 +781,13 @@ def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
     keys, inline/dotted/root-inline/dotted-subfield forms, multi-line inline
     tables and trailing comments, and raises ``ValueError`` on ambiguous or
     unbalanced input instead of guessing.
+
+    Multiline (triple-quoted) strings and ``mcp_servers`` tables nested inside
+    another table cannot be verified by this line-oriented scanner, so they are
+    refused outright on Python 3.7 rather than guessed at.
     """
+    if '"""' in text or "'''" in text:
+        raise ValueError("Refusing ambiguous TOML: multiline strings need a real TOML parser")
     cleaned = "\n".join(_strip_toml_comment(line) for line in text.splitlines())
     entries: Dict[str, List[str]] = {}
 
@@ -666,6 +827,12 @@ def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
         if not segments:
             continue
         if segments[0] == "mcp_servers":
+            # A root-level mcp_servers key is only meaningful at root scope.
+            # Under another table it is a DIFFERENT table: the authoritative
+            # parser ignores it, so the fallback must refuse it rather than
+            # merge into the wrong place.
+            if mode != "root":
+                raise ValueError("Refusing ambiguous TOML: nested mcp_servers needs a real TOML parser")
             if len(segments) == 1 and "{" in rhs:
                 # Root inline table: split per server so no shared body leaks.
                 body = _inline_body(rhs, 0)
@@ -685,10 +852,17 @@ def scan_toml_mcp_servers(text: str) -> Dict[str, str]:
 
 
 def is_product_entry(raw_text: str, mcp_url: str) -> bool:
-    """Recognise an entry written by this product (URL or explicit marker)."""
-    if mcp_url and mcp_url in raw_text:
+    """Recognise an entry written by this product (exact URL or explicit marker).
+
+    ``raw_text`` is one SERVER's scoped value. The URL is compared as a parsed,
+    exact value, never as a substring of the raw text: a value such as
+    ``http://127.0.0.1:9765/mcp-other`` must NOT be mistaken for ``.../mcp``.
+    Markers are matched against the entry's own string values only.
+    """
+    url, values = _entry_identity(raw_text)
+    if url is not None and url == mcp_url:
         return True
-    return any(marker in raw_text for marker in PRODUCT_MARKERS)
+    return any(marker in value for value in values for marker in PRODUCT_MARKERS)
 
 
 def free_server_name(desired: str, existing_names: Iterable[str]) -> str:
@@ -722,8 +896,38 @@ def mcp_config_path_for(platform_name: str, home: str, env: Optional[dict] = Non
 
 
 def _toml_quote(value: str) -> str:
-    """JSON string escaping is also valid for TOML basic strings."""
-    return json.dumps(value)
+    """Encode *value* as a TOML basic string.
+
+    ``json.dumps`` is not sufficient: with ``ensure_ascii=True`` it emits
+    non-BMP scalars as UTF-16 surrogate pairs, and TOML forbids surrogate code
+    points in ``\\uXXXX`` escapes. Here non-ASCII scalars (e.g. emoji) stay
+    literal, while the control characters TOML requires to be escaped
+    (U+0000-U+0008, U+000B-U+000C, U+000E-U+001F, U+007F DEL) plus any lone
+    surrogate are emitted as ``\\uXXXX``.
+    """
+    parts = ['"']
+    for char in value:
+        code = ord(char)
+        if char == '"':
+            parts.append('\\"')
+        elif char == "\\":
+            parts.append("\\\\")
+        elif char == "\b":
+            parts.append("\\b")
+        elif char == "\t":
+            parts.append("\\t")
+        elif char == "\n":
+            parts.append("\\n")
+        elif char == "\f":
+            parts.append("\\f")
+        elif char == "\r":
+            parts.append("\\r")
+        elif code < 0x20 or code == 0x7F or 0xD800 <= code <= 0xDFFF:
+            parts.append("\\u%04X" % code)
+        else:
+            parts.append(char)
+    parts.append('"')
+    return "".join(parts)
 
 
 def _toml_key(name: str) -> str:
@@ -732,11 +936,12 @@ def _toml_key(name: str) -> str:
     return _toml_quote(name)
 
 
-def _build_toml_content(text: str, chosen: str, is_upgrade: bool, mcp_url: str) -> Tuple[bool, str]:
-    """Append (or insert) our entry while preserving all existing text."""
-    if is_upgrade:
-        # An existing product entry keeps its identity and every field verbatim.
-        return False, text
+def _build_toml_content(text: str, chosen: str, mcp_url: str) -> Tuple[bool, str]:
+    """Append (or insert) a NEW entry while preserving all existing text.
+
+    Upgrades are handled as a no-op by ``plan_mcp_config``; this function only
+    ever builds content for a brand-new server name.
+    """
     span = _root_inline_span(text)
     if span:
         body = text[span[0] : span[1]]
@@ -753,12 +958,10 @@ def _build_json_content(text: str, parsed: Any, chosen: str, mcp_url: str) -> Tu
     servers = data.setdefault("mcpServers", {})
     if not isinstance(servers, dict):
         raise ValueError("mcpServers must be a JSON object")
-    existing = servers.get(chosen)
-    entry = {"url": mcp_url}
-    if isinstance(existing, dict):
-        entry = dict(existing)
-        entry["url"] = mcp_url
-    servers[chosen] = entry
+    # ``chosen`` is always a free name here, so no existing entry is touched.
+    # An upgrade is a no-op handled by plan_mcp_config and never reaches this
+    # function, so an operator's existing ``url``/fields are never overwritten.
+    servers[chosen] = {"url": mcp_url}
     content = json.dumps(data, indent=2) + "\n"
     return content != text, content
 
@@ -800,8 +1003,14 @@ def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
     else:
         chosen = free_server_name(desired_name, entries.keys())
         is_upgrade = False
-    if fmt == "toml":
-        changed, content = _build_toml_content(text, chosen, is_upgrade, mcp_url)
+    if is_upgrade:
+        # An existing product entry keeps its identity AND every field verbatim,
+        # including its url. Both JSON and TOML are a no-op, so a --mcp-url
+        # change never rewrites an operator's existing configuration.
+        changed = False
+        content = text
+    elif fmt == "toml":
+        changed, content = _build_toml_content(text, chosen, mcp_url)
         _validate_toml_output(content, chosen, changed, mcp_url, toml_parser)
     else:
         changed, content = _build_json_content(text, parsed, chosen, mcp_url)
@@ -819,6 +1028,7 @@ def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
         "is_upgrade": is_upgrade,
         "changed": changed,
         "content": content,
+        "original_text": text,
         "existing_names": sorted(entries.keys()),
         "dry_run_text": dry_run_text,
         "success_text": success_text,
@@ -826,12 +1036,40 @@ def plan_mcp_config(config_path: Path, desired_name: str, mcp_url: str) -> dict:
 
 
 def apply_mcp_config(plan: dict, dry_run: bool = False) -> str:
-    """Apply *plan* and return the chosen name. Errors propagate; no fake success."""
+    """Apply *plan* and return the chosen name. Errors propagate; no fake success.
+
+    Safety properties:
+
+    * TOCTOU guard: refuse if the file changed between planning and applying.
+    * Symlinks: resolve the real target so an atomic replace updates the file,
+      not the link.
+    * Mode: preserve the target's permission bits (default 0o600 for new files).
+    * Private staging: write to a mkstemp file in the target directory and
+      os.replace it into place, cleaning up the temp on any failure.
+    """
     if dry_run or not plan["changed"]:
         return plan["chosen_name"]
-    path = plan["path"]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(plan["content"], encoding="utf-8")
+    path = Path(plan["path"])
+    current_text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if current_text != plan["original_text"]:
+        raise ValueError("Refusing to write: MCP config changed since the plan was built")
+    target = Path(os.path.realpath(str(path)))
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o600
+    fd, tmp = tempfile.mkstemp(prefix=".mcp-config-", dir=str(parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(plan["content"])
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+        tmp = None
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     return plan["chosen_name"]
 
 
@@ -914,6 +1152,12 @@ def main(argv: list[str]) -> int:
     print("MCP URL: %s" % args.mcp_url)
 
     config_path = Path(args.mcp_config).expanduser() if args.mcp_config else None
+    snippet_path = (out_dir / "mcp-streamable-http.json").resolve()
+    if config_path is not None and config_path.resolve() == snippet_path:
+        # The non-dry-run path writes this exact file as a generated snippet.
+        # Merging into it would be silently overwritten by write_mcp_snippets,
+        # so refuse the collision before planning anything.
+        raise SystemExit("Refusing --mcp-config that points at the generated MCP snippet: %s" % snippet_path)
     plan = None
     if config_path is not None:
         plan = plan_mcp_config(config_path, args.server_name, args.mcp_url)

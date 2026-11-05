@@ -11,6 +11,8 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -473,6 +475,367 @@ def test_python37_fallback_scanner_matches_authoritative_parser(tmp_path, setup_
             import tomllib
 
             tomllib.loads(_read(config))
+
+
+# --- Independent-NACK regressions: exact URL identity (no raw substring) ---
+
+SIMILAR_URL = "http://127.0.0.1:9765/mcp-other"
+LEGACY_URL = "http://legacy.internal:9765/mcp"
+
+
+def test_exact_url_does_not_hijack_similar_url_json(tmp_path, setup_script):
+    config = tmp_path / "config.json"
+    original = {
+        "mcpServers": {"blender": {"url": SIMILAR_URL, "startup_timeout_sec": 45}},
+        "theme": "dark",
+    }
+    config.write_text(json.dumps(original, indent=2), encoding="utf-8")
+
+    # "mcp" is a substring of "mcp-other": the old raw-text check hijacked it.
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "blender-2", plan
+    assert plan["is_upgrade"] is False
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    merged = _load_json(config)
+    assert merged["mcpServers"]["blender"]["url"] == SIMILAR_URL
+    assert merged["mcpServers"]["blender"]["startup_timeout_sec"] == 45
+    assert merged["mcpServers"]["blender-2"] == {"url": MCP_URL}
+    assert merged["theme"] == "dark"
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+def test_exact_url_does_not_hijack_similar_url_toml(tmp_path, setup_script, monkeypatch, no_parser):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[mcp_servers.blender]\nurl = "%s"\nstartup_timeout_sec = 45\n' % SIMILAR_URL
+    config.write_text(original, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "blender-2", plan
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    merged = _read(config)
+    assert SIMILAR_URL in merged
+    assert MCP_URL in merged
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        data = tomllib.loads(merged)
+        assert data["mcp_servers"]["blender"]["url"] == SIMILAR_URL
+        assert data["mcp_servers"]["blender"]["startup_timeout_sec"] == 45
+        assert data["mcp_servers"]["blender-2"]["url"] == MCP_URL
+
+
+# --- TOML literal strings / triple-quote boundaries ---
+
+# A TOML literal ('...') string ending in a backslash: the backslash is NOT an
+# escape, so the closing quote comes right after it. The old scanner skipped the
+# backslash-plus-quote pair and mis-scoped the whole inline table.
+LITERAL_BACKSLASH_TOML = "mcp_servers = { blender = { command = 'C:\\path\\' } }\n"
+
+
+def test_string_end_distinguishes_literal_and_basic(setup_script):
+    literal = "'C:\\tool\\' tail"
+    end = setup_script._string_end(literal, 0)
+    assert end is not None
+    assert literal[:end] == "'C:\\tool\\'"
+    basic = '"a\\"b" tail'
+    end = setup_script._string_end(basic, 0)
+    assert end is not None
+    assert basic[:end] == '"a\\"b"'
+    triple = '"""a}b\nc""" tail'
+    end = setup_script._string_end(triple, 0)
+    assert end is not None
+    assert triple[:end] == '"""a}b\nc"""'
+
+
+def test_balanced_body_ignores_brace_inside_triple_quoted_string(setup_script):
+    text = 'mcp_servers = { blender = { note = """a}b""" } }\n'
+    span = setup_script._root_inline_span(text)
+    assert span is not None
+    assert "a}b" in text[span[0] : span[1]]
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+def test_literal_string_trailing_backslash_merges_valid_toml(tmp_path, setup_script, monkeypatch, no_parser):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    config.write_text(LITERAL_BACKSLASH_TOML, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert "blender" in plan["existing_names"], plan
+    assert plan["chosen_name"] == "blender-2", plan
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    merged = _read(config)
+    assert "blender-2" in merged
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        data = tomllib.loads(merged)
+        assert data["mcp_servers"]["blender"]["command"] == "C:\\path\\"
+        assert data["mcp_servers"]["blender-2"]["url"] == MCP_URL
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+def test_triple_quoted_string_is_refused_on_fallback_and_merged_with_parser(
+    tmp_path, setup_script, monkeypatch, no_parser
+):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[mcp_servers.blender]\nnote = """line1\nline2"""\n'
+    config.write_text(original, encoding="utf-8")
+
+    if no_parser:
+        with pytest.raises(ValueError, match="multiline"):
+            setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        assert _read(config) == original  # no write, no fake success
+    else:
+        plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+        assert plan["chosen_name"] == "blender-2"
+        setup_script.apply_mcp_config(plan)
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            data = tomllib.loads(_read(config))
+            assert data["mcp_servers"]["blender"]["note"] == "line1\nline2"
+            assert data["mcp_servers"]["blender-2"]["url"] == MCP_URL
+
+
+# --- Python 3.7 fallback: root scope + refusal of unverifiable input ---
+
+
+def test_root_inline_span_is_root_scoped(setup_script):
+    nested = '[profiles.dev]\nmcp_servers = { blender = { command = "uvx" } }\n'
+    assert setup_script._root_inline_span(nested) is None
+    root = 'mcp_servers = { blender = { command = "uvx" } }\n[other]\nx = 1\n'
+    assert setup_script._root_inline_span(root) is not None
+
+
+def test_fallback_refuses_nested_mcp_servers(tmp_path, setup_script, monkeypatch):
+    monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[profiles.dev]\nmcp_servers = { blender = { command = "uvx" } }\n'
+    config.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError, match="nested mcp_servers"):
+        setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert _read(config) == original
+
+
+def test_authoritative_nested_mcp_servers_merges_at_root(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    original = '[profiles.dev]\nmcp_servers = { blender = { command = "uvx" } }\n'
+    config.write_text(original, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["chosen_name"] == "blender", plan
+    assert plan["changed"] is True
+    setup_script.apply_mcp_config(plan)
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        data = tomllib.loads(_read(config))
+        assert data["mcp_servers"]["blender"]["url"] == MCP_URL
+        assert data["profiles"]["dev"]["mcp_servers"]["blender"]["command"] == "uvx"
+
+
+def test_fallback_quoted_key_unicode_escape_matches_parser(tmp_path, setup_script, monkeypatch):
+    monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[mcp_servers."bl\\u0065nder"]\ncommand = "uvx"\n'
+    config.write_text(original, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert "blender" in plan["existing_names"], plan
+    assert plan["chosen_name"] == "blender-2", plan
+
+
+# --- Unicode / DEL TOML encoding ---
+
+
+def test_toml_quote_escapes_control_chars_and_keeps_unicode(setup_script):
+    if sys.version_info < (3, 11):
+        pytest.skip("tomllib verification needs Python 3.11+")
+    import tomllib
+
+    value = "a🙂\x7fb\x01c\n"
+    encoded = setup_script._toml_quote(value)
+    assert "\\u007F" in encoded  # DEL must be escaped
+    assert "\\u0001" in encoded  # control char escaped
+    assert "🙂" in encoded  # non-BMP scalar kept literal
+    assert "\\ud83d" not in encoded  # no UTF-16 surrogate pair
+    assert tomllib.loads("x = " + encoded)["x"] == value
+
+
+def test_unicode_and_del_server_name_produces_valid_toml(tmp_path, setup_script):
+    config = tmp_path / "config.toml"
+    config.write_text('model = "gpt-5"\n', encoding="utf-8")
+    name = "blen🙂der\x7f"
+    plan = setup_script.plan_mcp_config(config, name, MCP_URL)
+    assert plan["chosen_name"] == name
+    setup_script.apply_mcp_config(plan)
+    merged = _read(config)
+    assert "\x7f" not in merged  # DEL is escaped, never written raw
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        assert tomllib.loads(merged)["mcp_servers"][name]["url"] == MCP_URL
+
+
+# --- JSON/TOML existing product fields are preserved verbatim (no rewrite) ---
+
+
+def test_json_product_entry_keeps_all_fields_verbatim(tmp_path, setup_script):
+    config = tmp_path / "config.json"
+    original = {
+        "mcpServers": {
+            "blender": {
+                "url": LEGACY_URL,
+                "command": "dcc-mcp-blender",
+                "args": ["--serve"],
+                "env": {"X": "1"},
+                "startup_timeout_sec": 30,
+                "tool_timeout_sec": 120,
+                "custom": {"keep": True},
+            }
+        },
+        "theme": "dark",
+    }
+    original_text = json.dumps(original, indent=2)
+    config.write_text(original_text, encoding="utf-8")
+
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["is_upgrade"] is True
+    assert plan["chosen_name"] == "blender"
+    assert plan["changed"] is False
+    assert setup_script.apply_mcp_config(plan) == "blender"
+    assert _read(config) == original_text  # no rewrite, no url clobber
+    assert _load_json(config)["mcpServers"]["blender"]["url"] == LEGACY_URL
+    assert _load_json(config)["mcpServers"]["blender"]["custom"] == {"keep": True}
+
+
+@pytest.mark.parametrize("no_parser", [False, True], ids=["tomllib", "py37_fallback"])
+def test_toml_product_entry_keeps_custom_url_verbatim(tmp_path, setup_script, monkeypatch, no_parser):
+    if no_parser:
+        monkeypatch.setattr(setup_script, "_load_toml_parser", lambda: None)
+    config = tmp_path / "config.toml"
+    original = '[mcp_servers.blender]\nurl = "%s"\ncommand = "dcc-mcp-blender"\n' % LEGACY_URL
+    config.write_text(original, encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    assert plan["is_upgrade"] is True
+    assert plan["changed"] is False
+    assert setup_script.apply_mcp_config(plan) == "blender"
+    assert _read(config) == original
+
+
+# --- TOCTOU guard, private staging + atomic replace, symlink, mode ---
+
+
+def test_apply_refuses_config_changed_since_plan(tmp_path, setup_script):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    config.write_text(json.dumps({"mcpServers": {"other": {}}}), encoding="utf-8")
+    changed_text = _read(config)
+    with pytest.raises(ValueError, match="changed since the plan"):
+        setup_script.apply_mcp_config(plan)
+    assert _read(config) == changed_text  # never clobber a newer file
+
+
+def test_apply_refuses_missing_file_since_plan(tmp_path, setup_script):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    config.unlink()
+    with pytest.raises(ValueError, match="changed since the plan"):
+        setup_script.apply_mcp_config(plan)
+    assert not config.exists()
+
+
+def test_apply_preserves_file_mode(tmp_path, setup_script, monkeypatch):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    before_mode = stat.S_IMODE(config.stat().st_mode)
+    recorded = []
+    real_chmod = os.chmod
+
+    def spy(path, mode):
+        recorded.append(mode)
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(setup_script.os, "chmod", spy)
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    setup_script.apply_mcp_config(plan)
+    assert recorded == [before_mode]
+    assert stat.S_IMODE(config.stat().st_mode) == before_mode
+
+
+def test_apply_follows_symlink_and_preserves_link(tmp_path, setup_script):
+    real = tmp_path / "real.json"
+    real.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    link = tmp_path / "link.json"
+    try:
+        link.symlink_to(real.name)
+    except (OSError, NotImplementedError, AttributeError):
+        pytest.skip("symlinks unavailable on this host/mode")
+    plan = setup_script.plan_mcp_config(link, "blender", MCP_URL)
+    setup_script.apply_mcp_config(plan)
+    assert link.is_symlink()  # the link itself is not replaced
+    assert _load_json(real)["mcpServers"]["blender-2"]["url"] == MCP_URL
+
+
+def test_apply_leaves_no_private_staging_file(tmp_path, setup_script):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+    setup_script.apply_mcp_config(plan)
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith(".mcp-config-")]
+    assert leftovers == []
+
+
+def test_apply_cleans_up_staging_on_replace_failure(tmp_path, setup_script, monkeypatch):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    plan = setup_script.plan_mcp_config(config, "blender", MCP_URL)
+
+    def failing_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(setup_script.os, "replace", failing_replace)
+    with pytest.raises(OSError):
+        setup_script.apply_mcp_config(plan)
+    assert _read(config) == plan["original_text"]  # no fake success, original intact
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith(".mcp-config-")]
+    assert leftovers == []
+
+
+# --- snippet same-path rejection + non-dry-run main() regression ---
+
+
+def test_main_rejects_mcp_config_equal_to_generated_snippet(tmp_path, setup_script, monkeypatch):
+    monkeypatch.setattr(setup_script, "find_repo_root", lambda: tmp_path)
+    snippet = tmp_path / "out" / "mcp-streamable-http.json"
+    snippet.parent.mkdir(parents=True, exist_ok=True)
+    snippet.write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit, match="generated MCP snippet"):
+        setup_script.main(["--skip-install", "--mcp-config", str(snippet), "--out-dir", "out"])
+    assert _read(snippet) == "{}"
+
+
+def test_main_non_dry_run_merges_config_and_writes_matching_snippet(tmp_path, setup_script, monkeypatch):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"mcpServers": {"blender": {"command": "uvx"}}}), encoding="utf-8")
+    monkeypatch.setattr(setup_script, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(setup_script, "resolve_blender_python", lambda _: tmp_path / "fake-python")
+    monkeypatch.setattr(setup_script, "install_startup_script", lambda *a, **k: tmp_path / "startup.py")
+
+    assert setup_script.main(["--skip-install", "--mcp-config", str(config), "--out-dir", "out"]) == 0
+    assert _load_json(config)["mcpServers"]["blender-2"]["url"] == MCP_URL
+    snippet = _load_json(tmp_path / "out" / "mcp-streamable-http.json")
+    assert "blender-2" in snippet["mcpServers"]
+    assert snippet["mcpServers"]["blender-2"]["url"] == MCP_URL
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="ast feature_version requires Python 3.8+")
