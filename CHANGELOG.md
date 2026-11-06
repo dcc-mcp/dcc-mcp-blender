@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.27](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.26...v0.2.27) (2026-11-06)
+
+
+### Bug Fixes
+
+* make the main-thread dispatch timeout budget configurable ([8e6373d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8e6373df62d94676846c12bd55dfcba86fe09a07))
+* preserve unrelated MCP servers when merging host config ([da1b44e](https://github.com/dcc-mcp/dcc-mcp-blender/commit/da1b44e69b4d2f544356d59eb212dea25c889d1f))
+* reject conflicting options/timeout keyword and isolate default-budget test ([741edc1](https://github.com/dcc-mcp/dcc-mcp-blender/commit/741edc1e90d8ace7cfc482f737b15685709171b3))
+* scope MCP product detection per server and reject invalid TOML ([9ee036f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/9ee036f725cc75a705dcda5e87d8e62153e83a61))
+* **setup:** align root inline TOML key detection with the scanner ([c772072](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c772072c3999ff241739f0744d31053abb6cdd48))
+* **setup:** exact product identity, py37-safe TOML merge and atomic writes ([61ff313](https://github.com/dcc-mcp/dcc-mcp-blender/commit/61ff313b0cbe62831161c783f26b4d5420b1f671))
+
+
+### Documentation
+
+* **audio:** make native mixdown evidence recomputable and attributable ([cd2d72d](https://github.com/dcc-mcp/dcc-mcp-blender/commit/cd2d72ddb395d3c3b0d727dde789ead8670a097b))
+* **audio:** reproduce native mixdown PCM surplus and accuracy abort ([4655f08](https://github.com/dcc-mcp/dcc-mcp-blender/commit/4655f08865d52fa35edfb956e792395782bc0935))
+* **readme:** add positioning, Try this, and Related links ([a73e219](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a73e2190afaf7eb5478ae583a5f36299c198d61b))
+* **readme:** link Installation before Quick Start in intro ([a24c013](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a24c0134d9edf2c61bb451e72ad245bb85db356a))
+* refresh the generated DCC-MCP host matrix pointer ([#335](https://github.com/dcc-mcp/dcc-mcp-blender/issues/335)) ([f617553](https://github.com/dcc-mcp/dcc-mcp-blender/commit/f617553bfe8f08b7f5003a893260445dee6972bd))
+
 ## [0.2.26](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.25...v0.2.26) (2026-10-24)
 
 
