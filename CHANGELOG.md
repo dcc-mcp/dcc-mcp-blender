@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.28](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.27...v0.2.28) (2026-11-09)
+
+
+### Documentation
+
+* triage issue [#188](https://github.com/dcc-mcp/dcc-mcp-blender/issues/188) findings and guard render output-format contract ([c445c47](https://github.com/dcc-mcp/dcc-mcp-blender/commit/c445c47c82461766ce70fdc5bd9ac47d19eb365c))
+
 ## [0.2.27](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.26...v0.2.27) (2026-11-06)
 
 
