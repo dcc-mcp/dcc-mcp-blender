@@ -23,6 +23,32 @@ from dcc_mcp_blender._audio_export_worker import digest
 _WINDOWS_FAST_FAIL = 0xC0000409
 
 
+class _FakeSamples(list):
+    """Minimal stand-in for a decoded numpy array; unit CI has no numpy."""
+
+    @property
+    def ndim(self):
+        return 2
+
+    @property
+    def shape(self):
+        return (len(self), 2)
+
+
+def _fake_numpy():
+    """Only the numpy surface ``_audio_export_worker.run`` touches.
+
+    The unit-test CI environment does not install numpy (it is a Blender runtime
+    dependency), so it is injected into ``sys.modules`` for worker.run() calls,
+    matching the existing pattern in test_audio_export_jobs.py.
+    """
+    return SimpleNamespace(
+        isfinite=lambda samples: SimpleNamespace(all=lambda: True),
+        array_equal=lambda left, right: list(left) == list(right),
+        abs=lambda samples: SimpleNamespace(max=lambda: 0.0),
+    )
+
+
 def _fixture_job(tmp_path, code=0):
     for name in ("stdout.log", "stderr.log"):
         (tmp_path / name).write_text("native diagnostics")
@@ -154,7 +180,7 @@ class TestSampleCountContract:
 
 
 class TestWorkerIntegration:
-    """Drive worker.run() with mocked bpy/aud; real numpy, no native Blender."""
+    """Drive worker.run() with mocked bpy/aud and a numpy shim; no native Blender."""
 
     @staticmethod
     def _install(
@@ -169,8 +195,6 @@ class TestWorkerIntegration:
         frames=24,
         fps=24,
     ):
-        import numpy as np
-
         scene_path = tmp_path / "scene.blend"
         scene_path.write_bytes(b"fixture scene")
         dest = tmp_path / "audio.wav"
@@ -194,7 +218,8 @@ class TestWorkerIntegration:
         )
         monkeypatch.setitem(sys.modules, "bpy", bpy)
 
-        samples = np.zeros((decoded_frames, 2), dtype="float32")
+        monkeypatch.setitem(sys.modules, "numpy", _fake_numpy())
+        samples = _FakeSamples([[0.0, 0.0] for _ in range(decoded_frames)])
         fake_sound = SimpleNamespace(specs=(rate, 2), data=lambda: samples)
         state = {"decode_calls": 0}
 
