@@ -77,11 +77,42 @@ root cause of the abort is unconfirmed.
 
 ## Runtime status
 
-`_audio_export_ops.start_audio_export_job` currently validates only
-`1 <= accuracy <= 65536` (integral). The denylist above is **documentation
-only** — no input validation was added in this change. Introducing a runtime
-denylist would change the tool's accepted input contract and is a separate
-product/test decision; the fail-closed default already protects the output.
+`_audio_export_ops.start_audio_export_job` still validates only
+`1 <= accuracy <= 65536` (integral). **No runtime denylist or version gate was
+added**, and this is deliberate rather than an oversight:
+
+- The measured boundary comes from one locally available build (Blender 5.1.1,
+  `b70da489d7f4`) on Windows, 48 kHz stereo, fps 24. The 4.5.13
+  (`daeeeca98fb0`) evidence is source analysis plus two reported crash
+  configurations, not a full re-measurement; CI targets 4.5.13 and 5.2.1.
+- Several denylist rows are explicitly **extrapolated** (S32 / F32 / F64 and
+  `accuracy >= requested_samples` for non-S24 formats), and the adapter accepts
+  only S24 / F32 at 44.1 / 48 kHz, so several tabulated formats are not even
+  reachable through this tool.
+- A denylist is a list of *known-bad* settings, not a whitelist. Hard-coding it
+  as a runtime guard would falsely block settings that may be fine on unmeasured
+  builds and would imply every unblocked setting is safe. That would fabricate a
+  safety guarantee the measurements do not support.
+
+The denylist therefore remains **documentation only**. Extending it to runtime
+protection would first need per-build measurements across the supported version
+matrix. The adapter's protection is the version-independent fail-closed error
+contract below, not a parameter blocklist.
+
+That contract adds three pieces of readback, none of which fixes the native
+encoder, blocks a parameter, or certifies a setting as safe:
+
+- On any non-completed job the adapter stats the owned worker's native WAV and
+  attaches `native_output` (`missing | zero_byte | nonzero`, plus
+  `output_bytes`) and a neutral `exit_signature`, reusing the vocabulary of
+  `docs/evidence/native-mixdown-upstream/results.json`.
+- The worker rejects an absent or zero-byte native WAV before decoding, instead
+  of surfacing an opaque decoder exception.
+- A non-sample-exact PCM result without the strict opt-in correction now raises
+  an attributable error naming the measured duplicate-final-block surplus law
+  (`requested % accuracy or accuracy`) and fails closed **without truncating**.
+  With `correct_duplicate_final_pcm_block=True` the existing byte-exact
+  duplicate-block verification still runs unchanged.
 
 ## Operational checklist for a native PCM export
 
@@ -94,4 +125,5 @@ product/test decision; the fail-closed default already protects the output.
   unchanged; only then may the opt-in corrected second file be produced.
 - On any other count, malformed container, zero-byte output, or worker abort:
   fail closed, retain the original artifact and diagnostics, and report the
-  failure. Do not trim to hide the surplus.
+  failure. Do not trim to hide the surplus. The adapter's `native_output`
+  readback now records whether the artifact was missing, zero-byte, or nonzero.

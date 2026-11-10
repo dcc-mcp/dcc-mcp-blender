@@ -42,6 +42,48 @@ def _sound_dependencies(bpy):
     return [{"path": path, "sha256": actual[path]} for path in sorted(actual)]
 
 
+def native_sample_count_contract(decoded_count, expected_frames, accuracy, correction_opted_in):
+    """Pure, version-independent fail-closed contract for native PCM counts.
+
+    Observation and error contract only: it never mutates or truncates audio.
+    Returns a classification dict when the output is sample-exact, or when a
+    strict opt-in correction is in force (the caller still performs the
+    byte-exact duplicate-block verification). Raises ``ValueError`` when the
+    output is not sample-exact and no strict opt-in correction was requested.
+
+    ``predicted_native_surplus`` reuses the measured law
+    ``expected_frames % accuracy or accuracy`` from
+    ``docs/evidence/native-mixdown-upstream/`` and ``_audio_pcm_repair``.
+    """
+    if type(accuracy) is not int or accuracy <= 0:
+        raise ValueError("Positive integral native mixdown accuracy required")
+    if decoded_count == expected_frames:
+        return {"verdict": "EXACT", "predicted_native_surplus": 0, "surplus": 0}
+    predicted = expected_frames % accuracy or accuracy
+    surplus = decoded_count - expected_frames
+    if surplus == predicted:
+        verdict = "NATIVE_DUPLICATE_FINAL_BLOCK_SURPLUS"
+    elif surplus < 0:
+        verdict = "SHORT_OUTPUT"
+    else:
+        verdict = "UNEXPECTED_COUNT"
+    contract = {
+        "verdict": verdict,
+        "predicted_native_surplus": predicted,
+        "surplus": surplus,
+    }
+    if not correction_opted_in:
+        raise ValueError(
+            "Native PCM mixdown is not sample-exact: decoded=%d expected=%d "
+            "verdict=%s predicted_native_surplus=%d. Fail closed: output was "
+            "not truncated; the only supported remedy is the strict opt-in "
+            "correct_duplicate_final_pcm_block path (byte-exact duplicate-block "
+            "verification) or a different accuracy/frame range. See "
+            "docs/native-audio-mixdown-guidance.md." % (decoded_count, expected_frames, verdict, predicted)
+        )
+    return contract
+
+
 def run(directory):
     import aud
     import bpy
@@ -83,6 +125,15 @@ def run(directory):
     )
     if result != {"FINISHED"}:
         raise RuntimeError("Native mixdown did not finish")
+    # Fail closed on an absent or empty native artifact before decoding. The
+    # measured abort cases left a zero-byte output; do not let an opaque
+    # decoder exception stand in for that readback.
+    try:
+        native_size = destination.stat().st_size
+    except OSError as exc:
+        raise RuntimeError("Native mixdown produced no statable WAV output: {}".format(exc))
+    if native_size == 0:
+        raise RuntimeError("Native mixdown produced a zero-byte WAV output")
     sound = aud.Sound(str(destination))
     samples = sound.data()
     if sound.specs != (request["sample_rate"], 2):
@@ -96,9 +147,16 @@ def run(directory):
     target = (request["end_frame"] - request["start_frame"] + 1) * request["sample_rate"] / fps
     if not math.isclose(target, round(target), rel_tol=0, abs_tol=1e-6):
         raise ValueError("Requested interval is not an integral sample count")
-    if len(samples) != round(target):
-        if request.get("correct_duplicate_final_pcm_block") is not True:
-            raise ValueError(f"Decoded sample count {len(samples)} differs from expected {round(target)}")
+    contract = native_sample_count_contract(
+        len(samples),
+        round(target),
+        request["accuracy"],
+        request.get("correct_duplicate_final_pcm_block") is True,
+    )
+    if contract["verdict"] != "EXACT":
+        # Reachable only with the strict opt-in: native_sample_count_contract
+        # already failed closed for every non-exact, non-opted-in output. The
+        # byte-exact duplicate-block repair below is unchanged.
         remove_verified_duplicate_final_block = _load_pcm_repair()
 
         corrected_bytes, correction = remove_verified_duplicate_final_block(
@@ -131,6 +189,7 @@ def run(directory):
         "output_name": destination.name,
         "native_output_sha256": native_hash,
         "correction": correction,
+        "sample_count_contract": contract,
         "frames": len(samples),
         "sample_rate": request["sample_rate"],
         "channels": 2,

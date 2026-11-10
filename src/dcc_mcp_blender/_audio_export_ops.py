@@ -29,6 +29,51 @@ def _tail(path):
         return "Log unavailable: {}".format(exc)
 
 
+def _readback_native_output(job_directory):
+    """Neutral, offline-verifiable readback of the owned worker's native WAV.
+
+    Reuses the ``missing | zero_byte | nonzero`` vocabulary from
+    ``docs/evidence/native-mixdown-upstream/results.json`` so a crashed or
+    zero-byte native mixdown is attributable from the job status without
+    trusting the child's stdout. Observation only: it never mutates audio.
+    """
+    path = Path(job_directory) / "audio.wav"
+    readback = {
+        "output_name": "audio.wav",
+        "output_exists": False,
+        "output_bytes": None,
+        "output_state": "missing",
+    }
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return readback
+    readback["output_exists"] = True
+    readback["output_bytes"] = size
+    readback["output_state"] = "zero_byte" if size == 0 else "nonzero"
+    return readback
+
+
+def _exit_signature(returncode):
+    """Neutral decode of an owned-worker exit status (mirrors the evidence harness).
+
+    Classifies the observed exit code only; it does not claim to know the
+    native failure's cause.
+    """
+    if returncode is None:
+        return "unavailable (worker exit not confirmed)"
+    if returncode == 0:
+        return "0 (clean)"
+    unsigned = returncode & 0xFFFFFFFF
+    if 0xC0000000 <= unsigned <= 0xC0000FFF:
+        return "0x%08X (Windows native fast-fail / abort)" % unsigned
+    if returncode < 0:
+        return "%d (terminated by signal / negative exit)" % returncode
+    if unsigned > 0x7FFFFFFF:
+        return "0x%08X (abnormal)" % unsigned
+    return "%d (nonzero)" % returncode
+
+
 def _persist(job, strict=False):
     visible = {k: v for k, v in job.items() if k not in ("process", "thread")}
     path = Path(job["job_directory"]) / "status.json"
@@ -127,6 +172,14 @@ def _watch(job, timeout):
         with _LOCK:
             job["stdout_tail"] = _tail(job["stdout_path"])
             job["stderr_tail"] = _tail(job["stderr_path"])
+            if job.get("status") != "completed":
+                # Error readback for a failed/abnormal owned worker. Do not trust
+                # the child to describe its own native output: stat the artifact
+                # and keep a neutral exit classification on the job so callers
+                # can distinguish missing / zero-byte / partial output.
+                if "returncode" in job:
+                    job["exit_signature"] = _exit_signature(job["returncode"])
+                job["native_output"] = _readback_native_output(job["job_directory"])
             _persist(job)
 
 
