@@ -10,6 +10,7 @@ NOT_RUN in this suite; the measured native behaviour is recorded in
 from __future__ import annotations
 
 import json
+import struct
 import sys
 from types import SimpleNamespace
 
@@ -17,10 +18,18 @@ import pytest
 
 from dcc_mcp_blender import _audio_export_ops as jobs
 from dcc_mcp_blender import _audio_export_worker as worker
+from dcc_mcp_blender import _audio_pcm_repair as repair
 from dcc_mcp_blender._audio_export_worker import digest
 
-# 0xC0000409 as returned by subprocess on Windows (unsigned 32-bit).
+# Windows NTSTATUS / exception codes as returned by subprocess (unsigned and
+# their signed 32-bit reinterpretations). 0xC0000409 is the fast-fail code;
+# 0xC0000005 is ACCESS_VIOLATION -- neither may be guessed as a native cause.
 _WINDOWS_FAST_FAIL = 0xC0000409
+_ACCESS_VIOLATION = 0xC0000005
+
+
+def _signed32(unsigned):
+    return unsigned - (1 << 32) if unsigned >= (1 << 31) else unsigned
 
 
 class _FakeSamples(list):
@@ -63,6 +72,41 @@ def _fixture_job(tmp_path, code=0):
         "stdout_path": str(tmp_path / "stdout.log"),
         "stderr_path": str(tmp_path / "stderr.log"),
     }
+
+
+def _stat_raising_path(exc):
+    """A Path stand-in whose stat() always raises the given synthetic error."""
+
+    class _Path:
+        def __init__(self, *parts):
+            pass
+
+        def __truediv__(self, other):
+            return self
+
+        def stat(self):
+            raise exc
+
+    return _Path
+
+
+def _duplicate_block_wav(expected_frames, accuracy, *, exact):
+    """Minimal stereo S24 RIFF/WAVE with the predicted surplus frame count.
+
+    ``exact`` controls whether the trailing PCM block is a byte-exact copy of
+    the preceding final block. Both variants have the SAME surplus count, so
+    only the strict byte-exact verifier can tell them apart.
+    """
+    alignment = 6  # 2 channels * 24-bit
+    extra = expected_frames % accuracy or accuracy
+    cut = expected_frames * alignment
+    head = bytes((i * 7 + 13) % 256 for i in range(cut))
+    final_block = head[cut - extra * alignment : cut]
+    tail = final_block if exact else bytes(b ^ 0x5A for b in final_block)
+    data = head + tail
+    fmt = struct.pack("<HHIIHH", 1, 2, 48000, 48000 * alignment, alignment, 24)
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(data)) + data
+    return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
 class TestNativeOutputReadback:
@@ -152,7 +196,9 @@ class TestSampleCountContract:
     def test_measured_surplus_law_is_classified(self):
         # 480 % 240 == 0 -> predicted extra == accuracy == 240.
         contract = worker.native_sample_count_contract(720, 480, 240, True)
-        assert contract["verdict"] == "NATIVE_DUPLICATE_FINAL_BLOCK_SURPLUS"
+        assert contract["verdict"] == "NATIVE_SURPLUS_CANDIDATE"
+        assert "DUPLICATE" not in contract["verdict"]  # count-only, not a duplicate claim
+        assert contract["duplicate_block_confirmed"] is False
         assert contract["predicted_native_surplus"] == 240
         assert contract["surplus"] == 240
 
@@ -194,6 +240,7 @@ class TestWorkerIntegration:
         rate=48000,
         frames=24,
         fps=24,
+        corrected_frames=None,
     ):
         scene_path = tmp_path / "scene.blend"
         scene_path.write_bytes(b"fixture scene")
@@ -221,9 +268,16 @@ class TestWorkerIntegration:
         monkeypatch.setitem(sys.modules, "numpy", _fake_numpy())
         samples = _FakeSamples([[0.0, 0.0] for _ in range(decoded_frames)])
         fake_sound = SimpleNamespace(specs=(rate, 2), data=lambda: samples)
+        verified_samples = (
+            _FakeSamples([[0.0, 0.0] for _ in range(corrected_frames)]) if corrected_frames is not None else None
+        )
         state = {"decode_calls": 0}
 
         def sound_factory(path):
+            # A successful strict correction re-decodes the second file; only
+            # that path may return the shorter, sample-exact decoded prefix.
+            if verified_samples is not None and str(path).endswith("audio-corrected.wav"):
+                return SimpleNamespace(specs=(rate, 2), data=lambda: verified_samples)
             state["decode_calls"] += 1
             return fake_sound
 
@@ -287,3 +341,149 @@ class TestWorkerIntegration:
         assert receipt["sample_count_contract"]["verdict"] == "EXACT"
         assert receipt["correction"] is None
         assert dest.read_bytes() == native_bytes
+
+    def test_worker_run_rejects_nonidentical_tail_without_truncation(self, tmp_path, monkeypatch):
+        """Counterexample through the real worker: a matching surplus count with
+        a non-byte-exact final block is still rejected by the strict verifier,
+        and the original native WAV bytes are preserved (no unconditional trim).
+        """
+        blob = _duplicate_block_wav(2000, 240, exact=False)
+        dest, _, _ = self._install(monkeypatch, tmp_path, 2080, frames=1, native_bytes=blob, opt_in=True)
+        with pytest.raises(ValueError, match="Extra PCM bytes do not exactly duplicate"):
+            worker.run(tmp_path)
+        assert dest.read_bytes() == blob  # final bytes bound; never truncated
+        assert not (tmp_path / "audio-corrected.wav").exists()
+        assert not (tmp_path / "result.json").exists()
+
+    def test_byte_exact_duplicate_is_confirmed_only_after_verification(self, tmp_path, monkeypatch):
+        """Positive control: only a byte-exact duplicate promotes the candidate
+        verdict to a confirmed duplicate block, and the original native WAV stays
+        untouched while the opt-in second file is bound to the exact frame count.
+        """
+        expected_frames = 2000
+        blob = _duplicate_block_wav(expected_frames, 240, exact=True)
+        dest, _, _ = self._install(
+            monkeypatch,
+            tmp_path,
+            2080,
+            frames=1,
+            native_bytes=blob,
+            opt_in=True,
+            corrected_frames=expected_frames,
+        )
+        worker.run(tmp_path)
+        assert dest.read_bytes() == blob  # native artifact preserved, not truncated
+        receipt = json.loads((tmp_path / "result.json").read_text())
+        assert receipt["output_name"] == "audio-corrected.wav"
+        assert receipt["correction"]["raw_pcm_duplicate_exact"] is True
+        contract = receipt["sample_count_contract"]
+        assert contract["verdict"] == "NATIVE_SURPLUS_CANDIDATE"
+        assert contract["duplicate_block_confirmed"] is True
+        assert receipt["frames"] == expected_frames
+
+
+class TestReadbackNativeOutputStates:
+    """Pure-helper controls: only a proven FileNotFoundError is 'missing'."""
+
+    @pytest.mark.parametrize(
+        "error_class",
+        [PermissionError, OSError],
+        ids=["permission", "generic_oserror"],
+    )
+    def test_unobservable_stat_failure_is_unknown_not_absent(self, monkeypatch, error_class):
+        # Counterexample: a synthetic stat error must NOT be reported as an
+        # observed missing / zero-byte artifact.
+        monkeypatch.setattr(jobs, "Path", _stat_raising_path(error_class("denied")))
+        readback = jobs._readback_native_output("ignored")
+        assert readback["output_state"] == "unknown"
+        assert readback["output_exists"] is None
+        assert readback["output_bytes"] is None
+        assert readback["output_error"] == error_class.__name__
+
+    def test_proven_file_not_found_is_missing(self, monkeypatch):
+        monkeypatch.setattr(jobs, "Path", _stat_raising_path(FileNotFoundError()))
+        readback = jobs._readback_native_output("ignored")
+        assert readback["output_state"] == "missing"
+        assert readback["output_exists"] is False
+        assert readback["output_bytes"] is None
+
+    def test_zero_byte_is_zero_byte(self, tmp_path):
+        (tmp_path / "audio.wav").write_bytes(b"")
+        readback = jobs._readback_native_output(tmp_path)
+        assert readback["output_state"] == "zero_byte"
+        assert readback["output_exists"] is True
+        assert readback["output_bytes"] == 0
+
+    def test_nonzero_is_nonzero(self, tmp_path):
+        (tmp_path / "audio.wav").write_bytes(b"RIFF" + bytes(44))
+        readback = jobs._readback_native_output(tmp_path)
+        assert readback["output_state"] == "nonzero"
+        assert readback["output_exists"] is True
+        assert readback["output_bytes"] == 48
+
+
+class TestExitSignatureNtstatus:
+    """Windows NTSTATUS codes are preserved neutrally, never guessed as fast-fail."""
+
+    @pytest.mark.parametrize(
+        "code, raw_hex",
+        [
+            (_ACCESS_VIOLATION, "0xC0000005"),
+            (_WINDOWS_FAST_FAIL, "0xC0000409"),
+            (_signed32(_ACCESS_VIOLATION), "0xC0000005"),
+            (_signed32(_WINDOWS_FAST_FAIL), "0xC0000409"),
+        ],
+        ids=[
+            "access_violation_unsigned",
+            "fast_fail_unsigned",
+            "access_violation_signed",
+            "fast_fail_signed",
+        ],
+    )
+    def test_windows_codes_are_neutral(self, code, raw_hex):
+        sig = jobs._exit_signature(code)
+        assert raw_hex in sig  # raw observed code is preserved
+        assert "NTSTATUS" in sig
+        assert "fast-fail" not in sig
+        assert "abort" not in sig.lower()
+
+    def test_posix_signal_is_not_ntstatus(self):
+        sig = jobs._exit_signature(-6)
+        assert "signal" in sig
+        assert "NTSTATUS" not in sig
+        assert "fast-fail" not in sig
+
+    def test_plain_nonzero_exit(self):
+        assert jobs._exit_signature(1) == "1 (nonzero)"
+
+    def test_unconfirmed_exit(self):
+        assert "unavailable" in jobs._exit_signature(None)
+
+    def test_clean_exit(self):
+        assert jobs._exit_signature(0) == "0 (clean)"
+
+
+class TestDuplicateBlockCandidate:
+    """Count agreement is only a candidate; byte-exact verification confirms."""
+
+    def test_count_only_surplus_is_candidate_not_confirmed(self):
+        contract = worker.native_sample_count_contract(2080, 2000, 240, True)
+        assert contract["verdict"] == "NATIVE_SURPLUS_CANDIDATE"
+        assert "DUPLICATE" not in contract["verdict"]  # no premature duplicate claim
+        assert contract["duplicate_block_confirmed"] is False
+        assert contract["predicted_native_surplus"] == 80
+        assert contract["surplus"] == 80
+
+    def test_same_surplus_nonidentical_block_rejected_by_strict_verifier(self):
+        # The SAME surplus count, but the trailing block is not a byte-exact
+        # duplicate -> the strict opt-in verifier must still reject it.
+        blob = _duplicate_block_wav(2000, 240, exact=False)
+        with pytest.raises(ValueError, match="Extra PCM bytes do not exactly duplicate"):
+            repair.remove_verified_duplicate_final_block(blob, 2000, 240)
+
+    def test_same_surplus_identical_block_confirmed_by_strict_verifier(self):
+        # Positive control: only a byte-exact duplicate passes verification.
+        blob = _duplicate_block_wav(2000, 240, exact=True)
+        _, correction = repair.remove_verified_duplicate_final_block(blob, 2000, 240)
+        assert correction["raw_pcm_duplicate_exact"] is True
+        assert correction["removed_duplicate_frames"] == 80

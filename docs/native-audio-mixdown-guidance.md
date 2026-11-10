@@ -103,16 +103,21 @@ That contract adds three pieces of readback, none of which fixes the native
 encoder, blocks a parameter, or certifies a setting as safe:
 
 - On any non-completed job the adapter stats the owned worker's native WAV and
-  attaches `native_output` (`missing | zero_byte | nonzero`, plus
-  `output_bytes`) and a neutral `exit_signature`, reusing the vocabulary of
-  `docs/evidence/native-mixdown-upstream/results.json`.
+  attaches `native_output` (`missing | zero_byte | nonzero | unknown`, plus
+  `output_bytes`) and a neutral `exit_signature` that keeps the raw exit code
+  without guessing a native cause. The first three states reuse the vocabulary
+  of `docs/evidence/native-mixdown-upstream/results.json`; a `stat` failure
+  that is not a proven `FileNotFoundError` stays `unknown` (existence/size not
+  observed), never a fabricated absence.
 - The worker rejects an absent or zero-byte native WAV before decoding, instead
   of surfacing an opaque decoder exception.
 - A non-sample-exact PCM result without the strict opt-in correction now raises
   an attributable error naming the measured duplicate-final-block surplus law
   (`requested % accuracy or accuracy`) and fails closed **without truncating**.
-  With `correct_duplicate_final_pcm_block=True` the existing byte-exact
-  duplicate-block verification still runs unchanged.
+  Matching that count is only a `NATIVE_SURPLUS_CANDIDATE` diagnosis; it does
+  not claim a duplicate block. With `correct_duplicate_final_pcm_block=True` the
+  existing byte-exact duplicate-block verification still runs unchanged, and
+  only after it succeeds is `duplicate_block_confirmed` set to true.
 
 ## Operational checklist for a native PCM export
 
@@ -126,4 +131,5 @@ encoder, blocks a parameter, or certifies a setting as safe:
 - On any other count, malformed container, zero-byte output, or worker abort:
   fail closed, retain the original artifact and diagnostics, and report the
   failure. Do not trim to hide the surplus. The adapter's `native_output`
-  readback now records whether the artifact was missing, zero-byte, or nonzero.
+  readback now records whether the artifact was missing, zero-byte, nonzero,
+  or unobservable (`unknown`).

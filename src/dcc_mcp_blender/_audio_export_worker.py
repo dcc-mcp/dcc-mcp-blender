@@ -54,6 +54,11 @@ def native_sample_count_contract(decoded_count, expected_frames, accuracy, corre
     ``predicted_native_surplus`` reuses the measured law
     ``expected_frames % accuracy or accuracy`` from
     ``docs/evidence/native-mixdown-upstream/`` and ``_audio_pcm_repair``.
+    A surplus whose count matches that law is only a *candidate*
+    (``NATIVE_SURPLUS_CANDIDATE``): the count alone does not prove the extra
+    PCM is a byte-exact duplicate of the final block. Only the strict opt-in
+    verifier can confirm that, so ``duplicate_block_confirmed`` starts False
+    and is upgraded by the caller after byte-exact verification succeeds.
     """
     if type(accuracy) is not int or accuracy <= 0:
         raise ValueError("Positive integral native mixdown accuracy required")
@@ -62,7 +67,7 @@ def native_sample_count_contract(decoded_count, expected_frames, accuracy, corre
     predicted = expected_frames % accuracy or accuracy
     surplus = decoded_count - expected_frames
     if surplus == predicted:
-        verdict = "NATIVE_DUPLICATE_FINAL_BLOCK_SURPLUS"
+        verdict = "NATIVE_SURPLUS_CANDIDATE"
     elif surplus < 0:
         verdict = "SHORT_OUTPUT"
     else:
@@ -71,6 +76,7 @@ def native_sample_count_contract(decoded_count, expected_frames, accuracy, corre
         "verdict": verdict,
         "predicted_native_surplus": predicted,
         "surplus": surplus,
+        "duplicate_block_confirmed": False,
     }
     if not correction_opted_in:
         raise ValueError(
@@ -173,6 +179,10 @@ def run(directory):
             raise ValueError("Correction changed decoded prefix samples")
         if digest(destination) != native_hash:
             raise ValueError("Preserved original native output changed during correction")
+        # Only now, after the strict byte-exact duplicate-block verifier and
+        # all corrected-decode checks passed, may the count-only candidate be
+        # called a confirmed duplicate block.
+        contract["duplicate_block_confirmed"] = True
         destination = corrected
         samples = corrected_samples
     if digest(source) != request["scene_sha256"]:
