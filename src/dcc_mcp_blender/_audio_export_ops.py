@@ -29,6 +29,72 @@ def _tail(path):
         return "Log unavailable: {}".format(exc)
 
 
+def _readback_native_output(job_directory):
+    """Neutral, offline-verifiable readback of the owned worker's native WAV.
+
+    Observation only: it never mutates audio. Only a proven
+    ``FileNotFoundError`` is reported as absent. Any other ``stat`` failure
+    (for example ``PermissionError``) is *unobservable*, not an observed
+    absence: existence and size stay unknown and only the error class is
+    recorded, so a synthetic stat error can never be misread as a missing or
+    zero-byte artifact. Reuses the ``missing | zero_byte | nonzero``
+    vocabulary from ``docs/evidence/native-mixdown-upstream/results.json``
+    and adds ``unknown`` for an unobservable artifact.
+    """
+    path = Path(job_directory) / "audio.wav"
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return {
+            "output_name": "audio.wav",
+            "output_exists": False,
+            "output_bytes": None,
+            "output_state": "missing",
+        }
+    except OSError as exc:
+        return {
+            "output_name": "audio.wav",
+            "output_exists": None,
+            "output_bytes": None,
+            "output_state": "unknown",
+            "output_error": type(exc).__name__,
+        }
+    return {
+        "output_name": "audio.wav",
+        "output_exists": True,
+        "output_bytes": size,
+        "output_state": "zero_byte" if size == 0 else "nonzero",
+    }
+
+
+def _exit_signature(returncode):
+    """Neutral decode of an owned-worker exit status (mirrors the evidence harness).
+
+    Preserves the observed raw code without guessing the native failure cause.
+    ``returncode`` may be a Windows unsigned NTSTATUS / exception code (for
+    example ``0xC0000005`` / ``3221225477``), its signed 32-bit
+    reinterpretation (``-1073741819``), a POSIX signal-style negative, or
+    ``None`` when the worker exit is unconfirmed. Windows exception codes are
+    labelled as NTSTATUS only; none is asserted to be a fast-fail or abort,
+    since the native root cause is not established by the code alone.
+    """
+    if returncode is None:
+        return "unavailable (worker exit not confirmed)"
+    if returncode == 0:
+        return "0 (clean)"
+    unsigned = returncode & 0xFFFFFFFF
+    if 0xC0000000 <= unsigned <= 0xCFFFFFFF:
+        # Windows NTSTATUS / exception band (both unsigned and signed 32-bit
+        # inputs land here). Keep the raw code; do not infer a native cause
+        # such as ACCESS_VIOLATION vs a fast-fail.
+        return "0x%08X (Windows NTSTATUS / exception code)" % unsigned
+    if returncode < 0:
+        return "%d (terminated by signal / negative exit)" % returncode
+    if unsigned > 0x7FFFFFFF:
+        return "0x%08X (abnormal)" % unsigned
+    return "%d (nonzero)" % returncode
+
+
 def _persist(job, strict=False):
     visible = {k: v for k, v in job.items() if k not in ("process", "thread")}
     path = Path(job["job_directory"]) / "status.json"
@@ -127,6 +193,14 @@ def _watch(job, timeout):
         with _LOCK:
             job["stdout_tail"] = _tail(job["stdout_path"])
             job["stderr_tail"] = _tail(job["stderr_path"])
+            if job.get("status") != "completed":
+                # Error readback for a failed/abnormal owned worker. Do not trust
+                # the child to describe its own native output: stat the artifact
+                # and keep a neutral exit classification on the job so callers
+                # can distinguish missing / zero-byte / partial output.
+                if "returncode" in job:
+                    job["exit_signature"] = _exit_signature(job["returncode"])
+                job["native_output"] = _readback_native_output(job["job_directory"])
             _persist(job)
 
 
