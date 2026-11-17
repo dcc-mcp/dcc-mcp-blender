@@ -293,3 +293,30 @@ def test_timeout_exit_race_still_records_failure(worker, monkeypatch):
     jobs._watch_owned_worker(job, 0.01)
     state = diagnostics.get_tree_diagnostic(job["job_id"])
     assert not state["success"] and state["context"]["status"] == "failed"
+
+
+def test_failed_receipt_preserves_error_status_and_log_tails(worker):
+    from dcc_mcp_blender._render_worker_receipt import read_worker_status, write_worker_status
+
+    result, process = worker()
+    jid = result["context"]["job_id"]
+    directory = Path(result["context"]["job_directory"])
+    receipt = read_worker_status(directory, jid, "tree_diagnostic")
+    receipt.update(status="failed", error="Synthetic missing material library")
+    write_worker_status(directory, receipt)
+    (directory / "stderr.log").write_text("material-library failure detail")
+    (directory / "stdout.log").write_text("worker started")
+    process.finish(1)
+    state = diagnostics.get_tree_diagnostic(jid)
+    assert not state["success"]
+    assert state["error"] == "Synthetic missing material library"
+    assert state["context"]["status"] == "failed"
+    assert state["context"]["stderr_tail"] == "material-library failure detail"
+    assert state["context"]["stdout_tail"] == "worker started"
+    jobs._JOBS.pop(jid)
+    recovered = diagnostics.get_tree_diagnostic(jid, str(directory))
+    assert not recovered["success"] and recovered["context"]["status"] == "failed"
+    cancelled = diagnostics.cancel_tree_diagnostic(jid, str(directory))
+    assert not cancelled["success"]
+    assert cancelled["error"] == "No live process handle is owned"
+    assert cancelled["context"]["worker_error"] == "Synthetic missing material library"

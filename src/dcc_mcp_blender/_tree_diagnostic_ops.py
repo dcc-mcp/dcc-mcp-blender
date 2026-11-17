@@ -61,7 +61,8 @@ def get_tree_diagnostic(job_id, job_directory=None):
                 context[key + "_tail"] = jobs._log_tail(
                     context, key + "_path", allowed_directory=context["job_directory"]
                 )
-            return skill_error("Tree diagnostics failed", context.get("error", context["status"]), **context)
+            error = context.pop("error", context["status"])
+            return skill_error("Tree diagnostics failed", error, **context)
         return skill_success("Tree diagnostic status", **context)
     except Exception as exc:
         return skill_exception(exc, message="Tree diagnostic evidence unavailable", job_id=job_id)

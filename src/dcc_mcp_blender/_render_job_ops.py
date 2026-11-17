@@ -253,6 +253,8 @@ def cancel_owned_worker(job_id, kind, job_directory=None):
             job = _JOBS.get(job_id)
         if job is None:
             context = owned_worker_context(job_id, kind, job_directory)
+            if "error" in context:
+                context["worker_error"] = context.pop("error")
             return skill_error("Cancellation ownership unavailable", "No live process handle is owned", **context)
         if job.get("kind") != kind:
             raise ValueError("Job belongs to a different render operation")
