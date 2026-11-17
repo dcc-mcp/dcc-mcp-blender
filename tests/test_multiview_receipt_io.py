@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from dcc_mcp_blender import _multiview_receipt as receipts
+from dcc_mcp_blender import _render_worker_receipt as receipt_io
 from dcc_mcp_blender._multiview_receipt import read_receipt, write_receipt
 from tests.conftest import load_skill_script
 
@@ -84,7 +85,7 @@ def retry_clock(monkeypatch):
         clock.sleeps.append(delay)
         clock.now += delay
 
-    monkeypatch.setattr(receipts, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep))
+    monkeypatch.setattr(receipt_io, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep))
     return clock
 
 
@@ -124,8 +125,8 @@ def test_persistent_conflict_fails_within_short_retry_budget(tmp_path, monkeypat
         assert read_receipt(tmp_path, "test") == original
         assert list(tmp_path.iterdir()) == [tmp_path / "result.json"]
 
-    assert len(attempts) == receipts._IO_RETRY_ATTEMPTS
-    assert retry_clock.sleeps == [receipts._IO_RETRY_INTERVAL] * (receipts._IO_RETRY_ATTEMPTS - 1)
+    assert len(attempts) == receipt_io._IO_RETRY_ATTEMPTS
+    assert retry_clock.sleeps == [receipt_io._IO_RETRY_INTERVAL] * (receipt_io._IO_RETRY_ATTEMPTS - 1)
     assert retry_clock.now == pytest.approx(0.09)
 
 
@@ -139,7 +140,7 @@ def test_retry_deadline_prevents_another_attempt_after_scheduler_delay(tmp_path,
     def delayed_sleep(delay):
         retry_clock.now += 1.5
 
-    monkeypatch.setattr(receipts.time, "sleep", delayed_sleep)
+    monkeypatch.setattr(receipt_io.time, "sleep", delayed_sleep)
     with pytest.raises(PermissionError) as raised:
         if operation == "read":
             read_receipt(tmp_path, "test")
@@ -166,9 +167,9 @@ def test_retry_deadline_preserves_last_error_when_attempt_uses_budget(monkeypatc
 
     assert raised.value is error
     assert len(attempts) == 1
-    if first_attempt_seconds < receipts._IO_RETRY_DEADLINE:
-        assert retry_clock.sleeps == [pytest.approx(receipts._IO_RETRY_DEADLINE - first_attempt_seconds)]
-        assert retry_clock.now == receipts._IO_RETRY_DEADLINE
+    if first_attempt_seconds < receipt_io._IO_RETRY_DEADLINE:
+        assert retry_clock.sleeps == [pytest.approx(receipt_io._IO_RETRY_DEADLINE - first_attempt_seconds)]
+        assert retry_clock.now == receipt_io._IO_RETRY_DEADLINE
     else:
         assert not retry_clock.sleeps
 

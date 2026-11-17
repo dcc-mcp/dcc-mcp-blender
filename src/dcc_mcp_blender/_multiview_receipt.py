@@ -2,41 +2,19 @@
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import json
 import struct
-import sys
-import time
 import uuid
 from pathlib import Path
 
+if __package__:
+    from ._render_worker_receipt import _retry_receipt_io
+else:
+    # Standalone native worker: sibling imports must not initialize the adapter/Core.
+    from _render_worker_receipt import _retry_receipt_io
+
 TERMINAL = {"completed", "failed", "cancelled"}
-# Fast conflicts are bounded by attempt count. A separate one-second deadline
-# leaves room for slow filesystem calls but prevents starting another retry
-# after the budget expires; it cannot interrupt an operation already in flight.
-_IO_RETRY_DEADLINE = 1.0
-_IO_RETRY_ATTEMPTS = 10
-_IO_RETRY_INTERVAL = 0.01
-
-
-def _retry_receipt_io(operation, *, reading=False):
-    """Bound retries for transient Windows sharing/access conflicts only."""
-    deadline = time.monotonic() + _IO_RETRY_DEADLINE
-    for attempt in range(_IO_RETRY_ATTEMPTS):
-        try:
-            return operation()
-        except OSError as exc:
-            winerror = getattr(exc, "winerror", None)
-            retryable = winerror in {5, 32, 33} or (
-                reading and winerror is None and isinstance(exc, PermissionError) and exc.errno == errno.EACCES
-            )
-            remaining = deadline - time.monotonic()
-            if sys.platform != "win32" or not retryable or attempt + 1 == _IO_RETRY_ATTEMPTS or remaining <= 0:
-                raise
-            time.sleep(min(_IO_RETRY_INTERVAL, remaining))
-            if time.monotonic() >= deadline:
-                raise
 
 
 def write_receipt(directory, receipt):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import signal
@@ -16,6 +17,7 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 from dcc_mcp_blender._image_format import image_format, worker_format_expression
 from dcc_mcp_blender._png_integrity import is_complete_png
+from dcc_mcp_blender._render_worker_receipt import file_hash, read_worker_status, write_worker_status
 from dcc_mcp_blender._saved_scene_source import (
     read_source_receipt,
     reject_source_output_alias,
@@ -67,6 +69,9 @@ _CYCLES_DEVICE_ERROR = "found no cycles device of the specified type"
 _LOG_TAIL_BYTES = 4096
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
+_WORKER_ADMISSION = threading.RLock()
+_OWNED_WORKERS_ACCEPTING = True
+_MAX_OWNED_WORKERS = 2
 
 
 def _assert_format_tables_agree() -> None:
@@ -105,6 +110,183 @@ def _launch_worker(command, directory, stdout_path, stderr_path):
         popen_kwargs["start_new_session"] = True
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
         return subprocess.Popen(command, stdout=stdout, stderr=stderr, **popen_kwargs)
+
+
+def _stop_owned_worker(job, reason):
+    """Stop and reap one observed handle; never reconstruct ownership from a PID."""
+    with job["control_lock"]:
+        process = job["process"]
+        if process.poll() is not None:
+            return False
+        _terminate_process_tree(process)
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
+        job["end_reason"] = reason
+        job["receipt"].update(status=reason, return_code=process.returncode)
+        write_worker_status(job["job_directory"], job["receipt"])
+        return True
+
+
+def _watch_owned_worker(job, timeout_seconds):
+    try:
+        try:
+            code = job["process"].wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            _stop_owned_worker(job, "timed_out")
+            return
+        with job["control_lock"]:
+            if not job.get("end_reason"):
+                job["receipt"].update(status="completed" if code == 0 else "failed", return_code=code)
+                write_worker_status(job["job_directory"], job["receipt"])
+    except Exception as exc:
+        with job["control_lock"]:
+            job["receipt"].update(status="stop_failed", error=str(exc))
+
+
+def submit_owned_worker(binary, worker, output_directory, kind, request, timeout_seconds):
+    """Submit a bounded isolated task through the existing render process registry."""
+    job = None
+    try:
+        binary = Path(binary).resolve(strict=True)
+        root = Path(output_directory).expanduser().resolve(strict=True)
+        if not binary.is_file() or not root.is_dir():
+            raise ValueError("Expected the current Blender binary and an existing output directory")
+        job_id = uuid.uuid4().hex
+        directory = root / (kind.replace("_", "-") + "-" + job_id)
+        directory.mkdir(exist_ok=False)
+        request = dict(request, job_id=job_id, kind=kind, output=str(directory))
+        path = directory / "request.json"
+        path.write_text(json.dumps(request), encoding="utf-8")
+        receipt = dict(job_id=job_id, kind=kind, status="running", request_sha256=file_hash(path))
+        write_worker_status(directory, receipt)
+        command = [
+            str(binary),
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(worker),
+            "--",
+            str(path),
+        ]
+        job = dict(
+            job_id=job_id,
+            kind=kind,
+            job_directory=str(directory),
+            receipt=receipt,
+            process=None,
+            control_lock=threading.RLock(),
+            end_reason=None,
+        )
+        # Retain the identity even if launch or supervisor setup fails.
+        with _WORKER_ADMISSION:
+            if not _OWNED_WORKERS_ACCEPTING:
+                raise RuntimeError("Blender worker admission is closed")
+            with _LOCK:
+                active = sum(
+                    "control_lock" in owned and owned.get("process") is not None and owned["process"].poll() is None
+                    for owned in _JOBS.values()
+                )
+                if active >= _MAX_OWNED_WORKERS:
+                    raise RuntimeError("Owned Blender worker limit reached")
+                _JOBS[job_id] = job
+            job["process"] = _launch_worker(command, directory, directory / "stdout.log", directory / "stderr.log")
+            threading.Thread(target=_watch_owned_worker, args=(job, timeout_seconds), daemon=True).start()
+        return skill_success(
+            "Owned Blender worker submitted", job_id=job_id, job_directory=str(directory), status="running"
+        )
+    except Exception as exc:
+        if job is None:
+            return skill_exception(exc, message="Invalid owned worker request")
+        try:
+            if job["process"] is not None:
+                _stop_owned_worker(job, "failed")
+            job["receipt"].update(status="failed", error=str(exc))
+            write_worker_status(job["job_directory"], job["receipt"])
+        except Exception as stop_exc:
+            job["receipt"].update(status="stop_failed", error=str(stop_exc))
+        return skill_exception(
+            exc,
+            message="Owned worker submission failed",
+            job_id=job["job_id"],
+            job_directory=job["job_directory"],
+            status=job["receipt"]["status"],
+        )
+
+
+def owned_worker_context(job_id, kind, job_directory=None):
+    """Read evidence outside the registry lock; recover receipts without PID authority."""
+    with _LOCK:
+        job = _JOBS.get(job_id)
+    if job is not None and job.get("kind") != kind:
+        raise ValueError("Job belongs to a different render operation")
+    if job is None and job_directory is None:
+        raise ValueError("Unknown job; supply its job_directory to recover status")
+    directory = job["job_directory"] if job is not None else job_directory
+    result = read_worker_status(directory, job_id, kind)
+    process = job.get("process") if job is not None else None
+    if job is not None and job["receipt"]["status"] == "stop_failed":
+        result.update(job["receipt"])
+    if process is not None and process.poll() is None and result["status"] == "completed":
+        result["status"] = "running"
+    if process is None and result["status"] == "running":
+        result.update(last_recorded_status="running", status="unknown")
+    result.update(
+        job_directory=str(directory),
+        process_observed=process is not None,
+        stdout_path=str(Path(directory) / "stdout.log"),
+        stderr_path=str(Path(directory) / "stderr.log"),
+    )
+    return result
+
+
+def cancel_owned_worker(job_id, kind, job_directory=None):
+    try:
+        with _LOCK:
+            job = _JOBS.get(job_id)
+        if job is None:
+            context = owned_worker_context(job_id, kind, job_directory)
+            return skill_error("Cancellation ownership unavailable", "No live process handle is owned", **context)
+        if job.get("kind") != kind:
+            raise ValueError("Job belongs to a different render operation")
+        cancelled = _stop_owned_worker(job, "cancelled")
+        return skill_success(
+            "Owned worker cancellation",
+            job_id=job_id,
+            job_directory=job["job_directory"],
+            cancellation_requested=cancelled,
+        )
+    except Exception as exc:
+        return skill_exception(exc, message="Could not stop owned worker", job_id=job_id)
+
+
+def stop_owned_workers():
+    """Core quit hook for supervised workers, including adapter stop/unload."""
+    global _OWNED_WORKERS_ACCEPTING
+    with _WORKER_ADMISSION:
+        _OWNED_WORKERS_ACCEPTING = False
+        with _LOCK:
+            jobs = [job for job in _JOBS.values() if "control_lock" in job and job.get("process") is not None]
+    errors = []
+    for job in jobs:
+        try:
+            _stop_owned_worker(job, "host_shutdown")
+        except Exception as exc:
+            errors.append(str(exc))
+    if errors:
+        raise RuntimeError("Owned worker cleanup incomplete: " + "; ".join(errors))
+
+
+def resume_owned_workers():
+    """Open admission when a fresh Blender adapter lifecycle is constructed."""
+    global _OWNED_WORKERS_ACCEPTING
+    with _WORKER_ADMISSION:
+        _OWNED_WORKERS_ACCEPTING = True
 
 
 def _normalize_output_format(output_format: str) -> str:

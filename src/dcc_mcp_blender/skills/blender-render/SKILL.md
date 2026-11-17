@@ -45,13 +45,15 @@ unique job directory and launches the current Blender binary in factory-startup
 background mode with automatic script execution disabled. The active Blender
 scene and source OBJ are not changed. `get_tree_diagnostic` reports status and
 verifies image hashes; `cancel_tree_diagnostic` terminates an owned worker.
-Workers have a 600-second timeout and a normal host shutdown attempts to stop
-remaining owned workers. A forced process termination or host crash can bypass
-shutdown cleanup.
-These jobs are tracked only for the lifetime of this Blender process; after a
-restart the job status is unknown and cannot be safely cancelled through a
-stored PID. Partial outputs remain in the job directory after failure or
-cancellation.
+Workers use the shared Blender render process registry, a 600-second deadline,
+and Core's quit hook to stop and reap owned workers on adapter stop/unload.
+A forced host termination can bypass cleanup and its deadline supervisor.
+Retain `job_id` and `job_directory`: pass both to `get_tree_diagnostic` after
+restart to recover terminal receipts and verify the artifacts. A running
+receipt without an owned process handle reports `unknown`; cancellation then
+fails closed rather than trusting a stored PID. Partial outputs remain after
+failure or cancellation. Submission errors after process creation return the
+job identity and attempt to stop and reap that worker.
 
 A successful manifest identifies the source OBJ, material libraries, resolved
 textures, material categories, bounds, camera transforms and clip distances,
