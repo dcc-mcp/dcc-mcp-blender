@@ -135,10 +135,12 @@ def _watch_owned_worker(job, timeout_seconds):
         try:
             code = job["process"].wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            _stop_owned_worker(job, "timed_out")
-            return
+            if _stop_owned_worker(job, "timed_out"):
+                return
+            code = job["process"].poll()
         with job["control_lock"]:
             if not job.get("end_reason"):
+                job["receipt"].update(read_worker_status(job["job_directory"], job["job_id"], job["kind"]))
                 job["receipt"].update(status="completed" if code == 0 else "failed", return_code=code)
                 write_worker_status(job["job_directory"], job["receipt"])
     except Exception as exc:
@@ -210,9 +212,9 @@ def submit_owned_worker(binary, worker, output_directory, kind, request, timeout
             write_worker_status(job["job_directory"], job["receipt"])
         except Exception as stop_exc:
             job["receipt"].update(status="stop_failed", error=str(stop_exc))
-        return skill_exception(
-            exc,
-            message="Owned worker submission failed",
+        return skill_error(
+            "Owned worker submission failed",
+            str(exc),
             job_id=job["job_id"],
             job_directory=job["job_directory"],
             status=job["receipt"]["status"],

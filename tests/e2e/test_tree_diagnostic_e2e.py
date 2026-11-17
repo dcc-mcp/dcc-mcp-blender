@@ -15,6 +15,16 @@ bpy = pytest.importorskip("bpy")
 from dcc_mcp_blender import _tree_diagnostic_ops as diagnostics  # noqa: E402
 
 
+@pytest.fixture
+def tree_host():
+    """Give this test a fresh adapter lifecycle after earlier server-stop tests."""
+    from dcc_mcp_blender.server import BlenderMcpServer
+
+    server = BlenderMcpServer(port=0)
+    yield server
+    server.stop()
+
+
 def _write_alpha(path, opaque=False):
     """Public synthetic RGB PNG fixture with two disconnected opaque strips."""
 
@@ -46,7 +56,7 @@ def _channel(path, channel):
 
 
 @pytest.mark.e2e
-def test_real_blender_worker_generates_images(tmp_path, monkeypatch):
+def test_real_blender_worker_generates_images(tmp_path, monkeypatch, tree_host):
     binary = bpy.app.binary_path
     monkeypatch.setitem(
         sys.modules,
@@ -72,6 +82,8 @@ def test_real_blender_worker_generates_images(tmp_path, monkeypatch):
         if not result["success"] or result["context"]["status"] != "running":
             break
         time.sleep(0.1)
+    if not result["success"]:
+        print(json.dumps(result, indent=2))
     assert result["success"] and result["context"]["status"] == "completed", result
     manifest = json.loads(open(result["context"]["manifest_path"], encoding="utf-8").read())
     assert len(manifest["images"]) == 17

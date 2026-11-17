@@ -279,3 +279,17 @@ def test_projected_closeup_covers_rotated_card():
     scale = _projected_scale(points, right, up, (0, 0, 0))
     assert scale == pytest.approx(1.35)
     assert scale > 1.0
+
+
+def test_timeout_exit_race_still_records_failure(worker, monkeypatch):
+    result, process = worker()
+    job = jobs._JOBS[result["context"]["job_id"]]
+    process.finish(1)
+
+    def timed_out(timeout=None):
+        raise subprocess.TimeoutExpired("exit-race", timeout)
+
+    monkeypatch.setattr(process, "wait", timed_out)
+    jobs._watch_owned_worker(job, 0.01)
+    state = diagnostics.get_tree_diagnostic(job["job_id"])
+    assert not state["success"] and state["context"]["status"] == "failed"
