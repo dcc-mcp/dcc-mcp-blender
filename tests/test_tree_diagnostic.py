@@ -116,6 +116,27 @@ def test_real_blender_worker_generates_images(tmp_path, monkeypatch):
     assert bounds is not None
     cropped = close.crop(bounds)
     assert cropped.getextrema()[0] == 0 and cropped.getextrema()[1] > 0
+    masked_front = image_module.open(tmp_path / ("tree-diagnostic-" + job) / "full_front_mask.png").convert("L")
+    opaque = image_module.new("RGB", (32, 32), "white")
+    opaque.save(tmp_path / "alpha.png")
+    comparison = diagnostics.start_tree_diagnostic(str(obj), str(tmp_path), {"Wood": "wood", "Card": "card"}, 128)
+    assert comparison["success"]
+    opaque_job = comparison["context"]["job_id"]
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        state = diagnostics.get_tree_diagnostic(opaque_job)
+        if not state["success"] or state["context"]["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert state["success"] and state["context"]["status"] == "completed", state
+    opaque_dir = tmp_path / ("tree-diagnostic-" + opaque_job)
+    opaque_close = image_module.open(opaque_dir / "card_closeup.png").getchannel("A")
+    opaque_front = image_module.open(opaque_dir / "full_front_mask.png").convert("L")
+    # The same geometry and camera with white alpha must show many more pixels
+    # than the two opaque strips in the first image. Background pixels and edge
+    # antialiasing alone cannot satisfy this comparison.
+    assert sum(b - a > 32 for a, b in zip(close.tobytes(), opaque_close.tobytes())) > 200
+    assert sum(b - a > 32 for a, b in zip(masked_front.tobytes(), opaque_front.tobytes())) > 100
     path = tmp_path / ("tree-diagnostic-" + job) / "full_front.png"
     path.write_bytes(b"tampered")
     assert not diagnostics.get_tree_diagnostic(job)["success"]
