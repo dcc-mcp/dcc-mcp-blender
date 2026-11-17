@@ -314,6 +314,10 @@ class BlenderMcpServer(DccServerBase):
         self._closed = False
 
         super().__init__(options=options.to_core_options())
+        from dcc_mcp_blender._render_job_ops import resume_owned_workers, stop_owned_workers
+
+        resume_owned_workers()
+        self.register_quit_hook(stop_owned_workers)
         if not self._inprocess_executor_registered:
             raise RuntimeError("Blender main-thread in-process executor registration failed")
 

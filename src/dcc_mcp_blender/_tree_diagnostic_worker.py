@@ -1,15 +1,12 @@
 """Blender-owned tree preview worker, derived from dcc-mcp-speedtree PR #17."""
 
 import hashlib
+import importlib.util
 import json
 import math
 import shlex
 import sys
 from pathlib import Path
-
-import bmesh
-import bpy
-from mathutils import Vector
 
 
 def _hash_file(path):
@@ -30,6 +27,8 @@ def _obj_material_libraries(obj_path):
     for line in obj_path.read_text(encoding="utf-8-sig").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.split(None, 1)[0].lower() != "mtllib":
             continue
         if stripped.endswith("\\"):
             raise ValueError("OBJ line continuations are unsupported")
@@ -56,8 +55,13 @@ def _texture_warnings(libraries):
     warnings = []
     for mtl in libraries:
         for entry in mtl.read_text(encoding="utf-8-sig", errors="replace").splitlines():
-            parts = shlex.split(entry, posix=False)
-            if not parts or not (parts[0].lower().startswith("map_") or parts[0].lower() == "bump"):
+            fields = entry.split(None, 1)
+            if not fields or not (fields[0].lower().startswith("map_") or fields[0].lower() == "bump"):
+                continue
+            try:
+                parts = shlex.split(entry, posix=False)
+            except ValueError:
+                warnings.append("Malformed MTL texture line; inspect manually: " + entry)
                 continue
             if len(parts) != 2 or parts[1].startswith("-"):
                 warnings.append("Unsupported MTL texture options; inspect manually: " + entry)
@@ -70,6 +74,8 @@ def _texture_warnings(libraries):
 
 def _apply_mtl_images(libraries, mapping):
     """Use SpeedTree's map_Kd/map_d, which Blender OBJ import may ignore."""
+    import bpy
+
     found = {}
     for mtl in libraries:
         material_name = None
@@ -129,6 +135,8 @@ def _apply_mtl_images(libraries, mapping):
 
 def _used_images(mapping):
     """Inspect image nodes reachable from the material outputs, not orphaned imports."""
+    import bpy
+
     images = set()
     for name in mapping:
         material = bpy.data.materials.get(name)
@@ -150,6 +158,9 @@ def _used_images(mapping):
 
 def _trim(obj, keep):
     """Keep selected polygon indices while preserving original UV layers."""
+    import bmesh
+    import bpy
+
     mesh = obj.data.copy()
     result = obj.copy()
     result.data = mesh
@@ -165,6 +176,8 @@ def _trim(obj, keep):
 
 
 def _corners(objects):
+    from mathutils import Vector
+
     points = [obj.matrix_world @ vertex.co for obj in objects for vertex in obj.data.vertices]
     if not points:
         raise ValueError("No exported vertices available")
@@ -174,6 +187,8 @@ def _corners(objects):
 
 
 def _mask(path, target):
+    import bpy
+
     # Render alpha becomes grayscale mask; white=tree and black=background.
     image = bpy.data.images.load(str(path), check_existing=False)
     pixels = list(image.pixels[:])
@@ -188,6 +203,10 @@ def _mask(path, target):
 
 
 def main(config_path):
+    import bmesh
+    import bpy
+    from mathutils import Vector
+
     cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
     if _hash_file(Path(cfg["obj"])) != cfg["source_sha256"]:
         raise ValueError("Source OBJ changed before import")
@@ -355,14 +374,15 @@ def main(config_path):
             _mask(output / name, output / f"{kind}_{view}_mask.png")
     close_low, close_high = _corners(close)
     close_center = (close_low + close_high) / 2
-    close_scale = max(close_high - close_low) * 1.35
-    if close_scale <= 0:
-        raise ValueError("Selected card has invalid bounds")
     biggest_face = max(component, key=lambda idx: close_source.data.polygons[idx].area)
     normal = close_source.matrix_world.to_3x3() @ close_source.data.polygons[biggest_face].normal
     if normal.length < 1e-9:
         raise ValueError("Selected card has no stable facing normal")
     direction = normal.normalized()
+    rotation = (-direction).to_track_quat("-Z", "Y")
+    right, up = rotation @ Vector((1, 0, 0)), rotation @ Vector((0, 1, 0))
+    points = [obj.matrix_world @ vertex.co for obj in close for vertex in obj.data.vertices]
+    close_scale = _projected_scale(points, right, up, close_center)
     show(close)
     close_transform = render("card_closeup.png", close_center, direction, close_scale)
     for filename, original_hash in texture_hashes.items():
@@ -447,5 +467,34 @@ def main(config_path):
     (output / "preview-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
+def _projected_scale(points, right, up, center):
+    """Cover the projected card around the exact camera target, including rotated cards."""
+    scale = (
+        2
+        * max(abs(sum((point[i] - center[i]) * axis[i] for i in range(3))) for point in points for axis in (right, up))
+        * 1.35
+    )
+    if not math.isfinite(scale) or scale <= 0:
+        raise ValueError("Selected card has invalid projected bounds")
+    return scale
+
+
 if __name__ == "__main__":
-    main(sys.argv[sys.argv.index("--") + 1])
+    config_path = sys.argv[sys.argv.index("--") + 1]
+    config = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    # The native worker needs only this stdlib helper, not the adapter or Core.
+    spec = importlib.util.spec_from_file_location(
+        "render_worker_receipt", Path(__file__).with_name("_render_worker_receipt.py")
+    )
+    receipts = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(receipts)
+    result = receipts.read_worker_status(config["output"], config["job_id"], config["kind"])
+    try:
+        main(config_path)
+    except Exception as exc:
+        result.update(status="failed", error=str(exc))
+        receipts.write_worker_status(config["output"], result)
+        raise
+    else:
+        result["status"] = "completed"
+        receipts.write_worker_status(config["output"], result)
