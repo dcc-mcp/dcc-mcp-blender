@@ -20,15 +20,41 @@ def _hash_file(path):
     return digest.hexdigest()
 
 
-def _texture_warnings(obj_path):
-    warnings = []
+def _obj_material_libraries(obj_path):
+    """Parse every mtllib statement, including leading space and multiple files.
+
+    Quotes may group a path containing spaces. Backslashes remain literal so
+    Windows paths survive. Continuations and malformed quotes fail closed.
+    """
+    paths = []
     for line in obj_path.read_text(encoding="utf-8-sig").splitlines():
-        if not line.startswith("mtllib "):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        mtl = obj_path.parent / line[7:].strip()
-        if not mtl.is_file():
-            warnings.append("Missing OBJ material library: " + str(mtl))
-            continue
+        if stripped.endswith("\\"):
+            raise ValueError("OBJ line continuations are unsupported")
+        lexer = shlex.shlex(stripped, posix=True)
+        lexer.whitespace_split = True
+        lexer.escape = ""
+        try:
+            tokens = list(lexer)
+        except ValueError as exc:
+            raise ValueError("Malformed OBJ statement: " + stripped) from exc
+        if tokens and tokens[0].lower() == "mtllib":
+            if len(tokens) < 2:
+                raise ValueError("Empty OBJ mtllib statement")
+            for name in tokens[1:]:
+                path = (obj_path.parent / name).resolve(strict=True)
+                if not path.is_file():
+                    raise ValueError("Material library is not a file: " + str(path))
+                if path not in paths:
+                    paths.append(path)
+    return paths
+
+
+def _texture_warnings(libraries):
+    warnings = []
+    for mtl in libraries:
         for entry in mtl.read_text(encoding="utf-8-sig", errors="replace").splitlines():
             parts = shlex.split(entry, posix=False)
             if not parts or not (parts[0].lower().startswith("map_") or parts[0].lower() == "bump"):
@@ -42,27 +68,10 @@ def _texture_warnings(obj_path):
     return warnings
 
 
-def _material_libraries(obj_path):
-    """Record material libraries used by the input OBJ; fail on missing files."""
-    paths = []
-    for line in obj_path.read_text(encoding="utf-8-sig").splitlines():
-        if line.startswith("mtllib "):
-            path = (obj_path.parent / line[7:].strip()).resolve(strict=True)
-            if not path.is_file():
-                raise ValueError("Material library is not a file: " + str(path))
-            paths.append(path)
-    return {str(path): _hash_file(path) for path in paths}
-
-
-def _apply_mtl_images(obj_path, mapping):
+def _apply_mtl_images(libraries, mapping):
     """Use SpeedTree's map_Kd/map_d, which Blender OBJ import may ignore."""
     found = {}
-    for line in obj_path.read_text(encoding="utf-8-sig").splitlines():
-        if not line.startswith("mtllib "):
-            continue
-        mtl = obj_path.parent / line[7:].strip()
-        if not mtl.is_file():
-            raise ValueError("Missing OBJ material library: " + str(mtl))
+    for mtl in libraries:
         material_name = None
         for entry in mtl.read_text(encoding="utf-8-sig", errors="replace").splitlines():
             fields = entry.strip().split(maxsplit=1)
@@ -182,7 +191,8 @@ def main(config_path):
     cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
     if _hash_file(Path(cfg["obj"])) != cfg["source_sha256"]:
         raise ValueError("Source OBJ changed before import")
-    material_libraries = _material_libraries(Path(cfg["obj"]))
+    library_paths = _obj_material_libraries(Path(cfg["obj"]))
+    material_libraries = {str(path): _hash_file(path) for path in library_paths}
     output = Path(cfg["output"])
     scene = bpy.context.scene
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -253,8 +263,8 @@ def main(config_path):
         bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
         bm.to_mesh(obj.data)
         bm.free()
-    warnings = _texture_warnings(Path(cfg["obj"]))
-    warnings.extend(_apply_mtl_images(Path(cfg["obj"]), mapping))
+    warnings = _texture_warnings(library_paths)
+    warnings.extend(_apply_mtl_images(library_paths, mapping))
     used_images = _used_images(mapping)
     for image in used_images:
         if not Path(bpy.path.abspath(image.filepath)).is_file():
@@ -312,7 +322,17 @@ def main(config_path):
         camera.rotation_euler = (target - camera.location).to_track_quat("-Z", "Y").to_euler()
         camera_data.ortho_scale = ortho
         scene.render.filepath = str(output / name)
+        bpy.context.view_layer.update()
+        camera_state = {
+            "location": list(camera.location),
+            "rotation_euler_radians": list(camera.rotation_euler),
+            "matrix_world": [list(row) for row in camera.matrix_world],
+            "clip_start": camera_data.clip_start,
+            "clip_end": camera_data.clip_end,
+            "ortho_scale": camera_data.ortho_scale,
+        }
         bpy.ops.render.render(write_still=True)
+        return camera_state
 
     cameras = {}
     for view, direction in {
@@ -331,7 +351,7 @@ def main(config_path):
         for kind, group in (("full", originals), ("bare", bare)):
             show(group)
             name = f"{kind}_{view}.png"
-            render(name, center, direction, scale)
+            cameras[view]["transform"] = render(name, center, direction, scale)
             _mask(output / name, output / f"{kind}_{view}_mask.png")
     close_low, close_high = _corners(close)
     close_center = (close_low + close_high) / 2
@@ -344,7 +364,7 @@ def main(config_path):
         raise ValueError("Selected card has no stable facing normal")
     direction = normal.normalized()
     show(close)
-    render("card_closeup.png", close_center, direction, close_scale)
+    close_transform = render("card_closeup.png", close_center, direction, close_scale)
     for filename, original_hash in texture_hashes.items():
         if _hash_file(Path(filename)) != original_hash:
             raise ValueError("Texture changed during rendering: " + filename)
@@ -359,6 +379,32 @@ def main(config_path):
         "coordinate_system": "OBJ coordinates interpreted Z-up",
         "bounds": {"min": list(low), "max": list(high)},
         "cameras": cameras,
+        "render_settings": {
+            "engine": scene.render.engine,
+            "resolution_x": scene.render.resolution_x,
+            "resolution_y": scene.render.resolution_y,
+            "resolution_percentage": scene.render.resolution_percentage,
+            "film_transparent": scene.render.film_transparent,
+            "file_format": scene.render.image_settings.file_format,
+            "color_mode": scene.render.image_settings.color_mode,
+            "color_depth": scene.render.image_settings.color_depth,
+            "view_transform": scene.view_settings.view_transform,
+            "look": scene.view_settings.look,
+            "exposure": scene.view_settings.exposure,
+            "gamma": scene.view_settings.gamma,
+            "world_color": list(scene.world.color),
+        },
+        "lights": [
+            {
+                "name": obj.name,
+                "type": obj.data.type,
+                "energy": obj.data.energy,
+                "color": list(obj.data.color),
+                "rotation_euler_radians": list(obj.rotation_euler),
+                "matrix_world": [list(row) for row in obj.matrix_world],
+            }
+            for obj in (light, fill)
+        ],
         "material_categories": mapping,
         "material_libraries": [{"path": path, "sha256": digest} for path, digest in material_libraries.items()],
         "used_materials": sorted(used),
@@ -370,6 +416,7 @@ def main(config_path):
             "target": list(close_center),
             "ortho_scale": close_scale,
             "direction_from_target": list(direction),
+            "transform": close_transform,
         },
         "mask_encoding": "black background, white foreground, antialiased grayscale",
         "warnings": warnings,

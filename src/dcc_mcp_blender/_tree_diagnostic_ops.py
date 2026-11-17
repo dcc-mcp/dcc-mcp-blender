@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import json
 import subprocess
@@ -13,6 +14,44 @@ from dcc_mcp_core.skill import skill_error, skill_success
 
 _JOBS = {}
 _LOCK = threading.RLock()
+_TIMEOUT_SECONDS = 600
+
+
+def _stop_running(job, reason):
+    process = job["process"]
+    if process.poll() is not None:
+        return False
+    job["end_reason"] = reason
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=3)
+    return True
+
+
+def _timeout_job(job_id):
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if job is not None:
+            try:
+                _stop_running(job, "timed_out")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                job["stop_error"] = str(exc)
+
+
+def _shutdown_jobs():
+    with _LOCK:
+        for job in _JOBS.values():
+            job["timer"].cancel()
+            try:
+                _stop_running(job, "host_shutdown")
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+
+atexit.register(_shutdown_jobs)
 
 
 def _hash(path):
@@ -88,8 +127,12 @@ def start_tree_diagnostic(obj_path, output_directory, material_categories, resol
                 "directory": directory,
                 "source": obj,
                 "source_sha": config["source_sha256"],
-                "cancelled": False,
+                "end_reason": None,
             }
+            timer = threading.Timer(_TIMEOUT_SECONDS, _timeout_job, args=(job_id,))
+            timer.daemon = True
+            _JOBS[job_id]["timer"] = timer
+            timer.start()
         return skill_success("Tree diagnostics started", job_id=job_id, job_directory=str(directory), status="running")
     except Exception as exc:
         return skill_error("Tree diagnostics could not start", str(exc))
@@ -102,10 +145,17 @@ def get_tree_diagnostic(job_id):
             return skill_error("Unknown tree diagnostic job", "Job is not held by this Blender process")
         rc = job["process"].poll()
         context = {"job_id": job_id, "job_directory": str(job["directory"])}
+        if rc is None and job.get("stop_error"):
+            return skill_error("Worker could not be stopped", job["stop_error"], status="stop_failed", **context)
         if rc is None:
             return skill_success("Tree diagnostics running", status="running", **context)
-        if job["cancelled"]:
+        job["timer"].cancel()
+        if job["end_reason"] == "cancelled":
             return skill_success("Tree diagnostics cancelled", status="cancelled", **context)
+        if job["end_reason"] == "timed_out":
+            return skill_error(
+                "Tree diagnostics timed out", "Worker exceeded its 600-second limit", status="timed_out", **context
+            )
         if rc != 0:
             return skill_error("Tree diagnostics failed", "Check stderr.log and stdout.log", return_code=rc, **context)
         try:
@@ -137,7 +187,11 @@ def cancel_tree_diagnostic(job_id):
         job = _JOBS.get(job_id)
         if job is None:
             return skill_error("Unknown tree diagnostic job", "Job is not held by this Blender process")
-        if job["process"].poll() is None:
-            job["process"].terminate()
-            job["cancelled"] = True
-        return skill_success("Cancellation requested", job_id=job_id, cancellation_requested=job["cancelled"])
+        try:
+            cancelled = _stop_running(job, "cancelled")
+            if cancelled:
+                job["timer"].cancel()
+            return skill_success("Cancellation requested", job_id=job_id, cancellation_requested=cancelled)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            job["stop_error"] = str(exc)
+            return skill_error("Could not terminate diagnostic worker", str(exc), job_id=job_id)
