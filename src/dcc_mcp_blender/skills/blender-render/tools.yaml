@@ -1,4 +1,57 @@
 tools:
+  - name: start_tree_diagnostic
+    description: "Start an isolated OBJ tree diagnostic with full/bare four views, alpha masks and card closeup. Caller material categories are assertions; visual acceptance is separate."
+    source_file: scripts/start_tree_diagnostic.py
+    execution: sync
+    affinity: main
+    enforce_thread_affinity: true
+    timeout_hint_secs: 60
+    input_schema:
+      type: object
+      required: [obj_path, output_directory, material_categories]
+      properties:
+        obj_path: {type: string, minLength: 1}
+        output_directory: {type: string, minLength: 1}
+        material_categories: {type: object, additionalProperties: {type: string, enum: [wood, card]}}
+        resolution: {type: integer, minimum: 128, maximum: 2048}
+      additionalProperties: false
+    output_schema: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: false, open_world_hint: false}
+    next-tools:
+      on-success: [blender_render__get_tree_diagnostic, blender_render__cancel_tree_diagnostic]
+  - name: get_tree_diagnostic
+    description: "Query and verify a tree diagnostic job in the current Blender process."
+    source_file: scripts/get_tree_diagnostic.py
+    execution: sync
+    affinity: any
+    input_schema:
+      type: object
+      required: [job_id]
+      properties: {job_id: {type: string, minLength: 1}}
+      additionalProperties: false
+    output_schema: {type: object}
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations: {read_only_hint: true, destructive_hint: false, idempotent_hint: true, open_world_hint: false}
+  - name: cancel_tree_diagnostic
+    description: "Cancel a tree diagnostic worker owned by this Blender process."
+    source_file: scripts/cancel_tree_diagnostic.py
+    execution: sync
+    affinity: any
+    input_schema:
+      type: object
+      required: [job_id]
+      properties: {job_id: {type: string, minLength: 1}}
+      additionalProperties: false
+    output_schema: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: true, open_world_hint: false}
   - name: render_scene
     description: "Render the current scene and save to a file"
     source_file: scripts/render_scene.py

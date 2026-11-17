@@ -37,6 +37,29 @@ metadata:
 
 # blender-render
 
+## OBJ tree diagnostics
+
+Use `start_tree_diagnostic` with a local exported OBJ, an existing output
+parent directory and an explicit material-to-`wood`/`card` mapping. It creates a
+unique job directory and launches the current Blender binary in factory-startup
+background mode with automatic script execution disabled. The active Blender
+scene and source OBJ are not changed. `get_tree_diagnostic` reports status and
+verifies image hashes; `cancel_tree_diagnostic` terminates an owned worker.
+These jobs are tracked only for the lifetime of this Blender process; after a
+restart the job status is unknown and cannot be safely cancelled through a
+stored PID. Partial outputs remain in the job directory after failure or
+cancellation.
+
+A successful manifest identifies the source OBJ, material libraries, resolved
+textures, material categories, bounds, camera directions, orthographic scales,
+and SHA-256 hashes of 17 Blender-decoded PNGs: full and wood-only four views,
+their alpha masks, and one card closeup. Mapping is a caller assertion; wood
+material separation does not prove generator ownership. The OBJ is interpreted
+with Z up; exported units, native SpeedTree materials, absent material maps,
+LOD, and artistic acceptance remain unverified. Review the warning list and
+the images visually. Blender 4.5+ is required. This tool does not automatically
+compose contact sheets or match images against visual references.
+
 Use `render_scene` for short stills. Use `start_render_job` for animation or
 multi-layer EXR or display-ready PNG / JPEG / TIFF / BMP output so the
 interactive Blender process remains responsive; poll with `get_render_job` and
