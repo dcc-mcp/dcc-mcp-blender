@@ -57,6 +57,10 @@ def get_tree_diagnostic(job_id, job_directory=None):
         if context["status"] == "completed":
             context["manifest_path"] = verify_tree_preview(context["job_directory"])
         if context["status"] in {"failed", "timed_out", "stop_failed"}:
+            for key in ("stdout", "stderr"):
+                context[key + "_tail"] = jobs._log_tail(
+                    context, key + "_path", allowed_directory=context["job_directory"]
+                )
             return skill_error("Tree diagnostics failed", context.get("error", context["status"]), **context)
         return skill_success("Tree diagnostic status", **context)
     except Exception as exc:

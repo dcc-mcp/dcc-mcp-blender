@@ -303,8 +303,10 @@ def main(config_path):
     scale = max(extents) * 1.24
     if not math.isfinite(scale) or scale <= 0:
         raise ValueError("Invalid OBJ bounds")
-    engines = {item.identifier for item in scene.render.bl_rna.properties["engine"].enum_items}
-    scene.render.engine = "BLENDER_EEVEE" if "BLENDER_EEVEE" in engines else "BLENDER_EEVEE_NEXT"
+    # CPU rendering is available in headless CI and does not require an Eevee GPU context.
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 16
     scene.render.resolution_x = scene.render.resolution_y = cfg["resolution"]
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = True
