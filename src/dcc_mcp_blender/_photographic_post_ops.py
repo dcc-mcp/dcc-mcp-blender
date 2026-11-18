@@ -88,8 +88,10 @@ def _output_node(tree: Any, modern: bool) -> Any | None:
             for node in _iter_collection(tree.nodes)
             if _node_type(node) == "NodeGroupOutput" and getattr(node, "is_active_output", False)
         ]
-        return active[0] if active else next(
-            (node for node in _iter_collection(tree.nodes) if _node_type(node) == "NodeGroupOutput"), None
+        return (
+            active[0]
+            if active
+            else next((node for node in _iter_collection(tree.nodes) if _node_type(node) == "NodeGroupOutput"), None)
         )
     return _collection_get(tree.nodes, "Composite") or next(
         (node for node in _iter_collection(tree.nodes) if _node_type(node) == "CompositorNodeComposite"), None
@@ -162,7 +164,7 @@ def _remove_owned_nodes(tree: Any) -> int:
 
 
 def _candidate_name(name: str) -> str:
-    return f"{POST_PREFIX}Candidate {name[len(POST_PREFIX):]}"
+    return f"{POST_PREFIX}Candidate {name[len(POST_PREFIX) :]}"
 
 
 def _restore_scene_property(scene: Any, key: str, value: Any) -> None:
@@ -220,7 +222,9 @@ def _mix_socket(node: Any, role: str) -> Any | None:
         "b": ("B_Color", "Color2"),
         "result": ("Result_Color", "Image"),
     }
-    return _get_socket(getattr(node, "inputs", ()) if role != "result" else getattr(node, "outputs", ()), aliases[role][0]) or _get_socket(
+    return _get_socket(
+        getattr(node, "inputs", ()) if role != "result" else getattr(node, "outputs", ()), aliases[role][0]
+    ) or _get_socket(
         getattr(node, "inputs", ()) if role != "result" else getattr(node, "outputs", ()), aliases[role][1]
     )
 
@@ -480,7 +484,9 @@ def configure_photographic_post(
         candidate_nodes.append(curve)
         curve_points = _configure_curve(curve)
 
-        ellipse = _new_node(tree, "CompositorNodeEllipseMask", _candidate_name(f"{POST_PREFIX}Vignette Mask"), (520.0, -80.0))
+        ellipse = _new_node(
+            tree, "CompositorNodeEllipseMask", _candidate_name(f"{POST_PREFIX}Vignette Mask"), (520.0, -80.0)
+        )
         candidate_nodes.append(ellipse)
         _set_input(ellipse, ("Position",), [0.5, 0.5])
         _set_input(ellipse, ("Size",), [0.82, 0.82])
@@ -521,7 +527,9 @@ def configure_photographic_post(
                 image_name=f"{POST_PREFIX}Candidate Film Grain",
             )
             grain_sequence = {"mode": "HANDLER"}
-        grain_texture = _new_node(tree, "CompositorNodeImage", _candidate_name(f"{POST_PREFIX}Film Grain Texture"), (780.0, -560.0))
+        grain_texture = _new_node(
+            tree, "CompositorNodeImage", _candidate_name(f"{POST_PREFIX}Film Grain Texture"), (780.0, -560.0)
+        )
         candidate_nodes.append(grain_texture)
         grain_texture.image = grain_image
         if grain_sequence["mode"] == "SEQUENCE":
@@ -529,12 +537,18 @@ def configure_photographic_post(
             grain_texture.frame_start = grain_sequence["start"]
             grain_texture.frame_offset = 0
             grain_texture.use_auto_refresh = True
-        grain_bw = _new_node(tree, "CompositorNodeRGBToBW", _candidate_name(f"{POST_PREFIX}Film Grain Luma"), (1040.0, -560.0))
+        grain_bw = _new_node(
+            tree, "CompositorNodeRGBToBW", _candidate_name(f"{POST_PREFIX}Film Grain Luma"), (1040.0, -560.0)
+        )
         candidate_nodes.append(grain_bw)
-        grain_weight = _new_node(tree, "ShaderNodeMath", _candidate_name(f"{POST_PREFIX}Film Grain Shadow Mix"), (1300.0, -440.0))
+        grain_weight = _new_node(
+            tree, "ShaderNodeMath", _candidate_name(f"{POST_PREFIX}Film Grain Shadow Mix"), (1300.0, -440.0)
+        )
         candidate_nodes.append(grain_weight)
         grain_weight.operation = "MULTIPLY"
-        grain_color = _new_node(tree, "CompositorNodeCombineColor", _candidate_name(f"{POST_PREFIX}Film Grain Color"), (1560.0, -440.0))
+        grain_color = _new_node(
+            tree, "CompositorNodeCombineColor", _candidate_name(f"{POST_PREFIX}Film Grain Color"), (1560.0, -440.0)
+        )
         candidate_nodes.append(grain_color)
         grain_add = _mix_node(tree, _candidate_name(f"{POST_PREFIX}Film Grain"), (1820.0, 260.0), "ADD")
         candidate_nodes.append(grain_add)
@@ -595,9 +609,7 @@ def configure_photographic_post(
             node.name = final_name
             node.label = final_name
         final_image_name = (
-            f"{POST_PREFIX}Film Grain Sequence"
-            if grain_sequence["mode"] == "SEQUENCE"
-            else f"{POST_PREFIX}Film Grain"
+            f"{POST_PREFIX}Film Grain Sequence" if grain_sequence["mode"] == "SEQUENCE" else f"{POST_PREFIX}Film Grain"
         )
         existing_image = _collection_get(bpy.data.images, final_image_name)
         if existing_image is not None and existing_image is not grain_image:

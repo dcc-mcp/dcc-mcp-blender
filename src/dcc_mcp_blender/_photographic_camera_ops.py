@@ -573,11 +573,7 @@ def validate_photographic_camera(
             for curve in animation["fcurves"]:
                 if curve["data_path"] not in {"location", "rotation_euler"}:
                     continue
-                required_points = [
-                    point
-                    for point in curve["points"]
-                    if first <= point["frame"] <= last
-                ]
+                required_points = [point for point in curve["points"] if first <= point["frame"] <= last]
                 if required_points and any(point["interpolation"] != "BEZIER" for point in required_points):
                     issue(
                         "CAMERA_EASING_MISSING",

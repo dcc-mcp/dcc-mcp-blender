@@ -127,6 +127,7 @@ tools:
         output_path:
           type: string
           minLength: 1
+          description: "Local destination path for the temporary JPEG still."
         frame:
           type: integer
           minimum: 0

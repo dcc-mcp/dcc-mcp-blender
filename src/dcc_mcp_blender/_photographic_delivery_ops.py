@@ -197,9 +197,19 @@ def validate_photographic_video_output(scene_name: str | None = None) -> dict:
             else:
                 matches = actual_value == value
             if not matches:
-                issues.append({"code": "PHOTO_VIDEO_SETTING_MISMATCH", "severity": "error", "field": field, "expected": value, "actual": actual_value})
+                issues.append(
+                    {
+                        "code": "PHOTO_VIDEO_SETTING_MISMATCH",
+                        "severity": "error",
+                        "field": field,
+                        "expected": value,
+                        "actual": actual_value,
+                    }
+                )
         if _get_property(scene, "dcc_mcp_photographic_video_pixel_format") != VIDEO_PIXEL_FORMAT:
-            issues.append({"code": "PHOTO_VIDEO_PIXEL_FORMAT_MISSING", "severity": "error", "expected": VIDEO_PIXEL_FORMAT})
+            issues.append(
+                {"code": "PHOTO_VIDEO_PIXEL_FORMAT_MISSING", "severity": "error", "expected": VIDEO_PIXEL_FORMAT}
+            )
         if _get_property(scene, "dcc_mcp_photographic_video_color_space") != "BT.709":
             issues.append({"code": "PHOTO_VIDEO_COLOR_SPACE_MISSING", "severity": "error", "expected": "BT.709"})
         return skill_success(

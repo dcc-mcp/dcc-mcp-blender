@@ -110,6 +110,53 @@ def _cycles_preferences(bpy: Any) -> Any | None:
     return getattr(addon, "preferences", None) if addon is not None else None
 
 
+def _as_device_list(value: Any) -> list[Any]:
+    try:
+        return list(value or [])
+    except TypeError:
+        return []
+
+
+def _device_identity(device: Any, backend_hint: str | None = None) -> tuple[str, str]:
+    backend = str(getattr(device, "type", backend_hint or "")).strip().upper()
+    identifier = getattr(device, "id", None)
+    if identifier in (None, ""):
+        identifier = getattr(device, "name", "")
+    return backend, str(identifier)
+
+
+def _device_objects(preferences: Any) -> tuple[list[Any], list[Any], bool]:
+    """Return saved objects, live objects and whether live enumeration was available."""
+    refresh_devices = getattr(preferences, "refresh_devices", None)
+    get_devices = getattr(preferences, "get_devices", None)
+    refresh = refresh_devices if callable(refresh_devices) else get_devices
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            pass
+    saved_devices = _as_device_list(getattr(preferences, "devices", []))
+
+    get_devices_for_type = getattr(preferences, "get_devices_for_type", None)
+    if not callable(get_devices_for_type):
+        return saved_devices, saved_devices, False
+
+    live_devices = []
+    seen: set[tuple[str, str]] = set()
+    for backend in GPU_BACKENDS:
+        try:
+            candidates = _as_device_list(get_devices_for_type(backend))
+        except Exception:
+            candidates = []
+        for device in candidates:
+            identity = _device_identity(device, backend)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            live_devices.append(device)
+    return saved_devices, live_devices, True
+
+
 def _device_inventory(preferences: Any | None) -> dict:
     if preferences is None:
         return {
@@ -117,37 +164,59 @@ def _device_inventory(preferences: Any | None) -> dict:
             "devices": [],
             "available_backends": ["CPU"],
             "gpu_backends": [],
+            "active_devices": [],
+            "active_device_count": 0,
+            "live_device_enumeration": False,
         }
 
-    get_devices = getattr(preferences, "get_devices", None)
-    if callable(get_devices):
-        try:
-            get_devices()
-        except Exception:
-            pass
+    saved_devices, live_devices, live_enumeration = _device_objects(preferences)
+    if not live_enumeration:
+        live_devices = saved_devices
+
+    saved_by_identity = {}
+    saved_by_name = {}
+    for device in saved_devices:
+        backend, identifier = _device_identity(device)
+        saved_by_identity[(backend, identifier)] = device
+        name = str(getattr(device, "name", ""))
+        if name:
+            saved_by_name[(backend, name)] = device
 
     devices = []
-    try:
-        raw_devices = list(getattr(preferences, "devices", []) or [])
-    except TypeError:
-        raw_devices = []
-    for device in raw_devices:
-        backend = str(getattr(device, "type", "")).strip().upper()
+    for device in live_devices:
+        backend, identifier = _device_identity(device)
+        saved = saved_by_identity.get((backend, identifier))
+        if saved is None:
+            saved = saved_by_name.get((backend, str(getattr(device, "name", ""))))
+        source = saved if saved is not None else device
+        available = getattr(device, "available", None)
+        if available is None:
+            available = not bool(getattr(device, "has_error", False))
         devices.append(
             {
+                "id": str(getattr(device, "id", "")),
                 "name": str(getattr(device, "name", "")),
                 "type": backend,
-                "use": bool(getattr(device, "use", False)),
+                "use": bool(getattr(source, "use", False)),
+                "live": True,
+                "meets_driver_requirement": bool(available),
             }
         )
 
-    backends = {device["type"] for device in devices if device["type"]}
-    gpu_backends = sorted(backends.intersection(GPU_BACKENDS))
+    backends = {
+        device["type"] for device in devices if device["type"] in GPU_BACKENDS and device["meets_driver_requirement"]
+    }
+    active_devices = [
+        device for device in devices if device["live"] and device["use"] and device["meets_driver_requirement"]
+    ]
     return {
         "compute_device_type": str(getattr(preferences, "compute_device_type", "NONE")).upper(),
         "devices": devices,
         "available_backends": sorted(backends | {"CPU"}),
-        "gpu_backends": gpu_backends,
+        "gpu_backends": sorted(backends),
+        "active_devices": active_devices,
+        "active_device_count": len(active_devices),
+        "live_device_enumeration": live_enumeration,
     }
 
 
@@ -254,6 +323,15 @@ def _snapshot(targets: Iterable[tuple[Any, str, Any, str]], image_settings: Any)
 
 def _restore(snapshot: Iterable[tuple[Any, str, Any]], image_settings: Any) -> None:
     values = list(snapshot)
+    for attribute in ("media_type", "file_format"):
+        for owner, saved_attribute, value in values:
+            if owner is not image_settings or saved_attribute != attribute:
+                continue
+            try:
+                setattr(owner, saved_attribute, value)
+            except Exception:
+                pass
+            break
     for owner, attribute, value in values:
         if owner is image_settings and attribute in {"file_format", "media_type"}:
             continue
@@ -261,19 +339,6 @@ def _restore(snapshot: Iterable[tuple[Any, str, Any]], image_settings: Any) -> N
             setattr(owner, attribute, value)
         except Exception:
             pass
-    media = next(
-        (value for owner, attribute, value in values if owner is image_settings and attribute == "media_type"), None
-    )
-    file_format = next(
-        (value for owner, attribute, value in values if owner is image_settings and attribute == "file_format"), None
-    )
-    try:
-        if media is not None and hasattr(image_settings, "media_type"):
-            image_settings.media_type = media
-        if file_format is not None:
-            image_settings.file_format = file_format
-    except Exception:
-        pass
 
 
 def _current_values(scene: Any, layer: Any | None, inventory: dict) -> dict:
@@ -326,6 +391,9 @@ def _current_values(scene: Any, layer: Any | None, inventory: dict) -> dict:
         "exposure": getattr(view_settings, "exposure", None),
         "scene_device": scene_device,
         "device_backend": backend,
+        "active_devices": inventory.get("active_devices", []),
+        "active_device_count": inventory.get("active_device_count", 0),
+        "live_device_enumeration": inventory.get("live_device_enumeration", False),
     }
 
 
@@ -383,6 +451,18 @@ def _profile_issues(actual: dict, expected: dict, backend: str) -> list[dict]:
                 "field": "device_backend",
                 "expected": backend,
                 "actual": actual.get("device_backend"),
+            }
+        )
+    active_devices = [device for device in actual.get("active_devices", []) if device.get("type") == backend]
+    if backend in GPU_BACKENDS and not active_devices:
+        issues.append(
+            {
+                "code": "RENDER_DEVICE_INACTIVE",
+                "severity": "error",
+                "field": "active_devices",
+                "expected": "at least one enabled live device for {}".format(backend),
+                "actual": active_devices,
+                "message": "The selected GPU backend has no enabled live device.",
             }
         )
     return issues
@@ -539,7 +619,8 @@ def apply_render_profile(
                 "Cycles preferences unavailable", "GPU backend selection requires the Cycles preferences add-on."
             )
         if backend != "CPU" and (
-            not hasattr(preferences, "compute_device_type") or not hasattr(preferences, "devices")
+            not hasattr(preferences, "compute_device_type")
+            or not (hasattr(preferences, "devices") or callable(getattr(preferences, "get_devices_for_type", None)))
         ):
             return skill_error(
                 "Cycles device API unavailable", "This Blender build does not expose compute device preferences."
@@ -548,24 +629,30 @@ def apply_render_profile(
         render = scene.render
         image_settings = render.image_settings
         snapshot = _snapshot(targets, image_settings)
+        if hasattr(cycles, "device"):
+            snapshot.append((cycles, "device", getattr(cycles, "device")))
         preference_snapshot = []
         if preferences is not None:
+            saved_devices, live_devices, _live_enumeration = _device_objects(preferences)
+            device_objects = []
+            seen_device_ids = set()
+            for device in [*saved_devices, *live_devices]:
+                if id(device) in seen_device_ids:
+                    continue
+                seen_device_ids.add(id(device))
+                device_objects.append(device)
             preference_snapshot = [
                 (preferences, "compute_device_type", getattr(preferences, "compute_device_type")),
-                *[
-                    (device, "use", getattr(device, "use"))
-                    for device in list(getattr(preferences, "devices", []) or [])
-                    if hasattr(device, "use")
-                ],
+                *[(device, "use", getattr(device, "use")) for device in device_objects if hasattr(device, "use")],
             ]
         try:
+            set_image_format(image_settings, values["file_format"])
             for owner, attribute, value, _path in targets:
                 setattr(owner, attribute, value)
-            set_image_format(image_settings, values["file_format"])
             cycles.device = "CPU" if backend == "CPU" else "GPU"
             if preferences is not None:
                 preferences.compute_device_type = "NONE" if backend == "CPU" else backend
-                for device in list(getattr(preferences, "devices", []) or []):
+                for device in device_objects:
                     if hasattr(device, "use"):
                         device.use = backend != "CPU" and str(getattr(device, "type", "")).upper() == backend
         except Exception as exc:
@@ -621,11 +708,12 @@ def render_photographic_test_still(
     device_backend: str = "AUTO",
     allow_cpu_fallback: bool = True,
 ) -> dict:
-    """Render one 25% / 32-sample JPEG still and restore the prior scene state."""
+    """Render one preview still and restore every temporary scene setting."""
     if not isinstance(output_path, str) or not output_path.strip():
         return skill_error("Invalid test still path", "output_path must be a non-empty local filesystem path.")
     if frame is not None and (isinstance(frame, bool) or not isinstance(frame, int) or frame < 0):
         return skill_error("Invalid test still frame", "frame must be an integer greater than or equal to zero.")
+
     try:
         import bpy
 
@@ -640,7 +728,12 @@ def render_photographic_test_still(
                 device_backend, inventory["available_backends"], allow_cpu_fallback
             )
         except ValueError as exc:
-            return skill_error("Render device unavailable", str(exc), available_backends=inventory["available_backends"])
+            return skill_error(
+                "Render device unavailable",
+                str(exc),
+                available_backends=inventory["available_backends"],
+            )
+
         targets = _profile_targets(scene, values)
         missing = _missing_targets(targets)
         if missing:
@@ -651,41 +744,44 @@ def render_photographic_test_still(
             )
         if backend != "CPU" and preferences is None:
             return skill_error("Cycles preferences unavailable", "GPU backend selection requires Cycles preferences.")
+
         render = scene.render
         image_settings = render.image_settings
         snapshot = _snapshot(targets, image_settings)
+        if hasattr(scene.cycles, "device"):
+            snapshot.append((scene.cycles, "device", getattr(scene.cycles, "device")))
+
         preference_snapshot = []
+        device_objects = []
         if preferences is not None:
+            saved_devices, live_devices, _live_enumeration = _device_objects(preferences)
+            seen_device_ids: set[int] = set()
+            for device in [*saved_devices, *live_devices]:
+                if id(device) in seen_device_ids:
+                    continue
+                seen_device_ids.add(id(device))
+                device_objects.append(device)
             preference_snapshot = [
                 (preferences, "compute_device_type", getattr(preferences, "compute_device_type")),
-                *[
-                    (device, "use", getattr(device, "use"))
-                    for device in list(getattr(preferences, "devices", []) or [])
-                    if hasattr(device, "use")
-                ],
+                *[(device, "use", getattr(device, "use")) for device in device_objects if hasattr(device, "use")],
             ]
+
         old_filepath = getattr(render, "filepath", None)
         old_frame = getattr(scene, "frame_current", None)
-        old_scene_device = getattr(scene.cycles, "device", None)
-        rendered = False
         try:
+            set_image_format(image_settings, values["file_format"])
             for owner, attribute, value, _path in targets:
                 setattr(owner, attribute, value)
-            set_image_format(image_settings, values["file_format"])
             render.filepath = output_path
-            if backend == "CPU":
-                scene.cycles.device = "CPU"
-            else:
-                scene.cycles.device = "GPU"
+            scene.cycles.device = "CPU" if backend == "CPU" else "GPU"
             if preferences is not None:
                 preferences.compute_device_type = "NONE" if backend == "CPU" else backend
-                for device in list(getattr(preferences, "devices", []) or []):
+                for device in device_objects:
                     if hasattr(device, "use"):
                         device.use = backend != "CPU" and str(getattr(device, "type", "")).upper() == backend
             if frame is not None:
                 scene.frame_set(frame)
             bpy.ops.render.render(write_still=True, scene=getattr(scene, "name", None))
-            rendered = True
         except Exception as exc:
             return skill_error("Photographic test still failed", str(exc), output_path=output_path)
         finally:
@@ -705,11 +801,7 @@ def render_photographic_test_still(
                     scene.frame_set(old_frame)
                 except Exception:
                     pass
-            if old_scene_device is not None:
-                try:
-                    scene.cycles.device = old_scene_device
-                except Exception:
-                    pass
+
         return skill_success(
             "Photographic test still rendered",
             output_path=output_path,
@@ -719,7 +811,7 @@ def render_photographic_test_still(
             samples=32,
             resolved_device_backend=backend,
             cpu_fallback=cpu_fallback,
-            restored=rendered,
+            restored=True,
             prompt="Inspect this 25% still, correct the scene, then apply the FINAL render profile.",
         )
     except ImportError:

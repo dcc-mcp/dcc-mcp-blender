@@ -58,7 +58,10 @@ def _iter_materials(obj: Any) -> Iterable[Any]:
 
 
 def _has_node_material(obj: Any) -> bool:
-    return any(getattr(material, "use_nodes", False) and getattr(material, "node_tree", None) for material in _iter_materials(obj))
+    return any(
+        getattr(material, "use_nodes", False) and getattr(material, "node_tree", None)
+        for material in _iter_materials(obj)
+    )
 
 
 def _has_texture_material(obj: Any) -> bool:
@@ -105,24 +108,68 @@ def _validate_camera(
         _issue(issues, "PHOTO_CAMERA_TYPE", "camera", "The target object is not a camera.")
         return state
     if state["sensor_width"] is None or not math.isclose(float(state["sensor_width"]), 36.0, abs_tol=1e-6):
-        _issue(issues, "PHOTO_CAMERA_SENSOR", "sensor_width", "Camera sensor width must be 36 mm.", expected=36.0, actual=state["sensor_width"])
+        _issue(
+            issues,
+            "PHOTO_CAMERA_SENSOR",
+            "sensor_width",
+            "Camera sensor width must be 36 mm.",
+            expected=36.0,
+            actual=state["sensor_width"],
+        )
     if state["lens"] is None or not 24.0 <= float(state["lens"]) <= 85.0:
-        _issue(issues, "PHOTO_CAMERA_LENS", "lens", "Camera lens must be between 24 and 85 mm.", expected=[24.0, 85.0], actual=state["lens"])
+        _issue(
+            issues,
+            "PHOTO_CAMERA_LENS",
+            "lens",
+            "Camera lens must be between 24 and 85 mm.",
+            expected=[24.0, 85.0],
+            actual=state["lens"],
+        )
     if state["height_m"] < 0.01 or state["height_m"] > 0.08:
-        _issue(issues, "PHOTO_CAMERA_HEIGHT", "location.z", "Camera height must be 1 to 8 cm above the floor.", expected=[0.01, 0.08], actual=state["height_m"])
+        _issue(
+            issues,
+            "PHOTO_CAMERA_HEIGHT",
+            "location.z",
+            "Camera height must be 1 to 8 cm above the floor.",
+            expected=[0.01, 0.08],
+            actual=state["height_m"],
+        )
     if state["dof_enabled"] is not True:
         _issue(issues, "PHOTO_CAMERA_DOF", "dof.use_dof", "Depth of field must be enabled.")
     expected_fstop = 11.0 if shot_type == "WIDE" else None
     if expected_fstop is not None:
         if not math.isclose(float(state["aperture_fstop"] or 0.0), expected_fstop, abs_tol=1e-6):
-            _issue(issues, "PHOTO_CAMERA_FSTOP", "aperture_fstop", "Wide establishing shots require f/11.", expected=11.0, actual=state["aperture_fstop"])
+            _issue(
+                issues,
+                "PHOTO_CAMERA_FSTOP",
+                "aperture_fstop",
+                "Wide establishing shots require f/11.",
+                expected=11.0,
+                actual=state["aperture_fstop"],
+            )
     elif state["aperture_fstop"] is None or not 2.8 <= float(state["aperture_fstop"]) <= 5.6:
-        _issue(issues, "PHOTO_CAMERA_FSTOP", "aperture_fstop", "Character shots require f/2.8 to f/5.6.", expected=[2.8, 5.6], actual=state["aperture_fstop"])
+        _issue(
+            issues,
+            "PHOTO_CAMERA_FSTOP",
+            "aperture_fstop",
+            "Character shots require f/2.8 to f/5.6.",
+            expected=[2.8, 5.6],
+            actual=state["aperture_fstop"],
+        )
     if state["aperture_blades"] not in (None, 0):
-        _issue(issues, "PHOTO_CAMERA_APERTURE", "aperture_blades", "The photographic camera must use a round aperture.", expected=0, actual=state["aperture_blades"])
+        _issue(
+            issues,
+            "PHOTO_CAMERA_APERTURE",
+            "aperture_blades",
+            "The photographic camera must use a round aperture.",
+            expected=0,
+            actual=state["aperture_blades"],
+        )
     focus_target = getattr(dof, "focus_object", None)
     if focus_target is None:
-        _issue(issues, "PHOTO_CAMERA_FOCUS_MISSING", "focus_object", "Depth of field must focus on the character's eyes.")
+        _issue(
+            issues, "PHOTO_CAMERA_FOCUS_MISSING", "focus_object", "Depth of field must focus on the character's eyes."
+        )
     elif focus_object is not None and focus_target is not focus_object:
         _issue(
             issues,
@@ -143,7 +190,9 @@ def _validate_camera(
     first_frames = [_keyframe_frame(point) for curve in curves for point in getattr(curve, "keyframe_points", ())]
     frames = [frame for frame in first_frames if frame is not None]
     if not frames:
-        _issue(issues, "PHOTO_CAMERA_KEYS_MISSING", "animation", "Camera animation curves contain no readable keyframes.")
+        _issue(
+            issues, "PHOTO_CAMERA_KEYS_MISSING", "animation", "Camera animation curves contain no readable keyframes."
+        )
         return state
     start, end = frame_range
     if min(frames) > start - 1 or max(frames) < end + 1:
@@ -155,8 +204,18 @@ def _validate_camera(
             expected=[start - 1, end + 1],
             actual=[min(frames), max(frames)],
         )
-    if not any(getattr(point, "interpolation", None) == "BEZIER" for curve in curves for point in getattr(curve, "keyframe_points", ())):
-        _issue(issues, "PHOTO_CAMERA_EASING", "animation", "Camera moves must contain at least one Bezier keyframe.", severity="warning")
+    if not any(
+        getattr(point, "interpolation", None) == "BEZIER"
+        for curve in curves
+        for point in getattr(curve, "keyframe_points", ())
+    ):
+        _issue(
+            issues,
+            "PHOTO_CAMERA_EASING",
+            "animation",
+            "Camera moves must contain at least one Bezier keyframe.",
+            severity="warning",
+        )
     for curve in curves:
         if getattr(curve, "data_path", None) != "rotation_euler":
             continue
@@ -164,7 +223,12 @@ def _validate_camera(
         values = [_keyframe_value(point) for point in points]
         values = [value for value in values if value is not None]
         if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
-            _issue(issues, "PHOTO_CAMERA_ROTATION_DISCONTINUITY", "rotation_euler", "Camera Euler rotation jumps more than 180 degrees between keys.")
+            _issue(
+                issues,
+                "PHOTO_CAMERA_ROTATION_DISCONTINUITY",
+                "rotation_euler",
+                "Camera Euler rotation jumps more than 180 degrees between keys.",
+            )
     return state
 
 
@@ -174,7 +238,9 @@ def _validate_surface(obj: Any | None, role: str, issues: list[dict]) -> dict[st
         _issue(issues, "PHOTO_SURFACE_MISSING", role, f"The {role} object was not found.")
         return state
     if getattr(obj, "type", None) != "MESH":
-        _issue(issues, "PHOTO_SURFACE_TYPE", role, f"The {role} must be a mesh object.", actual=getattr(obj, "type", None))
+        _issue(
+            issues, "PHOTO_SURFACE_TYPE", role, f"The {role} must be a mesh object.", actual=getattr(obj, "type", None)
+        )
         return state
     state["has_node_material"] = _has_node_material(obj)
     state["has_texture_material"] = _has_texture_material(obj)
@@ -260,13 +326,22 @@ def validate_photographic_shot(
             "scale_length": getattr(unit_settings, "scale_length", None),
             "length_unit": getattr(unit_settings, "length_unit", None),
         }
-        if units["system"] != "METRIC" or units["scale_length"] is None or not math.isclose(float(units["scale_length"]), 1.0, abs_tol=1e-6):
-            _issue(issues, "PHOTO_SCENE_UNITS", "unit_settings", "The scene must use metres at unit scale 1.0.", expected={"system": "METRIC", "scale_length": 1.0}, actual=units)
+        if (
+            units["system"] != "METRIC"
+            or units["scale_length"] is None
+            or not math.isclose(float(units["scale_length"]), 1.0, abs_tol=1e-6)
+        ):
+            _issue(
+                issues,
+                "PHOTO_SCENE_UNITS",
+                "unit_settings",
+                "The scene must use metres at unit scale 1.0.",
+                expected={"system": "METRIC", "scale_length": 1.0},
+                actual=units,
+            )
 
         camera_state = (
-            _validate_camera(scene, camera, focus, shot, float(floor_z), active_range, issues)
-            if camera
-            else None
+            _validate_camera(scene, camera, focus, shot, float(floor_z), active_range, issues) if camera else None
         )
         if camera is None:
             _issue(issues, "PHOTO_CAMERA_MISSING", "camera", "The scene has no active camera.")
@@ -289,13 +364,31 @@ def validate_photographic_shot(
             maximum_dimension = max(float(value) for value in dimensions) if dimensions else None
             hero_state["maximum_dimension_m"] = maximum_dimension
             if maximum_dimension is not None and not 0.025 <= maximum_dimension <= 0.067:
-                _issue(issues, "PHOTO_HERO_SCALE", "hero_object", "The hero must be 25 to 67 mm tall or wide.", expected=[0.025, 0.067], actual=maximum_dimension)
+                _issue(
+                    issues,
+                    "PHOTO_HERO_SCALE",
+                    "hero_object",
+                    "The hero must be 25 to 67 mm tall or wide.",
+                    expected=[0.025, 0.067],
+                    actual=maximum_dimension,
+                )
             if not _has_node_material(hero):
                 _issue(issues, "PHOTO_HERO_MATERIAL", "hero_object", "The hero needs a node-based material.")
-            bevels = [modifier for modifier in getattr(hero, "modifiers", ()) if getattr(modifier, "type", None) == "BEVEL"]
-            hero_state["bevels"] = [{"width": getattr(modifier, "width", None), "segments": getattr(modifier, "segments", None)} for modifier in bevels]
-            if not any(0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007 and int(getattr(modifier, "segments", 0)) == 3 for modifier in bevels):
-                _issue(issues, "PHOTO_HERO_BEVEL", "hero_object", "Every hero edge needs a 0.3 to 0.7 mm, 3-segment bevel.")
+            bevels = [
+                modifier for modifier in getattr(hero, "modifiers", ()) if getattr(modifier, "type", None) == "BEVEL"
+            ]
+            hero_state["bevels"] = [
+                {"width": getattr(modifier, "width", None), "segments": getattr(modifier, "segments", None)}
+                for modifier in bevels
+            ]
+            if not any(
+                0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007
+                and int(getattr(modifier, "segments", 0)) == 3
+                for modifier in bevels
+            ):
+                _issue(
+                    issues, "PHOTO_HERO_BEVEL", "hero_object", "Every hero edge needs a 0.3 to 0.7 mm, 3-segment bevel."
+                )
 
         surfaces = {}
         if floor_object:
@@ -311,7 +404,13 @@ def validate_photographic_shot(
                 if getattr(curve, "data_path", None) == "hide_render":
                     hidden_animation.append(getattr(obj, "name", None))
         if hidden_animation:
-            _issue(issues, "PHOTO_HIDE_RENDER_ANIMATED", "hide_render", "Shot switching must not animate object.hide_render.", objects=hidden_animation)
+            _issue(
+                issues,
+                "PHOTO_HIDE_RENDER_ANIMATED",
+                "hide_render",
+                "Shot switching must not animate object.hide_render.",
+                objects=hidden_animation,
+            )
 
         requested_backend = str(device_backend or "AUTO").strip().upper()
         if requested_backend == "AUTO" and str(getattr(getattr(scene, "cycles", None), "device", "")).upper() == "CPU":
@@ -322,12 +421,24 @@ def validate_photographic_shot(
             scene_name=getattr(scene, "name", scene_name),
         )
         if not profile_report.get("success") or profile_report.get("context", {}).get("valid") is False:
-            _issue(issues, "PHOTO_RENDER_PROFILE", "render_profile", "The selected photographic render profile is invalid.", details=profile_report.get("context", {}))
+            _issue(
+                issues,
+                "PHOTO_RENDER_PROFILE",
+                "render_profile",
+                "The selected photographic render profile is invalid.",
+                details=profile_report.get("context", {}),
+            )
         post_report = None
         if require_post:
             post_report = validate_photographic_post(scene_name=getattr(scene, "name", scene_name))
             if not post_report.get("success") or post_report.get("context", {}).get("valid") is False:
-                _issue(issues, "PHOTO_POST_STACK", "post", "The photographic compositor finish is invalid.", details=post_report.get("context", {}))
+                _issue(
+                    issues,
+                    "PHOTO_POST_STACK",
+                    "post",
+                    "The photographic compositor finish is invalid.",
+                    details=post_report.get("context", {}),
+                )
         lighting_report = None
         if source_name:
             lighting_report = validate_motivated_lighting(
@@ -338,7 +449,13 @@ def validate_photographic_shot(
             )
             lighting_context = lighting_report.get("context", {})
             if not lighting_report.get("success") or lighting_context.get("valid") is False:
-                _issue(issues, "PHOTO_LIGHTING_CONTRACT", "lighting", "The motivated lighting contract is invalid.", details=lighting_context)
+                _issue(
+                    issues,
+                    "PHOTO_LIGHTING_CONTRACT",
+                    "lighting",
+                    "The motivated lighting contract is invalid.",
+                    details=lighting_context,
+                )
 
         return skill_success(
             "Photographic shot validation completed",

@@ -64,9 +64,7 @@ def test_tools_yaml_declares_photographic_contracts():
         "validate_photographic_video_output",
         "encode_photographic_video",
     }
-    photographic_validation = next(
-        tool for tool in validation["tools"] if tool["name"] == "validate_photographic_shot"
-    )
+    photographic_validation = next(tool for tool in validation["tools"] if tool["name"] == "validate_photographic_shot")
     assert set(photographic_validation["input_schema"]["required"]) == {
         "hero_object",
         "focus_object",

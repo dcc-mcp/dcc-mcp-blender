@@ -71,10 +71,7 @@ def test_photographic_post_failure_restores_existing_stack(scene, monkeypatch):
     assert failed["success"] is False, failed
     assert sorted(node.name for node in tree.nodes if node.name.startswith("DCC Photo Post ")) == before_nodes
     assert target.links[0].from_node.name == before_source
-    assert {
-        key: scene.get(key)
-        for key in before_properties
-    } == before_properties
+    assert {key: scene.get(key) for key in before_properties} == before_properties
     report = validate.main()
     assert report["success"] is True and report["context"]["valid"] is True, report
 
