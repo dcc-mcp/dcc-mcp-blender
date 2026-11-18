@@ -68,7 +68,7 @@ def test_color_analysis_does_not_flag_neutral_highlights():
     assert result["recommend_lower_key_energy"] is False
 
 
-def test_preview_still_tool_reads_pixels_and_restores_image_colorspace(tmp_path):
+def _run_preview_tool(tmp_path, pixels):
     image_path = tmp_path / "preview.jpg"
     image_path.write_bytes(b"preview")
 
@@ -76,9 +76,10 @@ def test_preview_still_tool_reads_pixels_and_restores_image_colorspace(tmp_path)
         name = "sRGB"
 
     class _Image:
-        pixels = [0.95, 0.35, 0.15, 1.0]
-        users = 0
-        colorspace_settings = _Colorspace()
+        def __init__(self):
+            self.pixels = pixels
+            self.users = 0
+            self.colorspace_settings = _Colorspace()
 
     class _Images:
         def __init__(self):
@@ -104,8 +105,29 @@ def test_preview_still_tool_reads_pixels_and_restores_image_colorspace(tmp_path)
         highlight_threshold=0.7,
         warning_ratio=0.5,
     )
+    return result, images
+
+
+def test_preview_still_tool_reads_pixels_and_restores_image_colorspace(tmp_path):
+    result, images = _run_preview_tool(tmp_path, [0.95, 0.35, 0.15, 1.0])
 
     assert result["success"] is True, result
     assert result["context"]["color_safety"]["recommend_lower_key_energy"] is True
     assert images.image.colorspace_settings.name == "sRGB"
+    assert images.removed == [images.image]
+
+
+def test_preview_still_tool_accepts_nonempty_dark_image(tmp_path):
+    result, images = _run_preview_tool(tmp_path, [0.08, 0.09, 0.1, 1.0])
+
+    assert result["success"] is True, result
+    assert result["context"]["color_safety"]["recommend_lower_key_energy"] is False
+    assert images.removed == [images.image]
+
+
+def test_preview_still_tool_rejects_empty_decoded_image_and_cleans_up(tmp_path):
+    result, images = _run_preview_tool(tmp_path, [])
+
+    assert result["success"] is False
+    assert "no decoded pixel data" in result["error"]
     assert images.removed == [images.image]

@@ -294,6 +294,8 @@ def analyze_photographic_test_still(
                 except (TypeError, ValueError):
                     pass
             pixels = _copy_image_pixels(image)
+            if not pixels:
+                raise ValueError("preview still has no decoded pixel data")
             result = analyze_rgb_pixels(
                 pixels,
                 channels=4,
