@@ -226,6 +226,10 @@ tools:
         hero_object:
           type: string
           minLength: 1
+        focus_object:
+          type: string
+          minLength: 1
+          description: "Object placed at the character's eyes and used by camera depth of field."
         background_object:
           type: string
           minLength: 1

@@ -81,7 +81,7 @@ def _issue(issues: list[dict], code: str, field: str, message: str, severity: st
 def _validate_camera(
     scene: Any,
     camera: Any,
-    hero: Any | None,
+    focus_object: Any | None,
     shot_type: str,
     floor_z: float,
     frame_range: tuple[int, int],
@@ -120,8 +120,18 @@ def _validate_camera(
         _issue(issues, "PHOTO_CAMERA_FSTOP", "aperture_fstop", "Character shots require f/2.8 to f/5.6.", expected=[2.8, 5.6], actual=state["aperture_fstop"])
     if state["aperture_blades"] not in (None, 0):
         _issue(issues, "PHOTO_CAMERA_APERTURE", "aperture_blades", "The photographic camera must use a round aperture.", expected=0, actual=state["aperture_blades"])
-    if hero is not None and getattr(dof, "focus_object", None) is not hero:
-        _issue(issues, "PHOTO_CAMERA_FOCUS", "focus_object", "Depth of field must focus on the hero object.", expected=getattr(hero, "name", None), actual=state["focus_object"])
+    focus_target = getattr(dof, "focus_object", None)
+    if focus_target is None:
+        _issue(issues, "PHOTO_CAMERA_FOCUS_MISSING", "focus_object", "Depth of field must focus on the character's eyes.")
+    elif focus_object is not None and focus_target is not focus_object:
+        _issue(
+            issues,
+            "PHOTO_CAMERA_FOCUS",
+            "focus_object",
+            "Depth of field must focus on the requested eye focus object.",
+            expected=getattr(focus_object, "name", None),
+            actual=state["focus_object"],
+        )
 
     curves = []
     for _, curve in action_fcurves(camera):
@@ -179,6 +189,7 @@ def validate_photographic_shot(
     scene_name: str | None = None,
     camera_name: str | None = None,
     hero_object: str | None = None,
+    focus_object: str | None = None,
     background_object: str | None = None,
     floor_object: str | None = None,
     wall_object: str | None = None,
@@ -217,6 +228,7 @@ def validate_photographic_shot(
         issues: list[dict] = []
         camera = _object(bpy, camera_name) if camera_name else getattr(scene, "camera", None)
         hero = _object(bpy, hero_object)
+        focus = _object(bpy, focus_object)
         background = _object(bpy, background_object)
         floor = _object(bpy, floor_object)
         wall = _object(bpy, wall_object)
@@ -231,9 +243,20 @@ def validate_photographic_shot(
         if units["system"] != "METRIC" or units["scale_length"] is None or not math.isclose(float(units["scale_length"]), 1.0, abs_tol=1e-6):
             _issue(issues, "PHOTO_SCENE_UNITS", "unit_settings", "The scene must use metres at unit scale 1.0.", expected={"system": "METRIC", "scale_length": 1.0}, actual=units)
 
-        camera_state = _validate_camera(scene, camera, hero, shot, float(floor_z), active_range, issues) if camera else None
+        camera_state = (
+            _validate_camera(scene, camera, focus, shot, float(floor_z), active_range, issues)
+            if camera
+            else None
+        )
         if camera is None:
             _issue(issues, "PHOTO_CAMERA_MISSING", "camera", "The scene has no active camera.")
+        if focus_object and focus is None:
+            _issue(
+                issues,
+                "PHOTO_FOCUS_OBJECT_MISSING",
+                "focus_object",
+                "The requested eye focus object was not found.",
+            )
 
         hero_state = {"name": getattr(hero, "name", None)}
         if hero is not None:
@@ -297,6 +320,7 @@ def validate_photographic_shot(
             profile_name=profile,
             units=units,
             camera=camera_state,
+            focus_object=getattr(focus, "name", focus_object),
             hero=hero_state,
             surfaces=surfaces,
             hidden_render_animation=hidden_animation,
