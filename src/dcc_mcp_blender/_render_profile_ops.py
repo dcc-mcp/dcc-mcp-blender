@@ -204,14 +204,10 @@ def _device_inventory(preferences: Any | None) -> dict:
         )
 
     backends = {
-        device["type"]
-        for device in devices
-        if device["type"] in GPU_BACKENDS and device["meets_driver_requirement"]
+        device["type"] for device in devices if device["type"] in GPU_BACKENDS and device["meets_driver_requirement"]
     }
     active_devices = [
-        device
-        for device in devices
-        if device["live"] and device["use"] and device["meets_driver_requirement"]
+        device for device in devices if device["live"] and device["use"] and device["meets_driver_requirement"]
     ]
     return {
         "compute_device_type": str(getattr(preferences, "compute_device_type", "NONE")).upper(),
@@ -457,9 +453,7 @@ def _profile_issues(actual: dict, expected: dict, backend: str) -> list[dict]:
                 "actual": actual.get("device_backend"),
             }
         )
-    active_devices = [
-        device for device in actual.get("active_devices", []) if device.get("type") == backend
-    ]
+    active_devices = [device for device in actual.get("active_devices", []) if device.get("type") == backend]
     if backend in GPU_BACKENDS and not active_devices:
         issues.append(
             {
@@ -649,11 +643,7 @@ def apply_render_profile(
                 device_objects.append(device)
             preference_snapshot = [
                 (preferences, "compute_device_type", getattr(preferences, "compute_device_type")),
-                *[
-                    (device, "use", getattr(device, "use"))
-                    for device in device_objects
-                    if hasattr(device, "use")
-                ],
+                *[(device, "use", getattr(device, "use")) for device in device_objects if hasattr(device, "use")],
             ]
         try:
             set_image_format(image_settings, values["file_format"])
