@@ -199,6 +199,7 @@ def validate_photographic_shot(
     floor_z: float = 0.0,
     frame_range: list[int] | tuple[int, int] | None = None,
     profile_name: str = "FINAL",
+    device_backend: str = "AUTO",
     require_post: bool = True,
 ) -> dict:
     """Run machine-readable checks for the prompt's complete shot contract."""
@@ -290,7 +291,14 @@ def validate_photographic_shot(
         if hidden_animation:
             _issue(issues, "PHOTO_HIDE_RENDER_ANIMATED", "hide_render", "Shot switching must not animate object.hide_render.", objects=hidden_animation)
 
-        profile_report = validate_render_profile(profile_name=profile, scene_name=getattr(scene, "name", scene_name))
+        requested_backend = str(device_backend or "AUTO").strip().upper()
+        if requested_backend == "AUTO" and str(getattr(getattr(scene, "cycles", None), "device", "")).upper() == "CPU":
+            requested_backend = "CPU"
+        profile_report = validate_render_profile(
+            profile_name=profile,
+            device_backend=requested_backend,
+            scene_name=getattr(scene, "name", scene_name),
+        )
         if not profile_report.get("success") or profile_report.get("context", {}).get("valid") is False:
             _issue(issues, "PHOTO_RENDER_PROFILE", "render_profile", "The selected photographic render profile is invalid.", details=profile_report.get("context", {}))
         post_report = None
@@ -318,6 +326,7 @@ def validate_photographic_shot(
             frame_range=list(active_range),
             shot_type=shot,
             profile_name=profile,
+            device_backend=requested_backend,
             units=units,
             camera=camera_state,
             focus_object=getattr(focus, "name", focus_object),

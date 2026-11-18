@@ -262,6 +262,11 @@ tools:
           type: string
           enum: [PREVIEW, FINAL]
           default: FINAL
+        device_backend:
+          type: string
+          enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
+          default: AUTO
+          description: "Cycles backend to validate. AUTO follows the active GPU selection and respects an active CPU device."
         require_post:
           type: boolean
           default: true
