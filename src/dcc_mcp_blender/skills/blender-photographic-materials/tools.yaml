@@ -1,0 +1,130 @@
+tools:
+  - name: configure_photographic_material
+    description: "Create or update a physical painted-toy, gloss-black-eye, or plant-leaf material with optional scanned PBR maps."
+    source_file: scripts/configure_photographic_material.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        material_kind:
+          type: string
+          enum: [PAINTED_TOY, GLOSS_BLACK_EYE, PLANT_LEAF]
+          default: PAINTED_TOY
+        base_color:
+          type: array
+          minItems: 3
+          maxItems: 4
+          items: {type: number, minimum: 0, maximum: 1}
+          default: [0.22, 0.38, 0.78, 1.0]
+        texture_paths:
+          type: object
+          additionalProperties: false
+          properties:
+            diffuse: {type: string, minLength: 1}
+            roughness: {type: string, minLength: 1}
+            normal: {type: string, minLength: 1}
+          description: "Optional local diffuse, roughness, and GL normal scan files."
+        target_object:
+          type: string
+          minLength: 1
+        alpha_threshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.5
+    output_schema: &result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: configure_toy_bevel
+    description: "Add or update a render-visible three-segment bevel between 0.3 and 0.7 mm on every mesh edge."
+    source_file: scripts/configure_toy_bevel.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [object_name]
+      properties:
+        object_name:
+          type: string
+          minLength: 1
+        width_mm:
+          type: number
+          minimum: 0.3
+          maximum: 0.7
+          default: 0.5
+        segments:
+          type: integer
+          const: 3
+          default: 3
+        modifier_name:
+          type: string
+          minLength: 1
+          default: "DCC Photographic Bevel"
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: validate_photographic_material
+    description: "Read-only validation of toy shader values, PBR projection, plant alpha/translucency, and the edge bevel contract."
+    source_file: scripts/validate_photographic_material.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [material_name]
+      properties:
+        material_name:
+          type: string
+          minLength: 1
+        material_kind:
+          type: string
+          enum: [PAINTED_TOY, GLOSS_BLACK_EYE, PLANT_LEAF]
+          default: PAINTED_TOY
+        object_name:
+          type: string
+          minLength: 1
+        require_pbr_textures:
+          type: boolean
+          default: false
+        bevel_width_mm:
+          type: number
+          minimum: 0.3
+          maximum: 0.7
+          default: 0.5
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
