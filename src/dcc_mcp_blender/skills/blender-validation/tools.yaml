@@ -216,6 +216,7 @@ tools:
     input_schema:
       type: object
       additionalProperties: false
+      required: [hero_object, focus_object, background_object, floor_object, wall_object, source_name]
       properties:
         scene_name:
           type: string

@@ -235,6 +235,25 @@ def validate_photographic_shot(
         wall = _object(bpy, wall_object)
         active_range = requested_range or (int(getattr(scene, "frame_start", 1)), int(getattr(scene, "frame_end", 1)))
 
+        required_references = {
+            "hero_object": hero_object,
+            "focus_object": focus_object,
+            "background_object": background_object,
+            "floor_object": floor_object,
+            "wall_object": wall_object,
+            "source_name": source_name,
+        }
+        for field, value in required_references.items():
+            if not isinstance(value, str) or not value.strip():
+                _issue(
+                    issues,
+                    "PHOTO_REQUIRED_REFERENCE_MISSING",
+                    field,
+                    f"The complete shot validator requires {field}.",
+                    expected="non-empty object or source name",
+                    actual=value,
+                )
+
         unit_settings = getattr(scene, "unit_settings", None)
         units = {
             "system": getattr(unit_settings, "system", None),
@@ -259,7 +278,10 @@ def validate_photographic_shot(
                 "The requested eye focus object was not found.",
             )
 
-        hero_state = {"name": getattr(hero, "name", None)}
+        if hero_object and hero is None:
+            _issue(issues, "PHOTO_HERO_MISSING", "hero_object", "The requested hero object was not found.")
+
+        hero_state = {"name": getattr(hero, "name", hero_object)}
         if hero is not None:
             if getattr(hero, "type", None) != "MESH":
                 _issue(issues, "PHOTO_HERO_TYPE", "hero_object", "The hero must be a mesh object.")

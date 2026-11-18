@@ -64,7 +64,17 @@ def test_tools_yaml_declares_photographic_contracts():
         "validate_photographic_video_output",
         "encode_photographic_video",
     }
-    assert "validate_photographic_shot" in {tool["name"] for tool in validation["tools"]}
+    photographic_validation = next(
+        tool for tool in validation["tools"] if tool["name"] == "validate_photographic_shot"
+    )
+    assert set(photographic_validation["input_schema"]["required"]) == {
+        "hero_object",
+        "focus_object",
+        "background_object",
+        "floor_object",
+        "wall_object",
+        "source_name",
+    }
     assert "render_photographic_test_still" in {tool["name"] for tool in render_profile["tools"]}
 
 
