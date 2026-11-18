@@ -172,9 +172,11 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-materials / blender-shader-nodes | `create_material`, `create_node`, `connect_nodes`, `set_principled_input`, `export_materialx`, `import_materialx` |
 | blender-material-library | `save/load/delete_material_preset`, `assign_texture`, `list_images`, `load_image`, `pack_image`, `unpack_image`, `image_file_status`, `list_image_tiles` |
 | blender-photographic-lighting | `configure_motivated_lighting`, `validate_motivated_lighting` |
+| blender-photographic-post | `configure_photographic_post`, `validate_photographic_post` |
 | blender-texture-bake | `bake_textures`, `bake_ambient_occlusion`, `transfer_maps` |
 | blender-render | `render_scene`, `set_render_settings`, `capture_viewport`, `set_view_layer_passes`, `set_render_denoise`, `set_render_output`, `set_render_region`, `get_render_status` |
-| blender-render-profile | `get_render_capabilities`, `apply_render_profile`, `get_render_profile`, `validate_render_profile` |
+| blender-render-profile | `get_render_capabilities`, `apply_render_profile`, `get_render_profile`, `validate_render_profile`, `render_photographic_test_still` |
+| blender-photographic-delivery | `configure_photographic_video_output`, `validate_photographic_video_output`, `encode_photographic_video` |
 | blender-render-farm | `submit_render_job`, `get_render_job_status`, `cancel_render_job` |
 | blender-animation | `set_keyframe`, `set_frame_range`, `bake_animation`, `list_nla_tracks`, `add_nla_strip`, `set_nla_strip`, `list_action_fcurves` |
 | blender-lighting / blender-light-rig | `create_light`, `set_light_linking`, `set_light_ies`, `create_three_point_light_rig`, `create_hdri_world`, `animate_hdri_rotation` |
@@ -183,7 +185,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-geometry-nodes | `create_geometry_node_group`, `set_geometry_node_modifier_input` |
 | blender-scripting | `execute_python`, `execute_script_file`, `get_blender_info` |
 | blender-dev | `reload_modules`, `list_addons`, `install_addon`, `remove_addon`, `refresh_addons`, `capture_ui_snapshot`, `start_debug_server`, `get_python_environment` |
-| blender-validation | `run_scene_checks`, `validate_mesh/materials/animation`, `get_validation_report` |
+| blender-validation | `run_scene_checks`, `validate_mesh/materials/animation`, `validate_photographic_shot`, `get_validation_report` |
 | blender-pipeline | `get/tag/clear_asset_metadata`, `set_project_context`, `create_publish_manifest` |
 | blender-shot-export | `get_shot_info`, `export_camera` |
 | blender-export-preset | `list/save/load/delete_export_preset` |

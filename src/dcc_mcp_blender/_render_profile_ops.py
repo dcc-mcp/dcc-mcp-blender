@@ -612,3 +612,117 @@ def apply_render_profile(
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message="Failed to apply render profile")
+
+
+def render_photographic_test_still(
+    output_path: str,
+    frame: int | None = None,
+    scene_name: str | None = None,
+    device_backend: str = "AUTO",
+    allow_cpu_fallback: bool = True,
+) -> dict:
+    """Render one 25% / 32-sample JPEG still and restore the prior scene state."""
+    if not isinstance(output_path, str) or not output_path.strip():
+        return skill_error("Invalid test still path", "output_path must be a non-empty local filesystem path.")
+    if frame is not None and (isinstance(frame, bool) or not isinstance(frame, int) or frame < 0):
+        return skill_error("Invalid test still frame", "frame must be an integer greater than or equal to zero.")
+    try:
+        import bpy
+
+        scene, error = _resolve_scene(bpy, scene_name)
+        if error:
+            return error
+        values = _profile_values("PREVIEW", "EXTERIOR", None)
+        preferences = _cycles_preferences(bpy)
+        inventory = _device_inventory(preferences)
+        try:
+            backend, cpu_fallback = _resolve_device_backend(
+                device_backend, inventory["available_backends"], allow_cpu_fallback
+            )
+        except ValueError as exc:
+            return skill_error("Render device unavailable", str(exc), available_backends=inventory["available_backends"])
+        targets = _profile_targets(scene, values)
+        missing = _missing_targets(targets)
+        if missing:
+            return skill_error(
+                "Preview profile unavailable",
+                "The Blender build does not expose: " + ", ".join(missing),
+                unsupported_properties=missing,
+            )
+        if backend != "CPU" and preferences is None:
+            return skill_error("Cycles preferences unavailable", "GPU backend selection requires Cycles preferences.")
+        render = scene.render
+        image_settings = render.image_settings
+        snapshot = _snapshot(targets, image_settings)
+        preference_snapshot = []
+        if preferences is not None:
+            preference_snapshot = [
+                (preferences, "compute_device_type", getattr(preferences, "compute_device_type")),
+                *[
+                    (device, "use", getattr(device, "use"))
+                    for device in list(getattr(preferences, "devices", []) or [])
+                    if hasattr(device, "use")
+                ],
+            ]
+        old_filepath = getattr(render, "filepath", None)
+        old_frame = getattr(scene, "frame_current", None)
+        old_scene_device = getattr(scene.cycles, "device", None)
+        rendered = False
+        try:
+            for owner, attribute, value, _path in targets:
+                setattr(owner, attribute, value)
+            set_image_format(image_settings, values["file_format"])
+            render.filepath = output_path
+            if backend == "CPU":
+                scene.cycles.device = "CPU"
+            else:
+                scene.cycles.device = "GPU"
+            if preferences is not None:
+                preferences.compute_device_type = "NONE" if backend == "CPU" else backend
+                for device in list(getattr(preferences, "devices", []) or []):
+                    if hasattr(device, "use"):
+                        device.use = backend != "CPU" and str(getattr(device, "type", "")).upper() == backend
+            if frame is not None:
+                scene.frame_set(frame)
+            bpy.ops.render.render(write_still=True, scene=getattr(scene, "name", None))
+            rendered = True
+        except Exception as exc:
+            return skill_error("Photographic test still failed", str(exc), output_path=output_path)
+        finally:
+            _restore(snapshot, image_settings)
+            for owner, attribute, value in reversed(preference_snapshot):
+                try:
+                    setattr(owner, attribute, value)
+                except Exception:
+                    pass
+            if old_filepath is not None:
+                try:
+                    render.filepath = old_filepath
+                except Exception:
+                    pass
+            if old_frame is not None and hasattr(scene, "frame_set"):
+                try:
+                    scene.frame_set(old_frame)
+                except Exception:
+                    pass
+            if old_scene_device is not None:
+                try:
+                    scene.cycles.device = old_scene_device
+                except Exception:
+                    pass
+        return skill_success(
+            "Photographic test still rendered",
+            output_path=output_path,
+            frame=frame if frame is not None else old_frame,
+            profile_name="PREVIEW",
+            resolution_percentage=25,
+            samples=32,
+            resolved_device_backend=backend,
+            cpu_fallback=cpu_fallback,
+            restored=rendered,
+            prompt="Inspect this 25% still, correct the scene, then apply the FINAL render profile.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to render photographic test still")

@@ -112,3 +112,40 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: render_photographic_test_still
+    description: "Render one 25% resolution, 32-sample JPEG test still for visual inspection, then restore the previous scene render settings."
+    source_file: scripts/render_photographic_test_still.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 300
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [output_path]
+      properties:
+        output_path:
+          type: string
+          minLength: 1
+        frame:
+          type: integer
+          minimum: 0
+        scene_name:
+          type: string
+          minLength: 1
+        device_backend:
+          type: string
+          enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
+          default: AUTO
+        allow_cpu_fallback:
+          type: boolean
+          default: true
+    output_schema: *render_profile_result
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true

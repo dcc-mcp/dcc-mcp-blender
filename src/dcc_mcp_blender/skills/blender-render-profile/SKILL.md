@@ -50,3 +50,7 @@ Explicit GPU requests fail before scene mutation when the backend is absent.
 
 Call `validate_render_profile` after applying a profile and before submitting a
 long render job.
+
+Use `render_photographic_test_still` for the required 25% / 32-sample JPEG
+inspection. It temporarily applies the preview profile, renders one frame, and
+restores the previous render settings and current frame afterward.

@@ -41,3 +41,9 @@ Validation tools return structured reports with stable issue codes and
 `info`/`warning`/`error` severities. Use these checks before interchange/export
 tools or local publish preparation so agents can reason over machine-readable
 failure causes instead of scraping arbitrary script output.
+
+`validate_photographic_shot` checks the real-toy contract before a render. It
+covers metric scene scale, physical camera limits, continuous camera animation
+and endpoint extensions, hero dimensions and bevels, textured floor and wall
+surfaces, animated `hide_render`, the selected Cycles profile, motivated
+lighting when supplied, and the photographic compositor finish.
