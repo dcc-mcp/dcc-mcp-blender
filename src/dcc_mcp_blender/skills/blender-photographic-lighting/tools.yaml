@@ -95,7 +95,70 @@ tools:
         require_agx:
           type: boolean
           default: true
+        preview_still_path:
+          type: string
+          minLength: 1
+          description: "Optional local 25% preview still for machine color-safety analysis."
     output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: analyze_photographic_test_still
+    description: "Analyze a rendered preview still for 185/255 highlights, saturated warm bias, and a lower-key-energy recommendation without changing materials."
+    source_file: scripts/analyze_photographic_test_still.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 60
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [image_path]
+      properties:
+        image_path:
+          type: string
+          minLength: 1
+          description: "Local JPEG or PNG rendered by render_photographic_test_still."
+        highlight_threshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.7254901961
+        saturation_threshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.15
+        warm_bias_threshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.08
+        warning_ratio:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.1
+        max_samples:
+          type: integer
+          minimum: 1
+          default: 200000
+        source_name:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
     read_only: true
     destructive: false
     idempotent: true

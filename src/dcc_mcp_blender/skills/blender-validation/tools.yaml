@@ -208,7 +208,7 @@ tools:
       open_world_hint: false
 
   - name: validate_photographic_shot
-    description: "Validate the complete real-toy shot contract including metric scale, camera limits, continuous eased motion, endpoint extensions, hero bevel, textured surfaces, render profile, compositor finish, and animated hide_render violations."
+    description: "Validate the complete real-toy shot contract including metric scale, life-size floor and wall dimensions, camera limits, continuous eased motion, endpoint extensions, bevels on every supplied toy part, textured surfaces, render profile, compositor finish, color-safety analysis, and animated hide_render violations."
     source_file: scripts/validate_photographic_shot.py
     execution: sync
     affinity: main
@@ -268,6 +268,27 @@ tools:
           enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
           default: AUTO
           description: "Cycles backend to validate. AUTO follows the active GPU selection and respects an active CPU device."
+        scene_kind:
+          type: string
+          enum: [EXTERIOR, INTERIOR]
+          default: EXTERIOR
+          description: "Use INTERIOR to validate the 112 to 176 sample contract."
+        toy_object_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          description: "Optional complete list of mesh toy parts whose render-visible bevels must be validated. Defaults to hero_object."
+        minimum_environment_dimension_m:
+          type: number
+          exclusiveMinimum: 0
+          default: 1.0
+          description: "Minimum life-size dimension required on each supplied floor and wall object."
+        preview_still_path:
+          type: string
+          minLength: 1
+          description: "Optional local preview still for rendered-pixel warm highlight analysis."
         require_post:
           type: boolean
           default: true

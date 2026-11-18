@@ -150,6 +150,40 @@ def test_profile_defaults_match_preview_and_final_contract():
     assert preview["denoising_input_passes"] == "RGB_ALBEDO_NORMAL"
 
 
+def test_profile_rejects_samples_outside_the_prompt_contract():
+    from dcc_mcp_blender._render_profile_ops import _profile_values
+
+    for profile_name, scene_kind, samples in (
+        ("PREVIEW", "EXTERIOR", 64),
+        ("FINAL", "EXTERIOR", 112),
+        ("FINAL", "INTERIOR", 64),
+        ("FINAL", "INTERIOR", 177),
+    ):
+        try:
+            _profile_values(profile_name, scene_kind, samples)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected sample contract rejection for {profile_name}/{scene_kind}/{samples}")
+
+
+def test_profile_accepts_interior_sample_range():
+    from dcc_mcp_blender._render_profile_ops import _profile_values
+
+    assert _profile_values("FINAL", "INTERIOR", 176)["samples"] == 176
+
+
+def test_validation_accepts_any_interior_sample_in_range_when_unspecified():
+    scene = _Scene()
+    scene.cycles.samples = 176
+    bpy = _bpy(scene)
+
+    result = _call("validate_render_profile", bpy, profile_name="FINAL", scene_kind="INTERIOR", device_backend="CPU")
+
+    assert result["success"] is True, result
+    assert result["context"]["valid"] is False
+    assert not any(issue["field"] == "samples" for issue in result["context"]["issues"])
+
+
 def test_apply_profile_selects_requested_gpu_and_configures_scene():
     scene = _Scene()
     cuda = _Device("RTX", "CUDA")

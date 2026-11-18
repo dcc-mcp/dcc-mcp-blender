@@ -174,6 +174,26 @@ def test_validation_reports_missing_focus_and_animation_without_mutating():
     assert camera.location[2] == 0.04
 
 
+def test_camera_validation_rejects_noise_modifiers_as_camera_shake():
+    camera = _Camera()
+    curve = SimpleNamespace(
+        data_path="location",
+        array_index=0,
+        modifiers=[SimpleNamespace(type="NOISE")],
+        keyframe_points=[],
+    )
+    camera.animation_data = SimpleNamespace(action=SimpleNamespace(fcurves=[curve]))
+
+    result = _call(
+        "validate_photographic_camera",
+        _bpy(camera),
+        camera_name="Camera",
+    )
+
+    assert result["success"] is True
+    assert any(issue["code"] == "CAMERA_SHAKE_DETECTED" for issue in result["context"]["issues"])
+
+
 def test_tools_yaml_declares_the_photographic_camera_contract():
     from pathlib import Path
 

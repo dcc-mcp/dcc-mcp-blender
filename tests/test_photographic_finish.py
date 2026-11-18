@@ -73,6 +73,11 @@ def test_tools_yaml_declares_photographic_contracts():
         "wall_object",
         "source_name",
     }
+    properties = photographic_validation["input_schema"]["properties"]
+    assert properties["scene_kind"]["enum"] == ["EXTERIOR", "INTERIOR"]
+    assert properties["toy_object_names"]["items"]["type"] == "string"
+    assert properties["minimum_environment_dimension_m"]["default"] == 1.0
+    assert "preview_still_path" in properties
     assert "render_photographic_test_still" in {tool["name"] for tool in render_profile["tools"]}
 
 
@@ -81,3 +86,8 @@ def test_photographic_shot_request_validates_before_blender_import():
 
     assert result["success"] is False
     assert "shot_type" in result["error"]
+
+    result = validate_photographic_shot(scene_kind="unsupported")
+
+    assert result["success"] is False
+    assert "scene_kind" in result["error"]

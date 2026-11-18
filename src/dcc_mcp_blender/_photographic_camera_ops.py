@@ -420,10 +420,14 @@ def animate_photographic_camera(
 
 def _animation_report(obj: Any) -> dict[str, Any]:
     curves = []
+    noise_modifiers = []
     for _, fcurve in action_fcurves(obj):
         path = getattr(fcurve, "data_path", None)
         if path not in {"location", "rotation_euler"}:
             continue
+        for modifier in getattr(fcurve, "modifiers", ()):
+            if str(getattr(modifier, "type", "")).upper() == "NOISE":
+                noise_modifiers.append({"data_path": path, "array_index": getattr(fcurve, "array_index", 0)})
         points = []
         for point in getattr(fcurve, "keyframe_points", ()):
             co = getattr(point, "co", None)
@@ -437,7 +441,11 @@ def _animation_report(obj: Any) -> dict[str, Any]:
                 }
             )
         curves.append({"data_path": path, "array_index": getattr(fcurve, "array_index", 0), "points": points})
-    return {"fcurves": curves, "keyframe_count": sum(len(curve["points"]) for curve in curves)}
+    return {
+        "fcurves": curves,
+        "keyframe_count": sum(len(curve["points"]) for curve in curves),
+        "noise_modifiers": noise_modifiers,
+    }
 
 
 def validate_photographic_camera(
@@ -534,6 +542,14 @@ def validate_photographic_camera(
             )
 
         animation = _animation_report(obj)
+        if animation["noise_modifiers"]:
+            issue(
+                "CAMERA_SHAKE_DETECTED",
+                "animation",
+                "no Noise modifiers on location or rotation_euler f-curves",
+                animation["noise_modifiers"],
+                "Remove camera-shake Noise modifiers from the photographic camera.",
+            )
         if not animation["fcurves"]:
             issue(
                 "CAMERA_ANIMATION_MISSING",

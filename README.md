@@ -272,7 +272,7 @@ HDRI by Poly Haven (CC0), and
 | **blender-shader-nodes** | `list_material_nodes`, `set_principled_input`, `list_node_trees`, `list_nodes`, `create_node`, `delete_node`, `list_node_sockets`, `connect_nodes`, `disconnect_nodes`, `list_node_links`, `set_node_input`, `get_node_value`, `create_material_with_nodes`, `assign_texture_node`, `set_principled_inputs` |
 | **blender-compositor** | `setup_compositor_tree`, `set_compositor_enabled`, `clear_compositor_tree`, `create_compositor_node`, `delete_compositor_node`, `connect_compositor_nodes`, `disconnect_compositor_nodes`, `set_compositor_node_value`, `get_compositor_node_value`, `list_compositor_node_links`, `list_compositor_node_types` |
 | **blender-material-library** | `save_material_preset`, `list_material_presets`, `load_material_preset`, `delete_material_preset`, `get_shader_assignment`, `get_material_connections`, `set_material_attribute`, `assign_texture`, `list_images`, `reload_image`, `load_image`, `save_image`, `pack_image`, `unpack_image`, `image_file_status`, `list_image_tiles`, `list_color_spaces`, `set_color_management` |
-| **blender-photographic-lighting** | `configure_motivated_lighting`, `validate_motivated_lighting` |
+| **blender-photographic-lighting** | `configure_motivated_lighting`, `validate_motivated_lighting`, `analyze_photographic_test_still` |
 | **blender-photographic-post** | `configure_photographic_post`, `validate_photographic_post` |
 | **blender-texture-bake** | `list_bake_targets`, `bake_textures`, `bake_ambient_occlusion`, `bake_lighting`, `transfer_maps` |
 | **blender-photographic-materials** | `configure_photographic_material`, `configure_toy_bevel`, `validate_photographic_material` |

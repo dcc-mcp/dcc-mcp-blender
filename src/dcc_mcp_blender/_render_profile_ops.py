@@ -15,6 +15,10 @@ SCENE_KINDS = ("EXTERIOR", "INTERIOR")
 DEVICE_BACKENDS = ("AUTO", "OPTIX", "CUDA", "HIP", "ONEAPI", "METAL", "CPU")
 GPU_BACKENDS = ("OPTIX", "METAL", "CUDA", "HIP", "ONEAPI")
 _PROFILE_VERSION = "dcc-mcp-blender.render-profile.v1"
+PREVIEW_SAMPLES = 32
+EXTERIOR_FINAL_SAMPLES = 64
+INTERIOR_FINAL_MIN_SAMPLES = 112
+INTERIOR_FINAL_MAX_SAMPLES = 176
 
 _BASE_PROFILE = {
     "engine": "CYCLES",
@@ -64,16 +68,28 @@ def _profile_values(profile_name: str, scene_kind: str, samples: int | None) -> 
     if kind not in SCENE_KINDS:
         raise ValueError("scene_kind must be EXTERIOR or INTERIOR")
     if samples is not None:
-        if isinstance(samples, bool) or not isinstance(samples, int) or samples < 1:
+        if isinstance(samples, bool) or not isinstance(samples, int):
+            raise ValueError("samples must be an integer")
+        if samples < 1:
             raise ValueError("samples must be a positive integer")
 
     values = dict(_BASE_PROFILE)
     if profile == "PREVIEW":
-        values.update(resolution_percentage=25, samples=samples or 32)
+        if samples not in (None, PREVIEW_SAMPLES):
+            raise ValueError("PREVIEW samples must be exactly 32")
+        values.update(resolution_percentage=25, samples=PREVIEW_SAMPLES)
     else:
+        if kind == "EXTERIOR":
+            if samples not in (None, EXTERIOR_FINAL_SAMPLES):
+                raise ValueError("EXTERIOR FINAL samples must be exactly 64")
+            final_samples = EXTERIOR_FINAL_SAMPLES
+        else:
+            final_samples = samples or INTERIOR_FINAL_MIN_SAMPLES
+            if not INTERIOR_FINAL_MIN_SAMPLES <= final_samples <= INTERIOR_FINAL_MAX_SAMPLES:
+                raise ValueError("INTERIOR FINAL samples must be between 112 and 176")
         values.update(
             resolution_percentage=100,
-            samples=samples or (112 if kind == "INTERIOR" else 64),
+            samples=final_samples,
         )
     return values
 
@@ -468,6 +484,37 @@ def _profile_issues(actual: dict, expected: dict, backend: str) -> list[dict]:
     return issues
 
 
+def _allow_interior_sample_range(
+    issues: list[dict], profile_name: str, scene_kind: str, samples: int | None, actual: dict
+) -> list[dict]:
+    if (
+        str(profile_name or "").strip().upper() != "FINAL"
+        or str(scene_kind or "").strip().upper() != "INTERIOR"
+        or samples is not None
+    ):
+        return issues
+    actual_samples = actual.get("samples")
+    if (
+        isinstance(actual_samples, int)
+        and not isinstance(actual_samples, bool)
+        and INTERIOR_FINAL_MIN_SAMPLES <= actual_samples <= INTERIOR_FINAL_MAX_SAMPLES
+    ):
+        return [issue for issue in issues if issue.get("field") != "samples"]
+    return [
+        {
+            **issue,
+            "code": "RENDER_PROFILE_SAMPLE_RANGE" if issue.get("field") == "samples" else issue.get("code"),
+            "expected": [INTERIOR_FINAL_MIN_SAMPLES, INTERIOR_FINAL_MAX_SAMPLES]
+            if issue.get("field") == "samples"
+            else issue.get("expected"),
+            "message": "Interior FINAL samples must be between 112 and 176."
+            if issue.get("field") == "samples"
+            else issue.get("message"),
+        }
+        for issue in issues
+    ]
+
+
 def get_render_capabilities(scene_name: str | None = None) -> dict:
     """Report Blender, Cycles and available compute-device capabilities."""
     try:
@@ -489,7 +536,10 @@ def get_render_capabilities(scene_name: str | None = None) -> dict:
             render_engine=getattr(getattr(scene, "render", None), "engine", None),
             scene_device=getattr(cycles, "device", None),
             **inventory,
-            profiles={"preview": "25% / 32 samples", "final": "100% / 64 exterior or 112 interior samples"},
+            profiles={
+                "preview": "25% / 32 samples",
+                "final": "100% / 64 exterior or 112–176 interior samples",
+            },
         )
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
@@ -553,6 +603,7 @@ def validate_render_profile(
             )
         current = _current_values(scene, _resolve_view_layer(scene), inventory)
         issues = _profile_issues(current, values, backend)
+        issues = _allow_interior_sample_range(issues, profile_name, scene_kind, samples, current)
         return skill_success(
             "Render profile validation completed",
             valid=not issues,

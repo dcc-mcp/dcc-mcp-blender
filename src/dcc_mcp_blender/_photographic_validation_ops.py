@@ -181,9 +181,27 @@ def _validate_camera(
         )
 
     curves = []
+    noise_modifiers = []
     for _, curve in action_fcurves(camera):
         if getattr(curve, "data_path", None) in {"location", "rotation_euler"}:
             curves.append(curve)
+            for modifier in getattr(curve, "modifiers", ()):
+                if str(getattr(modifier, "type", "")).upper() == "NOISE":
+                    noise_modifiers.append(
+                        {
+                            "data_path": getattr(curve, "data_path", None),
+                            "array_index": getattr(curve, "array_index", 0),
+                        }
+                    )
+    if noise_modifiers:
+        _issue(
+            issues,
+            "PHOTO_CAMERA_SHAKE",
+            "animation",
+            "Remove Noise modifiers from camera location and rotation curves.",
+            expected="no Noise modifiers",
+            actual=noise_modifiers,
+        )
     if not curves:
         _issue(issues, "PHOTO_CAMERA_ANIMATION_MISSING", "animation", "Every shot requires an eased camera move.")
         return state
@@ -232,7 +250,88 @@ def _validate_camera(
     return state
 
 
-def _validate_surface(obj: Any | None, role: str, issues: list[dict]) -> dict[str, Any]:
+def _dimensions(obj: Any | None) -> list[float] | None:
+    if obj is None:
+        return None
+    dimensions = getattr(obj, "dimensions", None)
+    if dimensions is None:
+        return None
+    try:
+        values = [float(value) for value in dimensions]
+    except (TypeError, ValueError):
+        try:
+            values = [float(getattr(dimensions, axis)) for axis in ("x", "y", "z")]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    return values if len(values) == 3 and all(math.isfinite(value) for value in values) else None
+
+
+def _bevel_state(obj: Any | None) -> dict[str, Any]:
+    modifiers = (
+        [modifier for modifier in getattr(obj, "modifiers", ()) if getattr(modifier, "type", None) == "BEVEL"]
+        if obj is not None
+        else []
+    )
+    bevels = [
+        {
+            "name": getattr(modifier, "name", None),
+            "width_m": getattr(modifier, "width", None),
+            "offset_type": getattr(modifier, "offset_type", None),
+            "segments": getattr(modifier, "segments", None),
+            "limit_method": getattr(modifier, "limit_method", None),
+            "affect": getattr(modifier, "affect", None),
+            "show_render": getattr(modifier, "show_render", None),
+        }
+        for modifier in modifiers
+    ]
+    valid = any(
+        getattr(modifier, "offset_type", None) in {"OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"}
+        and 0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007
+        and int(getattr(modifier, "segments", 0)) == 3
+        and getattr(modifier, "limit_method", None) == "NONE"
+        and getattr(modifier, "show_render", True) is True
+        and getattr(modifier, "affect", "EDGES") == "EDGES"
+        for modifier in modifiers
+    )
+    return {"bevels": bevels, "contract_satisfied": valid}
+
+
+def _validate_toy_bevel(obj: Any | None, object_name: str, issues: list[dict]) -> dict[str, Any]:
+    state = {"name": getattr(obj, "name", object_name), "type": getattr(obj, "type", None)}
+    if obj is None:
+        _issue(issues, "PHOTO_TOY_OBJECT_MISSING", object_name, "The requested toy object was not found.")
+        state.update(_bevel_state(None))
+        return state
+    if getattr(obj, "type", None) != "MESH":
+        _issue(issues, "PHOTO_TOY_OBJECT_TYPE", object_name, "Every toy part must be a mesh object.")
+        state.update(_bevel_state(obj))
+        return state
+    state.update(_bevel_state(obj))
+    if not state["contract_satisfied"]:
+        _issue(
+            issues,
+            "PHOTO_TOY_BEVEL",
+            object_name,
+            "Every toy edge needs a render-visible 0.3 to 0.7 mm, three-segment bevel.",
+            expected={
+                "width_m": [0.0003, 0.0007],
+                "offset_type": ["OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"],
+                "segments": 3,
+                "limit_method": "NONE",
+                "show_render": True,
+                "affect": "EDGES",
+            },
+            actual=state["bevels"],
+        )
+    return state
+
+
+def _validate_surface(
+    obj: Any | None,
+    role: str,
+    issues: list[dict],
+    minimum_dimension_m: float | None = None,
+) -> dict[str, Any]:
     state = {"name": getattr(obj, "name", None), "type": getattr(obj, "type", None) if obj else None}
     if obj is None:
         _issue(issues, "PHOTO_SURFACE_MISSING", role, f"The {role} object was not found.")
@@ -242,6 +341,18 @@ def _validate_surface(obj: Any | None, role: str, issues: list[dict]) -> dict[st
             issues, "PHOTO_SURFACE_TYPE", role, f"The {role} must be a mesh object.", actual=getattr(obj, "type", None)
         )
         return state
+    state["dimensions_m"] = _dimensions(obj)
+    if minimum_dimension_m is not None and (
+        state["dimensions_m"] is None or max(state["dimensions_m"]) < minimum_dimension_m
+    ):
+        _issue(
+            issues,
+            "PHOTO_ENVIRONMENT_SCALE",
+            role,
+            f"The {role} must have at least one life-size dimension of {minimum_dimension_m:g} m.",
+            expected=f">= {minimum_dimension_m:g} m",
+            actual=state["dimensions_m"],
+        )
     state["has_node_material"] = _has_node_material(obj)
     state["has_texture_material"] = _has_texture_material(obj)
     if not state["has_node_material"]:
@@ -266,6 +377,10 @@ def validate_photographic_shot(
     frame_range: list[int] | tuple[int, int] | None = None,
     profile_name: str = "FINAL",
     device_backend: str = "AUTO",
+    scene_kind: str = "EXTERIOR",
+    toy_object_names: list[str] | tuple[str, ...] | None = None,
+    minimum_environment_dimension_m: float = 1.0,
+    preview_still_path: str | None = None,
     require_post: bool = True,
 ) -> dict:
     """Run machine-readable checks for the prompt's complete shot contract."""
@@ -276,6 +391,9 @@ def validate_photographic_shot(
         profile = str(profile_name or "FINAL").strip().upper()
         if profile not in {"PREVIEW", "FINAL"}:
             raise ValueError("profile_name must be PREVIEW or FINAL")
+        kind = str(scene_kind or "EXTERIOR").strip().upper()
+        if kind not in {"EXTERIOR", "INTERIOR"}:
+            raise ValueError("scene_kind must be EXTERIOR or INTERIOR")
         if frame_range is None:
             requested_range = None
         elif isinstance(frame_range, (str, bytes)) or len(frame_range) != 2:
@@ -286,6 +404,18 @@ def validate_photographic_shot(
                 raise ValueError("frame_range start must be less than or equal to end")
         if not isinstance(floor_z, (int, float)) or isinstance(floor_z, bool) or not math.isfinite(float(floor_z)):
             raise ValueError("floor_z must be a finite number")
+        if (
+            isinstance(minimum_environment_dimension_m, bool)
+            or not isinstance(minimum_environment_dimension_m, (int, float))
+            or not math.isfinite(float(minimum_environment_dimension_m))
+            or float(minimum_environment_dimension_m) <= 0.0
+        ):
+            raise ValueError("minimum_environment_dimension_m must be a finite number greater than zero")
+        if toy_object_names is not None:
+            if isinstance(toy_object_names, (str, bytes)) or not isinstance(toy_object_names, (list, tuple)):
+                raise ValueError("toy_object_names must be an array of object names")
+            if any(not isinstance(name, str) or not name.strip() for name in toy_object_names):
+                raise ValueError("toy_object_names must contain non-empty object names")
 
         import bpy
 
@@ -374,27 +504,36 @@ def validate_photographic_shot(
                 )
             if not _has_node_material(hero):
                 _issue(issues, "PHOTO_HERO_MATERIAL", "hero_object", "The hero needs a node-based material.")
-            bevels = [
-                modifier for modifier in getattr(hero, "modifiers", ()) if getattr(modifier, "type", None) == "BEVEL"
-            ]
-            hero_state["bevels"] = [
-                {"width": getattr(modifier, "width", None), "segments": getattr(modifier, "segments", None)}
-                for modifier in bevels
-            ]
-            if not any(
-                0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007
-                and int(getattr(modifier, "segments", 0)) == 3
-                for modifier in bevels
-            ):
-                _issue(
-                    issues, "PHOTO_HERO_BEVEL", "hero_object", "Every hero edge needs a 0.3 to 0.7 mm, 3-segment bevel."
-                )
+            hero_bevel = _bevel_state(hero)
+            hero_state["bevels"] = hero_bevel["bevels"]
+            hero_state["bevel_contract_satisfied"] = hero_bevel["contract_satisfied"]
+
+        toy_names = [hero_object] if hero_object else []
+        if toy_object_names is not None:
+            toy_names.extend(toy_object_names)
+        toy_states = []
+        seen_toys: set[str] = set()
+        for object_name in toy_names:
+            if object_name in seen_toys:
+                continue
+            seen_toys.add(object_name)
+            toy_states.append(_validate_toy_bevel(_object(bpy, object_name), object_name, issues))
 
         surfaces = {}
         if floor_object:
-            surfaces["floor"] = _validate_surface(floor, "floor", issues)
+            surfaces["floor"] = _validate_surface(
+                floor,
+                "floor",
+                issues,
+                float(minimum_environment_dimension_m),
+            )
         if wall_object:
-            surfaces["wall"] = _validate_surface(wall, "wall", issues)
+            surfaces["wall"] = _validate_surface(
+                wall,
+                "wall",
+                issues,
+                float(minimum_environment_dimension_m),
+            )
         if background_object and background is None:
             _issue(issues, "PHOTO_BACKGROUND_MISSING", "background_object", "The background object was not found.")
 
@@ -417,7 +556,9 @@ def validate_photographic_shot(
             requested_backend = "CPU"
         profile_report = validate_render_profile(
             profile_name=profile,
+            scene_kind=kind,
             device_backend=requested_backend,
+            samples=getattr(getattr(scene, "cycles", None), "samples", None),
             scene_name=getattr(scene, "name", scene_name),
         )
         if not profile_report.get("success") or profile_report.get("context", {}).get("valid") is False:
@@ -446,6 +587,7 @@ def validate_photographic_shot(
                 source_type=source_type,
                 hero_object=hero_object,
                 background_object=background_object,
+                preview_still_path=preview_still_path,
             )
             lighting_context = lighting_report.get("context", {})
             if not lighting_report.get("success") or lighting_context.get("valid") is False:
@@ -465,11 +607,13 @@ def validate_photographic_shot(
             frame_range=list(active_range),
             shot_type=shot,
             profile_name=profile,
+            scene_kind=kind,
             device_backend=requested_backend,
             units=units,
             camera=camera_state,
             focus_object=getattr(focus, "name", focus_object),
             hero=hero_state,
+            toy_objects=toy_states,
             surfaces=surfaces,
             hidden_render_animation=hidden_animation,
             render_profile=profile_report.get("context", profile_report),
