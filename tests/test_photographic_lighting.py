@@ -89,7 +89,7 @@ def test_preview_still_tool_reads_pixels_and_restores_image_colorspace(tmp_path)
             return iter([])
 
         def load(self, path, check_existing=True):
-            assert check_existing is True
+            assert check_existing is False
             return self.image
 
         def remove(self, image):

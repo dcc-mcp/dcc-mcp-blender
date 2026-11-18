@@ -276,6 +276,7 @@ def _bevel_state(obj: Any | None) -> dict[str, Any]:
         {
             "name": getattr(modifier, "name", None),
             "width_m": getattr(modifier, "width", None),
+            "offset_type": getattr(modifier, "offset_type", None),
             "segments": getattr(modifier, "segments", None),
             "limit_method": getattr(modifier, "limit_method", None),
             "affect": getattr(modifier, "affect", None),
@@ -284,7 +285,8 @@ def _bevel_state(obj: Any | None) -> dict[str, Any]:
         for modifier in modifiers
     ]
     valid = any(
-        0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007
+        getattr(modifier, "offset_type", None) in {"OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"}
+        and 0.0003 <= float(getattr(modifier, "width", 0.0)) <= 0.0007
         and int(getattr(modifier, "segments", 0)) == 3
         and getattr(modifier, "limit_method", None) == "NONE"
         and getattr(modifier, "show_render", True) is True
@@ -313,6 +315,7 @@ def _validate_toy_bevel(obj: Any | None, object_name: str, issues: list[dict]) -
             "Every toy edge needs a render-visible 0.3 to 0.7 mm, three-segment bevel.",
             expected={
                 "width_m": [0.0003, 0.0007],
+                "offset_type": ["OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"],
                 "segments": 3,
                 "limit_method": "NONE",
                 "show_render": True,
@@ -505,7 +508,9 @@ def validate_photographic_shot(
             hero_state["bevels"] = hero_bevel["bevels"]
             hero_state["bevel_contract_satisfied"] = hero_bevel["contract_satisfied"]
 
-        toy_names = list(toy_object_names) if toy_object_names is not None else ([hero_object] if hero_object else [])
+        toy_names = [hero_object] if hero_object else []
+        if toy_object_names is not None:
+            toy_names.extend(toy_object_names)
         toy_states = []
         seen_toys: set[str] = set()
         for object_name in toy_names:
@@ -553,6 +558,7 @@ def validate_photographic_shot(
             profile_name=profile,
             scene_kind=kind,
             device_backend=requested_backend,
+            samples=getattr(getattr(scene, "cycles", None), "samples", None),
             scene_name=getattr(scene, "name", scene_name),
         )
         if not profile_report.get("success") or profile_report.get("context", {}).get("valid") is False:

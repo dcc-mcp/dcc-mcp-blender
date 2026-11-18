@@ -484,6 +484,37 @@ def _profile_issues(actual: dict, expected: dict, backend: str) -> list[dict]:
     return issues
 
 
+def _allow_interior_sample_range(
+    issues: list[dict], profile_name: str, scene_kind: str, samples: int | None, actual: dict
+) -> list[dict]:
+    if (
+        str(profile_name or "").strip().upper() != "FINAL"
+        or str(scene_kind or "").strip().upper() != "INTERIOR"
+        or samples is not None
+    ):
+        return issues
+    actual_samples = actual.get("samples")
+    if (
+        isinstance(actual_samples, int)
+        and not isinstance(actual_samples, bool)
+        and INTERIOR_FINAL_MIN_SAMPLES <= actual_samples <= INTERIOR_FINAL_MAX_SAMPLES
+    ):
+        return [issue for issue in issues if issue.get("field") != "samples"]
+    return [
+        {
+            **issue,
+            "code": "RENDER_PROFILE_SAMPLE_RANGE" if issue.get("field") == "samples" else issue.get("code"),
+            "expected": [INTERIOR_FINAL_MIN_SAMPLES, INTERIOR_FINAL_MAX_SAMPLES]
+            if issue.get("field") == "samples"
+            else issue.get("expected"),
+            "message": "Interior FINAL samples must be between 112 and 176."
+            if issue.get("field") == "samples"
+            else issue.get("message"),
+        }
+        for issue in issues
+    ]
+
+
 def get_render_capabilities(scene_name: str | None = None) -> dict:
     """Report Blender, Cycles and available compute-device capabilities."""
     try:
@@ -572,6 +603,7 @@ def validate_render_profile(
             )
         current = _current_values(scene, _resolve_view_layer(scene), inventory)
         issues = _profile_issues(current, values, backend)
+        issues = _allow_interior_sample_range(issues, profile_name, scene_kind, samples, current)
         return skill_success(
             "Render profile validation completed",
             valid=not issues,

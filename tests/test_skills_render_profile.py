@@ -172,6 +172,18 @@ def test_profile_accepts_interior_sample_range():
     assert _profile_values("FINAL", "INTERIOR", 176)["samples"] == 176
 
 
+def test_validation_accepts_any_interior_sample_in_range_when_unspecified():
+    scene = _Scene()
+    scene.cycles.samples = 176
+    bpy = _bpy(scene)
+
+    result = _call("validate_render_profile", bpy, profile_name="FINAL", scene_kind="INTERIOR", device_backend="CPU")
+
+    assert result["success"] is True, result
+    assert result["context"]["valid"] is False
+    assert not any(issue["field"] == "samples" for issue in result["context"]["issues"])
+
+
 def test_apply_profile_selects_requested_gpu_and_configures_scene():
     scene = _Scene()
     cuda = _Device("RTX", "CUDA")

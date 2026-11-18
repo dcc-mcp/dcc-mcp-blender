@@ -51,6 +51,17 @@ def _color(value: Any, label: str, default: tuple[float, float, float]) -> list[
     return result
 
 
+def _copy_image_pixels(image: Any) -> list[float]:
+    pixels = image.pixels
+    values = [0.0] * len(pixels)
+    foreach_get = getattr(pixels, "foreach_get", None)
+    if callable(foreach_get):
+        foreach_get(values)
+    else:
+        values[:] = pixels
+    return values
+
+
 def _normalise_source_type(value: str) -> str:
     source_type = str(value or "LAMP").strip().upper()
     if source_type not in SOURCE_TYPES:
@@ -270,18 +281,19 @@ def analyze_photographic_test_still(
 
         import bpy
 
-        before_ids = {id(image) for image in getattr(bpy.data, "images", ())}
-        image = bpy.data.images.load(str(path), check_existing=True)
-        created = id(image) not in before_ids
-        colorspace = getattr(image, "colorspace_settings", None)
-        old_colorspace = getattr(colorspace, "name", None)
+        image = None
+        colorspace = None
+        old_colorspace = None
         try:
+            image = bpy.data.images.load(str(path), check_existing=False)
+            colorspace = getattr(image, "colorspace_settings", None)
+            old_colorspace = getattr(colorspace, "name", None)
             if colorspace is not None and hasattr(colorspace, "name"):
                 try:
                     colorspace.name = "Non-Color"
                 except (TypeError, ValueError):
                     pass
-            pixels = image.pixels
+            pixels = _copy_image_pixels(image)
             result = analyze_rgb_pixels(
                 pixels,
                 channels=4,
@@ -292,12 +304,12 @@ def analyze_photographic_test_still(
                 max_samples=max_samples,
             )
         finally:
-            if colorspace is not None and old_colorspace is not None:
+            if image is not None:
                 try:
-                    colorspace.name = old_colorspace
-                except (TypeError, ValueError):
+                    if colorspace is not None and old_colorspace is not None:
+                        colorspace.name = old_colorspace
+                except (RuntimeError, TypeError, ValueError):
                     pass
-            if created and getattr(image, "users", 0) == 0:
                 try:
                     bpy.data.images.remove(image)
                 except (RuntimeError, TypeError):
