@@ -1,0 +1,157 @@
+tools:
+  - name: configure_photographic_camera
+    description: "Configure a physical ground-level camera with a 36 mm sensor, photographic lens, round aperture, and eye focus."
+    source_file: scripts/configure_photographic_camera.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [camera_name]
+      properties:
+        camera_name:
+          type: string
+          minLength: 1
+        shot_type:
+          type: string
+          enum: [CHARACTER, WIDE]
+          default: CHARACTER
+        lens:
+          type: number
+          minimum: 24.0
+          maximum: 85.0
+          default: 50.0
+          description: "Perspective focal length in millimetres."
+        aperture_fstop:
+          type: number
+          minimum: 2.8
+          maximum: 11.0
+          description: "Character shots accept 2.8–5.6. Wide shots require 11.0."
+        focus_object:
+          type: string
+          minLength: 1
+          description: "Object at the character's eyes or other intended focus plane."
+        focus_distance:
+          type: number
+          exclusiveMinimum: 0
+        camera_height_cm:
+          type: number
+          minimum: 1.0
+          maximum: 8.0
+          default: 4.0
+        floor_z:
+          type: number
+          default: 0.0
+    output_schema: &result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: animate_photographic_camera
+    description: "Create an eased ground-level camera move with continuous unwrapped rotation and one-frame endpoint extensions."
+    source_file: scripts/animate_photographic_camera.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [camera_name, frame_start, frame_end, start_location, end_location, start_rotation_degrees, end_rotation_degrees]
+      properties:
+        camera_name:
+          type: string
+          minLength: 1
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        start_location:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+        end_location:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+        start_rotation_degrees:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+          description: "Euler rotation in degrees."
+        end_rotation_degrees:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+          description: "Euler rotation in degrees. Equivalent angles are unwrapped for continuity."
+        interpolation:
+          type: string
+          enum: [BEZIER, LINEAR, CONSTANT]
+          default: BEZIER
+        endpoint_extension_frames:
+          type: integer
+          minimum: 1
+          default: 1
+    output_schema: *result_schema
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: validate_photographic_camera
+    description: "Read-only validation of physical camera settings, focus, endpoint extensions, and continuous rotation animation."
+    source_file: scripts/validate_photographic_camera.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [camera_name]
+      properties:
+        camera_name:
+          type: string
+          minLength: 1
+        shot_type:
+          type: string
+          enum: [CHARACTER, WIDE]
+          default: CHARACTER
+        frame_start:
+          type: integer
+        frame_end:
+          type: integer
+        floor_z:
+          type: number
+          default: 0.0
+        require_focus_object:
+          type: boolean
+          default: true
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
