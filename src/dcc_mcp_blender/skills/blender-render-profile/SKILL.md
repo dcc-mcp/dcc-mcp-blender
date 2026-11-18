@@ -38,7 +38,10 @@ metadata:
 This skill provides two deterministic photographic Cycles profiles.
 
 - `PREVIEW` uses 25% resolution and 32 samples for fast look checks.
-- `FINAL` uses 100% resolution, 64 samples for sunny exteriors, and 112 samples for interiors.
+- `FINAL` uses 100% resolution, exactly 64 samples for sunny exteriors, and 112 to 176 samples for interiors.
+
+`PREVIEW` is fixed at 32 samples. Sample overrides are rejected when they fall
+outside the prompt's contract so a successful profile validation is meaningful.
 
 Both profiles configure the complete Cycles quality contract, including
 adaptive sampling, OIDN denoising, light paths, clamps, caustics, motion blur,
@@ -53,4 +56,6 @@ long render job.
 
 Use `render_photographic_test_still` for the required 25% / 32-sample JPEG
 inspection. It temporarily applies the preview profile, renders one frame, and
-restores the previous render settings and current frame afterward.
+restores the previous render settings and current frame afterward. Pass its
+output path to `analyze_photographic_test_still` before changing light energy
+or starting the final render.

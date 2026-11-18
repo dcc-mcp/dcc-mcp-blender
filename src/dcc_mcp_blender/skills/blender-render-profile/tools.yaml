@@ -48,15 +48,16 @@ tools:
           type: string
           enum: [EXTERIOR, INTERIOR]
           default: EXTERIOR
-          description: "FINAL uses 64 samples for EXTERIOR and 112 samples for INTERIOR unless samples is supplied."
+          description: "FINAL uses exactly 64 samples for EXTERIOR and 112 to 176 samples for INTERIOR. PREVIEW is fixed at 32 samples."
         device_backend:
           type: string
           enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
           default: AUTO
         samples:
           type: integer
-          minimum: 1
-          description: "Optional positive sample override."
+          minimum: 32
+          maximum: 176
+          description: "Optional contract-bound sample override. PREVIEW requires 32, EXTERIOR FINAL requires 64, and INTERIOR FINAL allows 112 to 176."
         allow_cpu_fallback:
           type: boolean
           default: true

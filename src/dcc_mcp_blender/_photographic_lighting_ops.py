@@ -8,6 +8,14 @@ from typing import Any
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
+from dcc_mcp_blender._photographic_color_ops import (
+    DEFAULT_HIGHLIGHT_THRESHOLD,
+    DEFAULT_MAX_SAMPLES,
+    DEFAULT_SATURATION_THRESHOLD,
+    DEFAULT_WARM_BIAS_THRESHOLD,
+    analyze_rgb_pixels,
+)
+
 SOURCE_TYPES = ("SUN_WINDOW", "LAMP", "SCREEN", "OUTDOOR_HDRI")
 SOURCE_LIGHT_TYPES = {
     "SUN_WINDOW": "AREA",
@@ -243,6 +251,82 @@ def _color_relation(bpy: Any, hero_name: str | None, background_name: str | None
     }
 
 
+def analyze_photographic_test_still(
+    image_path: str,
+    highlight_threshold: float = DEFAULT_HIGHLIGHT_THRESHOLD,
+    saturation_threshold: float = DEFAULT_SATURATION_THRESHOLD,
+    warm_bias_threshold: float = DEFAULT_WARM_BIAS_THRESHOLD,
+    warning_ratio: float = 0.10,
+    max_samples: int = DEFAULT_MAX_SAMPLES,
+    source_name: str | None = None,
+) -> dict:
+    """Analyze a rendered preview still for warm saturated highlight bias."""
+    try:
+        path = _safe_path(image_path)
+        if path is None:
+            raise ValueError("image_path is required")
+        if not isinstance(max_samples, int) or isinstance(max_samples, bool) or max_samples < 1:
+            raise ValueError("max_samples must be a positive integer")
+
+        import bpy
+
+        before_ids = {id(image) for image in getattr(bpy.data, "images", ())}
+        image = bpy.data.images.load(str(path), check_existing=True)
+        created = id(image) not in before_ids
+        colorspace = getattr(image, "colorspace_settings", None)
+        old_colorspace = getattr(colorspace, "name", None)
+        try:
+            if colorspace is not None and hasattr(colorspace, "name"):
+                try:
+                    colorspace.name = "Non-Color"
+                except (TypeError, ValueError):
+                    pass
+            pixels = image.pixels
+            result = analyze_rgb_pixels(
+                pixels,
+                channels=4,
+                highlight_threshold=highlight_threshold,
+                saturation_threshold=saturation_threshold,
+                warm_bias_threshold=warm_bias_threshold,
+                warning_ratio=warning_ratio,
+                max_samples=max_samples,
+            )
+        finally:
+            if colorspace is not None and old_colorspace is not None:
+                try:
+                    colorspace.name = old_colorspace
+                except (TypeError, ValueError):
+                    pass
+            if created and getattr(image, "users", 0) == 0:
+                try:
+                    bpy.data.images.remove(image)
+                except (RuntimeError, TypeError):
+                    pass
+
+        source = None
+        if source_name:
+            light = _object(bpy, source_name)
+            if light is not None and getattr(light, "type", None) == "LIGHT":
+                source = {
+                    "name": light.name,
+                    "energy": float(getattr(light.data, "energy", 0.0)),
+                    "source_type": _custom_get(light, "dcc_mcp_photographic_source_type"),
+                }
+        return skill_success(
+            "Photographic test still color safety analyzed",
+            image_path=str(path),
+            source=source,
+            color_safety=result,
+            prompt=result["recommendation"],
+        )
+    except (TypeError, ValueError) as exc:
+        return skill_error("Invalid photographic test still analysis request", str(exc))
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to analyze photographic test still")
+
+
 def configure_motivated_lighting(
     source_name: str,
     source_type: str = "LAMP",
@@ -316,6 +400,7 @@ def validate_motivated_lighting(
     hero_object: str | None = None,
     background_object: str | None = None,
     require_agx: bool = True,
+    preview_still_path: str | None = None,
 ) -> dict:
     """Read-only validation for motivated source, HDRI, AgX, and contrast setup."""
     try:
@@ -442,6 +527,35 @@ def validate_motivated_lighting(
                 len(owned_sources),
                 "Keep one motivated source per scene.",
             )
+        color_safety = {
+            "performed": False,
+            "preview_still_required": True,
+            "instruction": "If saturated colors clip warm, lower key energy and keep material color unchanged.",
+        }
+        if preview_still_path:
+            analysis = analyze_photographic_test_still(
+                image_path=preview_still_path,
+                source_name=source_name,
+            )
+            if not analysis.get("success"):
+                issue(
+                    "COLOR_SAFETY_ANALYSIS_FAILED",
+                    "preview_still_path",
+                    "readable rendered preview still",
+                    analysis.get("error"),
+                    "The supplied preview still could not be analyzed.",
+                )
+            else:
+                color_safety = analysis.get("context", {}).get("color_safety", {})
+                if color_safety.get("recommend_lower_key_energy"):
+                    issue(
+                        "WARM_SATURATED_HIGHLIGHTS",
+                        "preview_still_path",
+                        "warm_highlight_ratio below warning ratio",
+                        color_safety,
+                        "Lower the motivated key energy and preserve the material color.",
+                        "warning",
+                    )
         return skill_success(
             f"Motivated photographic lighting validation completed: {source_name}",
             valid=not any(item["severity"] == "error" for item in issues),
@@ -457,8 +571,7 @@ def validate_motivated_lighting(
                 "view_transform": getattr(view_settings, "view_transform", None),
                 "look": getattr(view_settings, "look", None),
                 "exposure": float(getattr(view_settings, "exposure", 0.0)),
-                "preview_still_required": True,
-                "instruction": "If saturated colors clip warm, lower key energy and keep material color unchanged.",
+                **color_safety,
             },
             issues=issues,
         )

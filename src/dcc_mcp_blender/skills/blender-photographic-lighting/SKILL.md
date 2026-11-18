@@ -38,7 +38,8 @@ metadata:
 This skill packages the motivated-lighting contract for real-toy shots.
 
 - `configure_motivated_lighting` creates one owned source for a window sun, lamp, or screen. Outdoor shots use a local HDRI plus a Sun with a 1.2 degree angle.
-- The setup applies AgX, the Medium High Contrast look, and exposure zero. Saturated-color safety remains a preview-render check so the key energy can be lowered without changing material color.
-- `validate_motivated_lighting` is read-only and reports source type, HDRI, sun angle, AgX state, and whether the hero sits in front of a darker or cooler background.
+- The setup applies AgX, the Medium High Contrast look, and exposure zero. Saturated-color safety can be measured from the rendered preview so the key energy can be lowered without changing material color.
+- `analyze_photographic_test_still` is read-only and measures highlights above 185/255, saturated highlight ratio, and warm orange or pink bias.
+- `validate_motivated_lighting` accepts an optional preview still path and includes the pixel analysis in the validation report.
 
 Pass a local downloaded Poly Haven HDRI path explicitly when using `OUTDOOR_HDRI`.
