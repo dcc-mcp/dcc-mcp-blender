@@ -1,0 +1,17 @@
+"""Configure the photographic compositor finish."""
+
+from __future__ import annotations
+
+from dcc_mcp_core.skill import run_main, skill_entry
+
+from dcc_mcp_blender._photographic_post_ops import configure_photographic_post
+
+
+@skill_entry
+def main(**kwargs) -> dict:
+    """Entry point; delegates to :func:`configure_photographic_post`."""
+    return configure_photographic_post(**kwargs)
+
+
+if __name__ == "__main__":
+    run_main(main)

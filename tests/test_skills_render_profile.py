@@ -353,5 +353,6 @@ def test_tools_yaml_declares_the_profile_contract():
         "apply_render_profile",
         "get_render_profile",
         "validate_render_profile",
+        "render_photographic_test_still",
     }
     assert tools["apply_render_profile"]["input_schema"]["properties"]["device_backend"]["enum"][-1] == "CPU"

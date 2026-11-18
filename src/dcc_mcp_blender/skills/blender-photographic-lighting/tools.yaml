@@ -1,0 +1,106 @@
+tools:
+  - name: configure_motivated_lighting
+    description: "Create one motivated window, lamp, screen, or outdoor HDRI-plus-sun source and apply the AgX color contract."
+    source_file: scripts/configure_motivated_lighting.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [source_name]
+      properties:
+        source_name:
+          type: string
+          minLength: 1
+        source_type:
+          type: string
+          enum: [SUN_WINDOW, LAMP, SCREEN, OUTDOOR_HDRI]
+          default: LAMP
+        energy:
+          type: number
+          exclusiveMinimum: 0
+          default: 120.0
+        color:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number, minimum: 0, maximum: 1}
+        location:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+        rotation_degrees:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: {type: number}
+        hdri_path:
+          type: string
+          minLength: 1
+          description: "Local Poly Haven HDRI path required for OUTDOOR_HDRI."
+        hdri_strength:
+          type: number
+          exclusiveMinimum: 0
+          default: 0.35
+        hdri_rotation_degrees:
+          type: number
+          default: 0.0
+        hero_object:
+          type: string
+          minLength: 1
+        background_object:
+          type: string
+          minLength: 1
+    output_schema: &result_schema
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        context: {type: object}
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: validate_motivated_lighting
+    description: "Read-only validation of the motivated source, outdoor HDRI and 1.2 degree sun, AgX settings, and hero-background contrast."
+    source_file: scripts/validate_motivated_lighting.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [source_name]
+      properties:
+        source_name:
+          type: string
+          minLength: 1
+        source_type:
+          type: string
+          enum: [SUN_WINDOW, LAMP, SCREEN, OUTDOOR_HDRI]
+          default: LAMP
+        hero_object:
+          type: string
+          minLength: 1
+        background_object:
+          type: string
+          minLength: 1
+        require_agx:
+          type: boolean
+          default: true
+    output_schema: *result_schema
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false

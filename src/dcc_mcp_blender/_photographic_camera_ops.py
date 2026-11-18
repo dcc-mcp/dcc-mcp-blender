@@ -534,6 +534,14 @@ def validate_photographic_camera(
             )
 
         animation = _animation_report(obj)
+        if not animation["fcurves"]:
+            issue(
+                "CAMERA_ANIMATION_MISSING",
+                "animation",
+                "location and rotation_euler f-curves",
+                [],
+                "Every shot requires an eased camera move.",
+            )
         if frame_start is not None or frame_end is not None:
             if frame_start is None or frame_end is None or int(frame_start) >= int(frame_end):
                 return skill_error(
@@ -562,6 +570,31 @@ def validate_photographic_camera(
                         [],
                         "Animate rotation_euler for continuous camera motion.",
                     )
+            for curve in animation["fcurves"]:
+                if curve["data_path"] not in {"location", "rotation_euler"}:
+                    continue
+                required_points = [point for point in curve["points"] if first <= point["frame"] <= last]
+                if required_points and any(point["interpolation"] != "BEZIER" for point in required_points):
+                    issue(
+                        "CAMERA_EASING_MISSING",
+                        f"{curve['data_path']}_interpolation",
+                        "BEZIER",
+                        sorted({point["interpolation"] for point in required_points}),
+                        "Camera motion must use eased Bezier interpolation.",
+                    )
+
+        for curve in animation["fcurves"]:
+            if curve["data_path"] != "rotation_euler":
+                continue
+            values = [point["value"] for point in curve["points"]]
+            if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
+                issue(
+                    "CAMERA_ROTATION_DISCONTINUITY",
+                    "rotation_euler",
+                    "adjacent Euler keys within 180 degrees",
+                    values,
+                    "Keep camera rotation continuous to prevent motion-blur flips.",
+                )
 
         return skill_success(
             f"Photographic camera validation completed: {camera_name}",
