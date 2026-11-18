@@ -105,6 +105,15 @@ class _Preferences:
         return None
 
 
+class _LivePreferences(_Preferences):
+    def __init__(self, devices=(), live_devices=None):
+        super().__init__(devices)
+        self.live_devices = live_devices or {}
+
+    def get_devices_for_type(self, device_type):
+        return self.live_devices.get(device_type, [])
+
+
 class _Scenes(list):
     def get(self, name):
         return next((scene for scene in self if scene.name == name), None)
@@ -252,6 +261,84 @@ def test_apply_failure_rolls_back_image_format_and_scene_settings():
 
     assert result["success"] is False
     assert (scene.render.image_settings.file_format, scene.render.resolution_percentage) == initial
+
+
+def test_apply_profile_switches_exr_to_jpeg_before_dependent_properties():
+    scene = _Scene()
+    image_settings = scene.render.image_settings
+    image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
+    image_settings.color_mode = "RGBA"
+    image_settings.color_depth = "16"
+    bpy = _bpy(scene, _Preferences())
+
+    result = _call("apply_render_profile", bpy, profile_name="FINAL", device_backend="CPU")
+
+    assert result["success"] is True, result
+    assert (image_settings.media_type, image_settings.file_format) == ("IMAGE", "JPEG")
+    assert (image_settings.color_mode, image_settings.color_depth) == ("RGB", "8")
+
+
+def test_apply_readback_rollback_restores_exr_image_and_scene_device():
+    scene = _Scene()
+    scene.cycles.device = "GPU"
+    image_settings = scene.render.image_settings
+    image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
+    image_settings.color_mode = "RGBA"
+    image_settings.color_depth = "16"
+
+    class _BrokenCycles(_Cycles):
+        def __setattr__(self, name, value):
+            if name == "filter_width" and value == 1.5:
+                object.__setattr__(self, name, 0.3)
+                return
+            object.__setattr__(self, name, value)
+
+    scene.cycles = _BrokenCycles()
+    scene.cycles.device = "GPU"
+    bpy = _bpy(scene, _Preferences())
+
+    result = _call("apply_render_profile", bpy, profile_name="FINAL", device_backend="CPU")
+
+    assert result["success"] is False
+    assert (image_settings.media_type, image_settings.file_format) == ("MULTI_LAYER_IMAGE", "OPEN_EXR_MULTILAYER")
+    assert (image_settings.color_mode, image_settings.color_depth) == ("RGBA", "16")
+    assert scene.cycles.device == "GPU"
+
+
+def test_validation_rejects_gpu_without_an_enabled_live_device():
+    scene = _Scene()
+    cuda = _Device("RTX", "CUDA", use=False)
+    bpy = _bpy(scene, _Preferences([cuda]))
+    apply_result = _call("apply_render_profile", bpy, profile_name="FINAL", device_backend="CUDA")
+    assert apply_result["success"] is True, apply_result
+    cuda.use = False
+
+    result = _call("validate_render_profile", bpy, profile_name="FINAL", device_backend="CUDA")
+
+    assert result["success"] is True
+    assert result["context"]["valid"] is False
+    assert any(issue["code"] == "RENDER_DEVICE_INACTIVE" for issue in result["context"]["issues"])
+
+
+def test_live_device_enumeration_excludes_stale_saved_backend():
+    from dcc_mcp_blender._render_profile_ops import _device_inventory
+
+    stale_optix = _Device("Old GPU", "OPTIX", use=True)
+    live_cuda = _Device("Current GPU", "CUDA", use=True)
+    preferences = _LivePreferences(
+        [stale_optix],
+        live_devices={"CUDA": [live_cuda]},
+    )
+
+    inventory = _device_inventory(preferences)
+
+    assert inventory["live_device_enumeration"] is True
+    assert inventory["available_backends"] == ["CPU", "CUDA"]
+    assert inventory["gpu_backends"] == ["CUDA"]
+    assert [device["type"] for device in inventory["devices"]] == ["CUDA"]
+    assert inventory["active_device_count"] == 1
 
 
 def test_tools_yaml_declares_the_profile_contract():
