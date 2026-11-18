@@ -1,0 +1,114 @@
+tools:
+  - name: get_render_capabilities
+    description: "Inspect Blender, Cycles, and available CPU/GPU render backends."
+    source_file: scripts/get_render_capabilities.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: &render_profile_result
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: apply_render_profile
+    description: "Apply the complete Blender 5 photographic Cycles preview or final profile atomically."
+    source_file: scripts/apply_render_profile.py
+    execution: sync
+    affinity: main
+    input_schema: &profile_input
+      type: object
+      additionalProperties: false
+      required: [profile_name]
+      properties:
+        profile_name:
+          type: string
+          enum: [PREVIEW, FINAL]
+        scene_kind:
+          type: string
+          enum: [EXTERIOR, INTERIOR]
+          default: EXTERIOR
+          description: "FINAL uses 64 samples for EXTERIOR and 112 samples for INTERIOR unless samples is supplied."
+        device_backend:
+          type: string
+          enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
+          default: AUTO
+        samples:
+          type: integer
+          minimum: 1
+          description: "Optional positive sample override."
+        allow_cpu_fallback:
+          type: boolean
+          default: true
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_profile_result
+    read_only: false
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+    next-tools:
+      on-success: [blender_render_profile__validate_render_profile]
+
+  - name: get_render_profile
+    description: "Read the complete photographic render state from a Blender scene."
+    source_file: scripts/get_render_profile.py
+    execution: sync
+    affinity: main
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        scene_name:
+          type: string
+          minLength: 1
+    output_schema: *render_profile_result
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
+
+  - name: validate_render_profile
+    description: "Validate a scene against a named photographic Cycles profile without mutating it."
+    source_file: scripts/validate_render_profile.py
+    execution: sync
+    affinity: main
+    input_schema: *profile_input
+    output_schema: *render_profile_result
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: false
