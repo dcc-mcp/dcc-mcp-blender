@@ -275,6 +275,7 @@ HDRI by Poly Haven (CC0), and
 | **blender-photographic-lighting** | `configure_motivated_lighting`, `validate_motivated_lighting` |
 | **blender-photographic-post** | `configure_photographic_post`, `validate_photographic_post` |
 | **blender-texture-bake** | `list_bake_targets`, `bake_textures`, `bake_ambient_occlusion`, `bake_lighting`, `transfer_maps` |
+| **blender-photographic-materials** | `configure_photographic_material`, `configure_toy_bevel`, `validate_photographic_material` |
 | **blender-render** | `render_scene`, `set_render_settings`, `get_render_info`, `capture_viewport`, `get_view_layer_passes`, `set_view_layer_passes`, `set_render_denoise`, `get_render_output`, `set_render_output`, `set_render_region`, `clear_render_region`, `get_render_status` |
 | **blender-photographic-camera** | `configure_photographic_camera`, `animate_photographic_camera`, `validate_photographic_camera` |
 | **blender-render-profile** | `get_render_capabilities`, `apply_render_profile`, `get_render_profile`, `validate_render_profile`, `render_photographic_test_still` |
