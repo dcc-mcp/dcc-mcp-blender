@@ -175,6 +175,7 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-photographic-post | `configure_photographic_post`, `validate_photographic_post` |
 | blender-texture-bake | `bake_textures`, `bake_ambient_occlusion`, `transfer_maps` |
 | blender-render | `render_scene`, `set_render_settings`, `capture_viewport`, `set_view_layer_passes`, `set_render_denoise`, `set_render_output`, `set_render_region`, `get_render_status` |
+| blender-photographic-camera | `configure_photographic_camera`, `animate_photographic_camera`, `validate_photographic_camera` |
 | blender-render-profile | `get_render_capabilities`, `apply_render_profile`, `get_render_profile`, `validate_render_profile`, `render_photographic_test_still` |
 | blender-photographic-delivery | `configure_photographic_video_output`, `validate_photographic_video_output`, `encode_photographic_video` |
 | blender-render-farm | `submit_render_job`, `get_render_job_status`, `cancel_render_job` |
