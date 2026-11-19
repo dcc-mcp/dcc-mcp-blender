@@ -312,8 +312,19 @@ export defect.
   Re-import the asset with `import_file` and inspect it with `get_mesh_info`, run
   `blender-validation` checks such as `validate_mesh` and `validate_export_readiness`,
   or use an external glTF validator.
+| **blender-groom** | `create_groom_guides`, `inspect_grooms`, `set_groom_style` |
 
 See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.
+
+### Hyper3D to Blender hairstyle workflow
+
+The external marketplace skill `hyper3d` handles Rodin generation and local
+asset download. Use `create_rodin_task` with three labeled head views, wait
+with `get_task_status`, and call `download_assets` with the returned task
+identifiers. Import the downloaded FBX through `blender-interchange`, then use
+`blender-groom.create_groom_guides` on the scalp mesh and
+`blender-groom.set_groom_style` for root-preserving length, width, and material
+changes. Run `blender-validation` before saving or exporting the scene.
 
 ---
 

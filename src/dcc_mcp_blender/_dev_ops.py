@@ -70,6 +70,8 @@ def attach_project(project_root: str, extra_paths: Optional[List[str]] = None) -
         added = []
         existing = []
         missing = []
+        package_paths_added = []
+        package_paths_existing = []
         for raw_path in paths:
             resolved = str(raw_path.resolve())
             if not Path(resolved).exists():
@@ -77,9 +79,25 @@ def attach_project(project_root: str, extra_paths: Optional[List[str]] = None) -
                 continue
             if resolved in sys.path:
                 existing.append(resolved)
+            else:
+                sys.path.insert(0, resolved)
+                added.append(resolved)
+
+            package_path = Path(resolved) / "dcc_mcp_blender"
+            if not package_path.is_dir():
                 continue
-            sys.path.insert(0, resolved)
-            added.append(resolved)
+
+            package = sys.modules.get("dcc_mcp_blender")
+            package_search_path = getattr(package, "__path__", None)
+            if package_search_path is None:
+                continue
+
+            package_path_string = str(package_path)
+            if package_path_string in package_search_path:
+                package_paths_existing.append(package_path_string)
+            else:
+                package_search_path.append(package_path_string)
+                package_paths_added.append(package_path_string)
 
         return skill_success(
             "Attached project paths",
@@ -87,6 +105,8 @@ def attach_project(project_root: str, extra_paths: Optional[List[str]] = None) -
             added=added,
             existing=existing,
             missing=missing,
+            package_paths_added=package_paths_added,
+            package_paths_existing=package_paths_existing,
             sys_path_head=sys.path[:10],
         )
     except Exception as exc:
