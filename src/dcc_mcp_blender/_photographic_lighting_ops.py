@@ -528,9 +528,12 @@ def validate_motivated_lighting(
                 "Place the hero in front of something darker or cooler.",
                 "warning",
             )
+        scene = getattr(getattr(bpy, "context", None), "scene", None)
+        scene_objects = getattr(scene, "objects", None)
+        source_objects = scene_objects if scene_objects is not None else getattr(bpy.data, "objects", ())
         owned_sources = [
             obj
-            for obj in bpy.data.objects
+            for obj in source_objects
             if getattr(obj, "type", None) == "LIGHT" and _custom_get(obj, "dcc_mcp_photographic_source", False)
         ]
         if len(owned_sources) != 1:

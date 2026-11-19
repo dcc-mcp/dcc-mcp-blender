@@ -225,8 +225,24 @@ def _uses_object_coordinates(texture: Any) -> bool:
 def _linked_from(target: Any, source: Any, source_socket_name: str) -> bool:
     if target is None or source is None:
         return False
+
+    def same_node(left: Any, right: Any) -> bool:
+        if left is right:
+            return True
+        left_pointer = getattr(left, "as_pointer", None)
+        right_pointer = getattr(right, "as_pointer", None)
+        if callable(left_pointer) and callable(right_pointer):
+            try:
+                return int(left_pointer()) == int(right_pointer())
+            except (TypeError, ValueError, RuntimeError):
+                pass
+        try:
+            return left == right
+        except (TypeError, ValueError, RuntimeError):
+            return False
+
     return any(
-        getattr(link, "from_node", None) is source
+        same_node(getattr(link, "from_node", None), source)
         and getattr(getattr(link, "from_socket", None), "name", None) == source_socket_name
         for link in getattr(target, "links", ())
     )

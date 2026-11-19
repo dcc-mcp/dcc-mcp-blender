@@ -779,7 +779,11 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
                     actual = list(actual)[: len(expected)]
                 except (TypeError, ValueError):
                     pass
-            if not _values_equal(actual, expected):
+            if field in {"halation_type", "halation_quality"}:
+                matches = str(actual).strip().replace("_", " ").casefold() == str(expected).strip().casefold()
+            else:
+                matches = _values_equal(actual, expected)
+            if not matches:
                 issues.append(
                     {
                         "code": code,
@@ -797,8 +801,8 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             )
             if not _values_equal(getattr(threshold_socket, "default_value", None), settings.get("halation_threshold")):
                 issues.append({"code": "PHOTO_POST_HALATION_THRESHOLD", "severity": "error"})
-            check_input("halation", ("Type",), "FOG_GLOW", "PHOTO_POST_HALATION_TYPE", "halation_type")
-            check_input("halation", ("Quality",), "HIGH", "PHOTO_POST_HALATION_QUALITY", "halation_quality")
+            check_input("halation", ("Type",), "Fog Glow", "PHOTO_POST_HALATION_TYPE", "halation_type")
+            check_input("halation", ("Quality",), "High", "PHOTO_POST_HALATION_QUALITY", "halation_quality")
             tint = settings.get("halation_tint")
             if isinstance(tint, (list, tuple)):
                 check_input("halation", ("Tint",), list(tint), "PHOTO_POST_HALATION_TINT", "halation_tint")

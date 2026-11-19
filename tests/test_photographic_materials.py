@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import yaml
 
 from dcc_mcp_blender._photographic_material_ops import (
+    _linked_from,
     _pbr_texture_nodes,
     _uses_object_coordinates,
     configure_photographic_material,
@@ -41,6 +42,15 @@ def test_pbr_validation_resolves_each_required_map_and_object_coordinates():
 
     assert set(resolved) == {"diffuse", "roughness", "normal"}
     assert all(_uses_object_coordinates(node) for node in resolved.values())
+
+
+def test_leaf_link_validation_accepts_equivalent_blender_node_wrappers():
+    source = SimpleNamespace(as_pointer=lambda: 7)
+    wrapper = SimpleNamespace(as_pointer=lambda: 7)
+    socket = SimpleNamespace(name="Alpha")
+    target = SimpleNamespace(links=[SimpleNamespace(from_node=wrapper, from_socket=socket)])
+
+    assert _linked_from(target, source, "Alpha") is True
 
 
 def test_tools_yaml_declares_material_and_bevel_contracts():
