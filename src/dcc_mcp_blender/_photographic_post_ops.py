@@ -910,14 +910,37 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             source = nodes.get(source_key)
             if node is None or source is None:
                 return
+
+            def same_node(left: Any, right: Any) -> bool:
+                if left is right:
+                    return True
+                left_pointer = getattr(left, "as_pointer", None)
+                right_pointer = getattr(right, "as_pointer", None)
+                if callable(left_pointer) and callable(right_pointer):
+                    try:
+                        return int(left_pointer()) == int(right_pointer())
+                    except (TypeError, ValueError, RuntimeError):
+                        pass
+                left_name = getattr(left, "name", None)
+                right_name = getattr(right, "name", None)
+                if isinstance(left_name, str) and isinstance(right_name, str):
+                    return left_name == right_name
+                try:
+                    return left == right
+                except (TypeError, ValueError, RuntimeError):
+                    return False
+
             target = next(
                 (_get_socket(getattr(node, "inputs", ()), name) for name in input_names),
                 None,
             )
             matching_link = (
                 any(
-                    getattr(link, "from_node", None) is source
-                    and getattr(getattr(link, "from_socket", None), "name", None) in source_names
+                    same_node(getattr(link, "from_node", None), source)
+                    and (
+                        getattr(getattr(link, "from_socket", None), "name", None) in source_names
+                        or getattr(getattr(link, "from_socket", None), "identifier", None) in source_names
+                    )
                     for link in getattr(target, "links", ())
                 )
                 if target is not None
