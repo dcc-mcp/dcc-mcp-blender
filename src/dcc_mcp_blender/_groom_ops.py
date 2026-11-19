@@ -377,7 +377,14 @@ def create_groom_guides(
             other_side = _normalize(_cross(direction, side), fallback=(0.0, 1.0, 0.0))
             phase = rng.uniform(0.0, math.tau)
             amplitude = length_value * curl_value * rng.uniform(0.35, 1.0) * 0.25
-            spline = curve_data.splines.new("POLY")
+            # NURBS keeps the guide tangent continuous between samples.  The
+            # old POLY splines exposed every generated segment as a visible
+            # corner when the guide count was increased on a dense hair shell.
+            spline = curve_data.splines.new("NURBS")
+            spline.order_u = min(3, int(segments))
+            spline.use_endpoint_u = True
+            spline.use_cyclic_u = False
+            spline.resolution_u = 4
             spline.points.add(int(segments) - 1)
             for point_index, point in enumerate(spline.points):
                 t = point_index / float(int(segments) - 1)

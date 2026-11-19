@@ -50,6 +50,10 @@ class _Points(list):
 class _Spline:
     def __init__(self):
         self.points = _Points([_Point((0.0, 0.0, 0.0, 1.0))])
+        self.order_u = 0
+        self.use_endpoint_u = False
+        self.use_cyclic_u = False
+        self.resolution_u = 0
 
 
 class _Splines:
@@ -57,7 +61,7 @@ class _Splines:
         self.items = []
 
     def new(self, spline_type):
-        assert spline_type == "POLY"
+        assert spline_type == "NURBS"
         spline = _Spline()
         self.items.append(spline)
         return spline
