@@ -746,6 +746,13 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "vignette_mask": f"{POST_PREFIX}Vignette Mask",
             "vignette_darken": f"{POST_PREFIX}Vignette Darken",
             "vignette": f"{POST_PREFIX}Vignette",
+            "shadow_luma": f"{POST_PREFIX}Shadow Luma",
+            "shadow_weight": f"{POST_PREFIX}Shadow Weight",
+            "grain_texture": f"{POST_PREFIX}Film Grain Texture",
+            "grain_luma": f"{POST_PREFIX}Film Grain Luma",
+            "grain_shadow_mix": f"{POST_PREFIX}Film Grain Shadow Mix",
+            "grain_center": f"{POST_PREFIX}Grain Center",
+            "grain_color": f"{POST_PREFIX}Film Grain Color",
             "grain": f"{POST_PREFIX}Film Grain",
         }
         nodes = {key: _collection_get(tree.nodes, name) for key, name in required.items()}
@@ -858,6 +865,53 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "PHOTO_POST_GRAIN_STRENGTH",
             "grain_strength",
         )
+
+        def check_operation(node_key: str, expected: str, code: str, field: str) -> None:
+            node = nodes.get(node_key)
+            if node is not None and getattr(node, "operation", None) != expected:
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": expected,
+                        "actual": getattr(node, "operation", None),
+                    }
+                )
+
+        def check_link(node_key: str, socket_names: tuple[str, ...], code: str, field: str) -> None:
+            node = nodes.get(node_key)
+            if node is None:
+                return
+            socket = next(
+                (_get_socket(getattr(node, "inputs", ()), name) for name in socket_names),
+                None,
+            )
+            if socket is None or not getattr(socket, "links", ()):
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": "linked input",
+                        "actual": "unlinked input",
+                    }
+                )
+
+        check_input(
+            "vignette_darken",
+            ("B_Color", "Color2"),
+            [0.0, 0.0, 0.0, 1.0],
+            "PHOTO_POST_VIGNETTE_COLOR",
+            "vignette_color",
+        )
+        check_operation("shadow_weight", "SUBTRACT", "PHOTO_POST_SHADOW_WEIGHT_OPERATION", "shadow_weight_operation")
+        check_operation("grain_shadow_mix", "MULTIPLY", "PHOTO_POST_GRAIN_WEIGHT_OPERATION", "grain_weight_operation")
+        check_operation("grain_center", "SUBTRACT", "PHOTO_POST_GRAIN_CENTER_OPERATION", "grain_center_operation")
+        check_link("shadow_weight", ("Value_001", "Value 2"), "PHOTO_POST_SHADOW_LINK", "shadow_weight_luma")
+        check_link("grain_shadow_mix", ("Value_001", "Value 2"), "PHOTO_POST_GRAIN_SHADOW_LINK", "grain_shadow_luma")
+        for channel in ("Red", "Green", "Blue"):
+            check_link("grain_color", (channel,), "PHOTO_POST_GRAIN_COLOR_LINK", f"grain_color_{channel.lower()}")
         grain_config = _scene_property(scene, GRAIN_CONFIG_KEY)
         config = json.loads(grain_config) if isinstance(grain_config, str) else grain_config or {}
         image = bpy.data.images.get(str(config.get("image_name", ""))) if config else None
@@ -873,10 +927,22 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
                     "actual": list(getattr(image, "size", ())),
                 }
             )
+        texture = nodes.get("grain_texture")
+        if texture is not None and image is not None:
+            texture_image = getattr(texture, "image", None)
+            if getattr(texture_image, "name", None) != getattr(image, "name", None):
+                issues.append(
+                    {
+                        "code": "PHOTO_POST_GRAIN_TEXTURE_MISMATCH",
+                        "severity": "error",
+                        "field": "grain_texture",
+                        "expected": getattr(image, "name", None),
+                        "actual": getattr(texture_image, "name", None),
+                    }
+                )
         handlers = getattr(getattr(bpy, "app", None), "handlers", None)
         frame_handlers = getattr(handlers, "frame_change_pre", ()) if handlers is not None else ()
         if config.get("mode") == "SEQUENCE":
-            texture = _collection_get(tree.nodes, f"{POST_PREFIX}Film Grain Texture")
             if image is None or getattr(image, "source", None) != "SEQUENCE":
                 issues.append({"code": "PHOTO_POST_GRAIN_SEQUENCE_MISSING", "severity": "error"})
             if texture is None or not getattr(texture, "use_auto_refresh", False):
