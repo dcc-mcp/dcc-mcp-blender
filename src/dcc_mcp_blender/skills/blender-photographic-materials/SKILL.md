@@ -37,7 +37,7 @@ metadata:
 
 This skill packages the material contract for real-toy shots.
 
-- `configure_photographic_material` creates or updates painted toy, gloss-black eye, and plant-leaf materials. Optional diffuse, roughness, and GL normal paths use local object-space box projection with blend 0.25.
+- `configure_photographic_material` creates or updates painted toy, gloss-black eye, and plant-leaf materials. Optional diffuse, roughness, and GL normal paths use local object-space box projection with blend 0.25. Pass `texture_source: "Poly Haven"` when the maps come from the required scan library so the complete shot validator can verify provenance metadata.
 - Painted toys use Principled roughness 0.48, coat weight 0.25, coat roughness 0.3, and a scale 900 noise bump with 0.03 strength and 0.2 mm distance.
 - Gloss-black eyes use roughness 0.08, coat weight 1.0, and coat roughness 0.03.
 - Plant leaves use alpha cutout nodes, an alpha-capable surface mode, and a small subsurface contribution.

@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Any, Iterable
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
 from dcc_mcp_blender._animation_ops import action_fcurves
 from dcc_mcp_blender._photographic_lighting_ops import validate_motivated_lighting
+from dcc_mcp_blender._photographic_material_ops import (
+    PBR_MAPS,
+    TEXTURE_SOURCE_KEY,
+    _pbr_texture_nodes,
+    _uses_object_coordinates,
+)
 from dcc_mcp_blender._photographic_post_ops import validate_photographic_post
 from dcc_mcp_blender._render_profile_ops import validate_render_profile
+
+PHOTOGRAPHIC_GPU_BACKENDS = {"OPTIX", "METAL"}
 
 
 def _resolve_scene(bpy: Any, scene_name: str | None) -> tuple[Any | None, dict | None]:
@@ -74,6 +84,77 @@ def _has_texture_material(obj: Any) -> bool:
     return False
 
 
+def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
+    getter = getattr(owner, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except (TypeError, ValueError, RuntimeError):
+            pass
+    return getattr(owner, key, default)
+
+
+def _preview_metadata_path(image_path: str) -> Path:
+    return Path(f"{Path(image_path).expanduser().resolve()}.photographic.json")
+
+
+def _read_preview_metadata(metadata_path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _is_polyhaven_source(value: Any) -> bool:
+    normalized = "".join(str(value or "").casefold().split())
+    return normalized == "polyhaven" or "polyhaven.com" in normalized
+
+
+def _pbr_surface_state(obj: Any | None) -> dict[str, Any]:
+    materials = list(_iter_materials(obj)) if obj is not None else []
+    material_states = []
+    for material in materials:
+        tree = getattr(material, "node_tree", None)
+        nodes = _pbr_texture_nodes(tree) if tree is not None else {map_name: None for map_name in PBR_MAPS}
+        map_states = {}
+        for map_name, node in nodes.items():
+            map_states[map_name] = {
+                "present": node is not None,
+                "image_loaded": node is not None and getattr(node, "image", None) is not None,
+                "projection": getattr(node, "projection", None) if node is not None else None,
+                "projection_blend": getattr(node, "projection_blend", None) if node is not None else None,
+                "object_coordinates": _uses_object_coordinates(node) if node is not None else False,
+            }
+        source = _custom_value(material, TEXTURE_SOURCE_KEY)
+        material_states.append(
+            {
+                "name": getattr(material, "name", None),
+                "texture_source": source,
+                "polyhaven_source": _is_polyhaven_source(source),
+                "maps": map_states,
+            }
+        )
+
+    valid_materials = []
+    for state in material_states:
+        maps_valid = all(
+            details["present"]
+            and details["image_loaded"]
+            and details["projection"] == "BOX"
+            and isinstance(details["projection_blend"], (int, float))
+            and math.isclose(float(details["projection_blend"]), 0.25, abs_tol=1e-6)
+            and details["object_coordinates"]
+            for details in state["maps"].values()
+        )
+        valid_materials.append(maps_valid and state["polyhaven_source"])
+        state["contract_satisfied"] = valid_materials[-1]
+    return {
+        "valid": bool(material_states) and all(valid_materials),
+        "materials": material_states,
+    }
+
+
 def _issue(issues: list[dict], code: str, field: str, message: str, severity: str = "error", **details: Any) -> None:
     item = {"code": code, "field": field, "message": message, "severity": severity}
     if details:
@@ -96,6 +177,7 @@ def _validate_camera(
     height = float(getattr(location, "z", location[2])) - floor_z
     state = {
         "name": getattr(camera, "name", None),
+        "projection": getattr(data, "type", None),
         "lens": getattr(data, "lens", None),
         "sensor_width": getattr(data, "sensor_width", None),
         "height_m": height,
@@ -107,6 +189,15 @@ def _validate_camera(
     if getattr(camera, "type", None) != "CAMERA":
         _issue(issues, "PHOTO_CAMERA_TYPE", "camera", "The target object is not a camera.")
         return state
+    if state["projection"] != "PERSP":
+        _issue(
+            issues,
+            "PHOTO_CAMERA_PROJECTION",
+            "camera.data.type",
+            "Photographic shots require perspective projection.",
+            expected="PERSP",
+            actual=state["projection"],
+        )
     if state["sensor_width"] is None or not math.isclose(float(state["sensor_width"]), 36.0, abs_tol=1e-6):
         _issue(
             issues,
@@ -156,7 +247,7 @@ def _validate_camera(
             expected=[2.8, 5.6],
             actual=state["aperture_fstop"],
         )
-    if state["aperture_blades"] not in (None, 0):
+    if state["aperture_blades"] != 0:
         _issue(
             issues,
             "PHOTO_CAMERA_APERTURE",
@@ -232,7 +323,6 @@ def _validate_camera(
             "PHOTO_CAMERA_EASING",
             "animation",
             "Camera moves must contain at least one Bezier keyframe.",
-            severity="warning",
         )
     for curve in curves:
         if getattr(curve, "data_path", None) != "rotation_euler":
@@ -326,11 +416,40 @@ def _validate_toy_bevel(obj: Any | None, object_name: str, issues: list[dict]) -
     return state
 
 
+def _validate_toy_surface(
+    obj: Any | None,
+    object_name: str,
+    issues: list[dict],
+    require_pbr_textures: bool,
+) -> dict[str, Any]:
+    state = {"name": getattr(obj, "name", object_name)}
+    if not require_pbr_textures or obj is None or getattr(obj, "type", None) != "MESH":
+        return state
+    state["pbr"] = _pbr_surface_state(obj)
+    if not state["pbr"]["valid"]:
+        _issue(
+            issues,
+            "PHOTO_TOY_PBR",
+            object_name,
+            "The toy surface must use Poly Haven diffuse, roughness, and GL normal maps with object-space box projection and blend 0.25.",
+            expected={
+                "maps": list(PBR_MAPS),
+                "texture_source": "Poly Haven",
+                "projection": "BOX",
+                "projection_blend": 0.25,
+                "coordinates": "Object",
+            },
+            actual=state["pbr"],
+        )
+    return state
+
+
 def _validate_surface(
     obj: Any | None,
     role: str,
     issues: list[dict],
     minimum_dimension_m: float | None = None,
+    require_pbr_textures: bool = False,
 ) -> dict[str, Any]:
     state = {"name": getattr(obj, "name", None), "type": getattr(obj, "type", None) if obj else None}
     if obj is None:
@@ -359,6 +478,23 @@ def _validate_surface(
         _issue(issues, "PHOTO_SURFACE_MATERIAL", role, f"The {role} needs a node-based material.")
     if not state["has_texture_material"]:
         _issue(issues, "PHOTO_SURFACE_TEXTURE", role, f"The {role} must use a textured or scanned surface material.")
+    if require_pbr_textures:
+        state["pbr"] = _pbr_surface_state(obj)
+        if not state["pbr"]["valid"]:
+            _issue(
+                issues,
+                "PHOTO_SURFACE_PBR",
+                role,
+                f"The {role} must use Poly Haven diffuse, roughness, and GL normal maps with object-space box projection and blend 0.25.",
+                expected={
+                    "maps": list(PBR_MAPS),
+                    "texture_source": "Poly Haven",
+                    "projection": "BOX",
+                    "projection_blend": 0.25,
+                    "coordinates": "Object",
+                },
+                actual=state["pbr"],
+            )
     return state
 
 
@@ -382,6 +518,8 @@ def validate_photographic_shot(
     minimum_environment_dimension_m: float = 1.0,
     preview_still_path: str | None = None,
     require_post: bool = True,
+    require_preview_still: bool = True,
+    require_pbr_textures: bool = True,
 ) -> dict:
     """Run machine-readable checks for the prompt's complete shot contract."""
     try:
@@ -416,6 +554,10 @@ def validate_photographic_shot(
                 raise ValueError("toy_object_names must be an array of object names")
             if any(not isinstance(name, str) or not name.strip() for name in toy_object_names):
                 raise ValueError("toy_object_names must contain non-empty object names")
+        if not isinstance(require_post, bool) or not isinstance(require_preview_still, bool):
+            raise ValueError("require_post and require_preview_still must be booleans")
+        if not isinstance(require_pbr_textures, bool):
+            raise ValueError("require_pbr_textures must be a boolean")
 
         import bpy
 
@@ -490,10 +632,10 @@ def validate_photographic_shot(
         if hero is not None:
             if getattr(hero, "type", None) != "MESH":
                 _issue(issues, "PHOTO_HERO_TYPE", "hero_object", "The hero must be a mesh object.")
-            dimensions = getattr(hero, "dimensions", None)
-            maximum_dimension = max(float(value) for value in dimensions) if dimensions else None
+            dimensions = _dimensions(hero)
+            maximum_dimension = max(dimensions) if dimensions else None
             hero_state["maximum_dimension_m"] = maximum_dimension
-            if maximum_dimension is not None and not 0.025 <= maximum_dimension <= 0.067:
+            if maximum_dimension is None or not 0.025 <= maximum_dimension <= 0.067:
                 _issue(
                     issues,
                     "PHOTO_HERO_SCALE",
@@ -518,6 +660,9 @@ def validate_photographic_shot(
                 continue
             seen_toys.add(object_name)
             toy_states.append(_validate_toy_bevel(_object(bpy, object_name), object_name, issues))
+            toy_states[-1].update(
+                _validate_toy_surface(_object(bpy, object_name), object_name, issues, require_pbr_textures)
+            )
 
         surfaces = {}
         if floor_object:
@@ -526,6 +671,7 @@ def validate_photographic_shot(
                 "floor",
                 issues,
                 float(minimum_environment_dimension_m),
+                require_pbr_textures,
             )
         if wall_object:
             surfaces["wall"] = _validate_surface(
@@ -533,9 +679,18 @@ def validate_photographic_shot(
                 "wall",
                 issues,
                 float(minimum_environment_dimension_m),
+                require_pbr_textures,
             )
         if background_object and background is None:
             _issue(issues, "PHOTO_BACKGROUND_MISSING", "background_object", "The background object was not found.")
+        elif background_object:
+            surfaces["background"] = _validate_surface(
+                background,
+                "background",
+                issues,
+                float(minimum_environment_dimension_m),
+                require_pbr_textures,
+            )
 
         hidden_animation = []
         for obj in getattr(bpy.data, "objects", ()):
@@ -560,6 +715,7 @@ def validate_photographic_shot(
             device_backend=requested_backend,
             samples=getattr(getattr(scene, "cycles", None), "samples", None),
             scene_name=getattr(scene, "name", scene_name),
+            allow_cpu_fallback=False,
         )
         if not profile_report.get("success") or profile_report.get("context", {}).get("valid") is False:
             _issue(
@@ -569,6 +725,89 @@ def validate_photographic_shot(
                 "The selected photographic render profile is invalid.",
                 details=profile_report.get("context", {}),
             )
+        profile_context = profile_report.get("context", {})
+        resolved_backend = str(profile_context.get("resolved_device_backend", "")).upper()
+        if profile_report.get("success") and resolved_backend not in PHOTOGRAPHIC_GPU_BACKENDS:
+            _issue(
+                issues,
+                "PHOTO_GPU_BACKEND",
+                "device_backend",
+                "The photographic prompt requires OptiX on NVIDIA or Metal on macOS.",
+                expected=sorted(PHOTOGRAPHIC_GPU_BACKENDS),
+                actual=resolved_backend or None,
+            )
+        if (
+            profile == "FINAL"
+            and require_preview_still
+            and (not isinstance(preview_still_path, str) or not preview_still_path.strip())
+        ):
+            _issue(
+                issues,
+                "PHOTO_PREVIEW_STILL_MISSING",
+                "preview_still_path",
+                "Render and analyze a 25% / 32-sample preview still before final validation.",
+                expected="readable local preview still path",
+                actual=preview_still_path,
+            )
+        if (
+            profile == "FINAL"
+            and require_preview_still
+            and isinstance(preview_still_path, str)
+            and preview_still_path.strip()
+        ):
+            preview_path = Path(preview_still_path).expanduser().resolve()
+            if not preview_path.is_file():
+                _issue(
+                    issues,
+                    "PHOTO_PREVIEW_STILL_UNREADABLE",
+                    "preview_still_path",
+                    "The preview still must be a readable local file.",
+                    expected=str(preview_path),
+                    actual=None,
+                )
+            preview_metadata_path = _preview_metadata_path(preview_still_path)
+            preview_metadata = _read_preview_metadata(preview_metadata_path)
+            if preview_metadata is None:
+                _issue(
+                    issues,
+                    "PHOTO_PREVIEW_METADATA_MISSING",
+                    "preview_still_path",
+                    "The preview must be produced by render_photographic_test_still with 25% resolution and 32 samples.",
+                    expected={"profile_name": "PREVIEW", "resolution_percentage": 25, "samples": 32},
+                    actual=str(preview_metadata_path),
+                )
+            else:
+                expected_preview = {
+                    "contract": "dcc-mcp-blender.photographic-preview.v1",
+                    "still_path": str(preview_path),
+                    "profile_name": "PREVIEW",
+                    "resolution_percentage": 25,
+                    "samples": 32,
+                    "file_format": "JPEG",
+                }
+                mismatches = {
+                    key: {"expected": value, "actual": preview_metadata.get(key)}
+                    for key, value in expected_preview.items()
+                    if preview_metadata.get(key) != value
+                }
+                if mismatches:
+                    _issue(
+                        issues,
+                        "PHOTO_PREVIEW_METADATA_MISMATCH",
+                        "preview_still_path",
+                        "The preview metadata does not match the 25% / 32-sample JPEG contract.",
+                        expected=expected_preview,
+                        actual=mismatches,
+                    )
+                if str(preview_metadata.get("device_backend", "")).upper() not in PHOTOGRAPHIC_GPU_BACKENDS:
+                    _issue(
+                        issues,
+                        "PHOTO_PREVIEW_GPU_BACKEND",
+                        "preview_still_path",
+                        "The preview must be rendered with OptiX or Metal.",
+                        expected=sorted(PHOTOGRAPHIC_GPU_BACKENDS),
+                        actual=preview_metadata.get("device_backend"),
+                    )
         post_report = None
         if require_post:
             post_report = validate_photographic_post(scene_name=getattr(scene, "name", scene_name))
@@ -588,6 +827,7 @@ def validate_photographic_shot(
                 hero_object=hero_object,
                 background_object=background_object,
                 preview_still_path=preview_still_path,
+                require_polyhaven_hdri=True,
             )
             lighting_context = lighting_report.get("context", {})
             if not lighting_report.get("success") or lighting_context.get("valid") is False:
@@ -597,6 +837,24 @@ def validate_photographic_shot(
                     "lighting",
                     "The motivated lighting contract is invalid.",
                     details=lighting_context,
+                )
+            elif any(
+                issue.get("code") == "HERO_BACKGROUND_CONTRAST_MISSING" for issue in lighting_context.get("issues", [])
+            ):
+                _issue(
+                    issues,
+                    "PHOTO_HERO_BACKGROUND_CONTRAST",
+                    "lighting",
+                    "The hero must be in front of something darker or cooler.",
+                    details=lighting_context.get("hero_background"),
+                )
+            if any(issue.get("code") == "WARM_SATURATED_HIGHLIGHTS" for issue in lighting_context.get("issues", [])):
+                _issue(
+                    issues,
+                    "PHOTO_LIGHTING_COLOR_SAFETY",
+                    "lighting",
+                    "Lower the motivated key energy until saturated colors remain safe under AgX.",
+                    details=lighting_context.get("color_safety"),
                 )
 
         return skill_success(

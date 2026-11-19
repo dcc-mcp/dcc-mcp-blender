@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import yaml
 
+import dcc_mcp_blender._photographic_validation_ops as validation_ops
 from dcc_mcp_blender._photographic_delivery_ops import (
     VIDEO_COLOR_SPACE,
     VIDEO_CRF,
@@ -22,7 +25,91 @@ from dcc_mcp_blender._photographic_post_ops import (
     _values_equal,
     configure_photographic_post,
 )
-from dcc_mcp_blender._photographic_validation_ops import validate_photographic_shot
+from dcc_mcp_blender._photographic_validation_ops import _validate_surface, validate_photographic_shot
+
+
+class _ObjectCollection(dict):
+    def __iter__(self):
+        return iter(self.values())
+
+
+def _fake_shot_bpy():
+    focus = SimpleNamespace(name="Eyes", type="EMPTY")
+    camera_data = SimpleNamespace(
+        lens=50.0,
+        sensor_width=36.0,
+        dof=SimpleNamespace(
+            use_dof=True,
+            aperture_fstop=4.0,
+            aperture_blades=0,
+            focus_object=focus,
+        ),
+    )
+    camera = SimpleNamespace(
+        name="Camera",
+        type="CAMERA",
+        data=camera_data,
+        location=[0.0, 0.0, 0.02],
+        animation_data=None,
+    )
+    material = SimpleNamespace(
+        name="Surface",
+        use_nodes=True,
+        node_tree=SimpleNamespace(nodes=[]),
+    )
+
+    def mesh(name, dimensions):
+        return SimpleNamespace(
+            name=name,
+            type="MESH",
+            dimensions=dimensions,
+            modifiers=[],
+            material_slots=[SimpleNamespace(material=material)],
+            data=SimpleNamespace(materials=[material]),
+            animation_data=None,
+        )
+
+    objects = _ObjectCollection(
+        {
+            "Camera": camera,
+            "Eyes": focus,
+            "Hero": mesh("Hero", (0.05, 0.05, 0.05)),
+            "Background": mesh("Background", (2.0, 2.0, 2.0)),
+            "Floor": mesh("Floor", (2.0, 2.0, 0.02)),
+            "Wall": mesh("Wall", (2.0, 0.02, 2.0)),
+            "Key": SimpleNamespace(name="Key", type="LIGHT", data=SimpleNamespace(type="AREA", energy=100.0)),
+        }
+    )
+    scene = SimpleNamespace(
+        name="Scene",
+        camera=camera,
+        frame_start=1,
+        frame_end=2,
+        unit_settings=SimpleNamespace(system="METRIC", scale_length=1.0, length_unit="METERS"),
+        cycles=SimpleNamespace(samples=64, device="GPU"),
+    )
+    return SimpleNamespace(
+        context=SimpleNamespace(scene=scene),
+        data=SimpleNamespace(objects=objects, scenes={"Scene": scene}),
+    )
+
+
+def _pbr_texture_node(map_name):
+    coordinate_node = SimpleNamespace(type="TEX_COORD")
+    object_socket = SimpleNamespace(name="Object")
+    vector_socket = SimpleNamespace(
+        name="Vector",
+        links=[SimpleNamespace(from_node=coordinate_node, from_socket=object_socket)],
+    )
+    return SimpleNamespace(
+        name=f"DCC Photo {map_name.title()} Texture",
+        type="TEX_IMAGE",
+        bl_idname="ShaderNodeTexImage",
+        inputs=[vector_socket],
+        image=object(),
+        projection="BOX",
+        projection_blend=0.25,
+    )
 
 
 def test_photographic_post_defaults_and_grain_are_frame_deterministic():
@@ -90,7 +177,198 @@ def test_tools_yaml_declares_photographic_contracts():
     assert properties["toy_object_names"]["items"]["type"] == "string"
     assert properties["minimum_environment_dimension_m"]["default"] == 1.0
     assert "preview_still_path" in properties
+    assert properties["require_preview_still"]["default"] is True
+    assert properties["require_pbr_textures"]["default"] is True
     assert "render_photographic_test_still" in {tool["name"] for tool in render_profile["tools"]}
+
+
+def test_complete_surface_validation_requires_polyhaven_pbr_maps():
+    material = SimpleNamespace(
+        name="Floor Scan",
+        use_nodes=True,
+        dcc_mcp_photographic_texture_source="Local file",
+        node_tree=SimpleNamespace(
+            nodes=[_pbr_texture_node(map_name) for map_name in ("diffuse", "roughness", "normal")]
+        ),
+    )
+    surface = SimpleNamespace(
+        name="Floor",
+        type="MESH",
+        dimensions=(2.0, 2.0, 0.02),
+        material_slots=[SimpleNamespace(material=material)],
+    )
+
+    issues = []
+    state = _validate_surface(surface, "floor", issues, 1.0, True)
+
+    assert state["pbr"]["valid"] is False
+    assert any(issue["code"] == "PHOTO_SURFACE_PBR" for issue in issues)
+
+    material.dcc_mcp_photographic_texture_source = "Poly Haven"
+    issues = []
+    state = _validate_surface(surface, "floor", issues, 1.0, True)
+
+    assert state["pbr"]["valid"] is True
+    assert issues == []
+
+
+def test_complete_shot_validation_rejects_cpu_backend(monkeypatch):
+    fake_bpy = _fake_shot_bpy()
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_render_profile",
+        lambda **kwargs: {
+            "success": True,
+            "context": {"valid": True, "resolved_device_backend": "CPU"},
+        },
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_photographic_post",
+        lambda **kwargs: {"success": True, "context": {"valid": True}},
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_motivated_lighting",
+        lambda **kwargs: {"success": True, "context": {"valid": True}},
+    )
+
+    result = validate_photographic_shot(
+        hero_object="Hero",
+        focus_object="Eyes",
+        background_object="Background",
+        floor_object="Floor",
+        wall_object="Wall",
+        source_name="Key",
+        preview_still_path="preview.jpg",
+    )
+
+    assert any(issue["code"] == "PHOTO_GPU_BACKEND" for issue in result["context"]["issues"])
+
+
+def test_complete_shot_validation_requires_preview_before_final(monkeypatch):
+    fake_bpy = _fake_shot_bpy()
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_render_profile",
+        lambda **kwargs: {
+            "success": True,
+            "context": {"valid": True, "resolved_device_backend": "OPTIX"},
+        },
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_photographic_post",
+        lambda **kwargs: {"success": True, "context": {"valid": True}},
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_motivated_lighting",
+        lambda **kwargs: {"success": True, "context": {"valid": True}},
+    )
+
+    result = validate_photographic_shot(
+        hero_object="Hero",
+        focus_object="Eyes",
+        background_object="Background",
+        floor_object="Floor",
+        wall_object="Wall",
+        source_name="Key",
+    )
+
+    assert any(issue["code"] == "PHOTO_PREVIEW_STILL_MISSING" for issue in result["context"]["issues"])
+
+
+def _mock_complete_validation_dependencies(monkeypatch, lighting_context=None):
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_render_profile",
+        lambda **kwargs: {
+            "success": True,
+            "context": {"valid": True, "resolved_device_backend": "OPTIX"},
+        },
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_photographic_post",
+        lambda **kwargs: {"success": True, "context": {"valid": True}},
+    )
+    monkeypatch.setattr(
+        validation_ops,
+        "validate_motivated_lighting",
+        lambda **kwargs: {
+            "success": True,
+            "context": lighting_context or {"valid": True, "issues": []},
+        },
+    )
+
+
+def test_complete_shot_validation_accepts_rendered_preview_evidence(monkeypatch, tmp_path):
+    fake_bpy = _fake_shot_bpy()
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    _mock_complete_validation_dependencies(monkeypatch)
+
+    preview = tmp_path / "preview.jpg"
+    preview.write_bytes(b"jpeg")
+    metadata_path = Path(f"{preview.resolve()}.photographic.json")
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "contract": "dcc-mcp-blender.photographic-preview.v1",
+                "still_path": str(preview.resolve()),
+                "profile_name": "PREVIEW",
+                "resolution_percentage": 25,
+                "samples": 32,
+                "file_format": "JPEG",
+                "device_backend": "OPTIX",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = validation_ops.validate_photographic_shot(
+        hero_object="Hero",
+        focus_object="Eyes",
+        background_object="Background",
+        floor_object="Floor",
+        wall_object="Wall",
+        source_name="Key",
+        preview_still_path=str(preview),
+        require_pbr_textures=False,
+    )
+
+    codes = {issue["code"] for issue in result["context"]["issues"]}
+    assert "PHOTO_PREVIEW_METADATA_MISSING" not in codes
+    assert "PHOTO_PREVIEW_METADATA_MISMATCH" not in codes
+    assert "PHOTO_PREVIEW_GPU_BACKEND" not in codes
+
+
+def test_complete_shot_validation_promotes_background_contrast_warning(monkeypatch):
+    fake_bpy = _fake_shot_bpy()
+    monkeypatch.setitem(sys.modules, "bpy", fake_bpy)
+    _mock_complete_validation_dependencies(
+        monkeypatch,
+        {
+            "valid": True,
+            "hero_background": {"background_darker_or_cooler": False},
+            "issues": [{"code": "HERO_BACKGROUND_CONTRAST_MISSING", "severity": "warning"}],
+        },
+    )
+
+    result = validation_ops.validate_photographic_shot(
+        hero_object="Hero",
+        focus_object="Eyes",
+        background_object="Background",
+        floor_object="Floor",
+        wall_object="Wall",
+        source_name="Key",
+        require_preview_still=False,
+        require_pbr_textures=False,
+    )
+
+    assert any(issue["code"] == "PHOTO_HERO_BACKGROUND_CONTRAST" for issue in result["context"]["issues"])
 
 
 def test_photographic_shot_request_validates_before_blender_import():

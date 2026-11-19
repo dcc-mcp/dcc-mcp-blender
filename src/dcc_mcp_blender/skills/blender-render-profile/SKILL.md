@@ -48,14 +48,16 @@ adaptive sampling, OIDN denoising, light paths, clamps, caustics, motion blur,
 persistent data, JPEG output quality, and AgX color management.
 
 Use `get_render_capabilities` before selecting a backend. `AUTO` prefers a
-usable GPU backend and falls back to CPU when `allow_cpu_fallback` is true.
+usable GPU backend. The photographic preview tool rejects CPU fallback unless
+the caller explicitly enables `allow_cpu_fallback`.
 Explicit GPU requests fail before scene mutation when the backend is absent.
 
 Call `validate_render_profile` after applying a profile and before submitting a
 long render job.
 
 Use `render_photographic_test_still` for the required 25% / 32-sample JPEG
-inspection. It temporarily applies the preview profile, renders one frame, and
-restores the previous render settings and current frame afterward. Pass its
-output path to `analyze_photographic_test_still` before changing light energy
-or starting the final render.
+inspection. It temporarily applies the preview profile, renders one frame,
+writes a `.photographic.json` evidence sidecar, and restores the previous
+render settings and current frame afterward. Pass its output path to
+`analyze_photographic_test_still` before changing light energy or starting the
+final render.

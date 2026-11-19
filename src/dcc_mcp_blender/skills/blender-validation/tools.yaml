@@ -208,7 +208,7 @@ tools:
       open_world_hint: false
 
   - name: validate_photographic_shot
-    description: "Validate the complete real-toy shot contract including metric scale, life-size floor and wall dimensions, camera limits, continuous eased motion, endpoint extensions, bevels on every supplied toy part, textured surfaces, render profile, compositor finish, color-safety analysis, and animated hide_render violations."
+    description: "Validate the complete real-toy shot contract including metric scale, Poly Haven PBR maps with object-space box projection on hero, toy, background, floor, and wall surfaces, life-size environment dimensions, perspective camera limits, continuous eased motion, endpoint extensions, bevels on every supplied toy part, OptiX or Metal rendering, compositor finish, preview evidence and color-safety analysis, hero-background contrast, and animated hide_render violations."
     source_file: scripts/validate_photographic_shot.py
     execution: sync
     affinity: main
@@ -267,7 +267,7 @@ tools:
           type: string
           enum: [AUTO, OPTIX, CUDA, HIP, ONEAPI, METAL, CPU]
           default: AUTO
-          description: "Cycles backend to validate. AUTO follows the active GPU selection and respects an active CPU device."
+          description: "Cycles backend to validate. The complete photographic shot contract accepts OptiX or Metal and rejects CPU fallback."
         scene_kind:
           type: string
           enum: [EXTERIOR, INTERIOR]
@@ -288,10 +288,18 @@ tools:
         preview_still_path:
           type: string
           minLength: 1
-          description: "Optional local preview still for rendered-pixel warm highlight analysis."
+          description: "Local 25% / 32-sample preview still required for FINAL validation and rendered-pixel warm highlight analysis."
         require_post:
           type: boolean
           default: true
+        require_preview_still:
+          type: boolean
+          default: true
+          description: "Require preview_still_path when profile_name is FINAL."
+        require_pbr_textures:
+          type: boolean
+          default: true
+          description: "Require the hero, supplied toy parts, background, floor, and wall to use Poly Haven diffuse, roughness, and GL normal maps with object-space box projection and blend 0.25."
     output_schema:
       type: object
       additionalProperties: true

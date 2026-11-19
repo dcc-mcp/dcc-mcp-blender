@@ -45,9 +45,12 @@ failure causes instead of scraping arbitrary script output.
 `validate_photographic_shot` checks the complete real-toy contract before a
 render. Supply the hero, eye-focus target, background, floor, wall, and
 motivated source references. The active scene camera remains the default when
-`camera_name` is omitted. The report covers metric scene scale, life-size floor
-and wall dimensions, physical camera limits, continuous camera animation and
-endpoint extensions, bevels on every supplied toy part, textured floor and
-wall surfaces, animated `hide_render`, the selected Cycles profile, motivated
-lighting, preview color safety when a still is supplied, and the photographic
-compositor finish.
+`camera_name` is omitted. The report covers metric scene scale, Poly Haven PBR
+maps with object-space box projection on the hero, supplied toy parts,
+background, floor, and wall, life-size environment dimensions, physical camera
+limits, continuous camera animation and endpoint extensions, bevels on every
+supplied toy part, animated `hide_render`, the selected Cycles profile with an
+OptiX or Metal backend, motivated lighting, required preview color safety for
+final shots, and the photographic compositor finish. FINAL validation also
+checks the preview evidence sidecar produced by
+`render_photographic_test_still`.

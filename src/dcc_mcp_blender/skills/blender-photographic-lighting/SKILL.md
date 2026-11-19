@@ -42,4 +42,4 @@ This skill packages the motivated-lighting contract for real-toy shots.
 - `analyze_photographic_test_still` is read-only and measures highlights above 185/255, saturated highlight ratio, and warm orange or pink bias.
 - `validate_motivated_lighting` accepts an optional preview still path and includes the pixel analysis in the validation report.
 
-Pass a local downloaded Poly Haven HDRI path explicitly when using `OUTDOOR_HDRI`.
+Pass a local downloaded Poly Haven HDRI path explicitly when using `OUTDOOR_HDRI`, and set `hdri_source: "Poly Haven"` so the complete photographic shot validator can verify the required provenance metadata.
