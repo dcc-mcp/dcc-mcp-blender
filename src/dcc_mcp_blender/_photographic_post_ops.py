@@ -746,6 +746,13 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "vignette_mask": f"{POST_PREFIX}Vignette Mask",
             "vignette_darken": f"{POST_PREFIX}Vignette Darken",
             "vignette": f"{POST_PREFIX}Vignette",
+            "shadow_luma": f"{POST_PREFIX}Shadow Luma",
+            "shadow_weight": f"{POST_PREFIX}Shadow Weight",
+            "grain_texture": f"{POST_PREFIX}Film Grain Texture",
+            "grain_luma": f"{POST_PREFIX}Film Grain Luma",
+            "grain_shadow_mix": f"{POST_PREFIX}Film Grain Shadow Mix",
+            "grain_center": f"{POST_PREFIX}Grain Center",
+            "grain_color": f"{POST_PREFIX}Film Grain Color",
             "grain": f"{POST_PREFIX}Film Grain",
         }
         nodes = {key: _collection_get(tree.nodes, name) for key, name in required.items()}
@@ -858,6 +865,134 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "PHOTO_POST_GRAIN_STRENGTH",
             "grain_strength",
         )
+
+        def check_operation(node_key: str, expected: str, code: str, field: str) -> None:
+            node = nodes.get(node_key)
+            if node is not None and getattr(node, "operation", None) != expected:
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": expected,
+                        "actual": getattr(node, "operation", None),
+                    }
+                )
+
+        def check_unlinked(node_key: str, socket_names: tuple[str, ...], code: str, field: str) -> None:
+            node = nodes.get(node_key)
+            if node is None:
+                return
+            socket = next(
+                (_get_socket(getattr(node, "inputs", ()), name) for name in socket_names),
+                None,
+            )
+            if socket is not None and getattr(socket, "links", ()):
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": "unlinked input",
+                        "actual": "linked input",
+                    }
+                )
+
+        def check_link_from(
+            node_key: str,
+            input_names: tuple[str, ...],
+            source_key: str,
+            source_names: tuple[str, ...],
+            code: str,
+            field: str,
+        ) -> None:
+            node = nodes.get(node_key)
+            source = nodes.get(source_key)
+            if node is None or source is None:
+                return
+
+            def same_node(left: Any, right: Any) -> bool:
+                if left is right:
+                    return True
+                left_pointer = getattr(left, "as_pointer", None)
+                right_pointer = getattr(right, "as_pointer", None)
+                if callable(left_pointer) and callable(right_pointer):
+                    try:
+                        return int(left_pointer()) == int(right_pointer())
+                    except (TypeError, ValueError, RuntimeError):
+                        pass
+                left_name = getattr(left, "name", None)
+                right_name = getattr(right, "name", None)
+                if isinstance(left_name, str) and isinstance(right_name, str):
+                    return left_name == right_name
+                try:
+                    return left == right
+                except (TypeError, ValueError, RuntimeError):
+                    return False
+
+            target = next(
+                (_get_socket(getattr(node, "inputs", ()), name) for name in input_names),
+                None,
+            )
+            matching_link = (
+                any(
+                    same_node(getattr(link, "from_node", None), source)
+                    and (
+                        getattr(getattr(link, "from_socket", None), "name", None) in source_names
+                        or getattr(getattr(link, "from_socket", None), "identifier", None) in source_names
+                    )
+                    for link in getattr(target, "links", ())
+                )
+                if target is not None
+                else False
+            )
+            if not matching_link:
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": f"linked from {source_key} ({', '.join(source_names)})",
+                        "actual": "different or missing source",
+                    }
+                )
+
+        check_input(
+            "vignette_darken",
+            ("B_Color", "Color2"),
+            [0.0, 0.0, 0.0, 1.0],
+            "PHOTO_POST_VIGNETTE_COLOR",
+            "vignette_color",
+        )
+        check_unlinked("vignette_darken", ("B_Color", "Color2"), "PHOTO_POST_VIGNETTE_COLOR_LINK", "vignette_color")
+        check_operation("shadow_weight", "SUBTRACT", "PHOTO_POST_SHADOW_WEIGHT_OPERATION", "shadow_weight_operation")
+        check_operation("grain_shadow_mix", "MULTIPLY", "PHOTO_POST_GRAIN_WEIGHT_OPERATION", "grain_weight_operation")
+        check_operation("grain_center", "SUBTRACT", "PHOTO_POST_GRAIN_CENTER_OPERATION", "grain_center_operation")
+        check_link_from(
+            "shadow_weight",
+            ("Value_001", "Value 2"),
+            "shadow_luma",
+            ("Val",),
+            "PHOTO_POST_SHADOW_LINK",
+            "shadow_weight_luma",
+        )
+        check_link_from(
+            "grain_shadow_mix",
+            ("Value_001", "Value 2"),
+            "shadow_weight",
+            ("Value",),
+            "PHOTO_POST_GRAIN_SHADOW_LINK",
+            "grain_shadow_luma",
+        )
+        for channel in ("Red", "Green", "Blue"):
+            check_link_from(
+                "grain_color",
+                (channel,),
+                "grain_shadow_mix",
+                ("Value",),
+                "PHOTO_POST_GRAIN_COLOR_LINK",
+                f"grain_color_{channel.lower()}",
+            )
         grain_config = _scene_property(scene, GRAIN_CONFIG_KEY)
         config = json.loads(grain_config) if isinstance(grain_config, str) else grain_config or {}
         image = bpy.data.images.get(str(config.get("image_name", ""))) if config else None
@@ -873,10 +1008,22 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
                     "actual": list(getattr(image, "size", ())),
                 }
             )
+        texture = nodes.get("grain_texture")
+        if texture is not None and image is not None:
+            texture_image = getattr(texture, "image", None)
+            if getattr(texture_image, "name", None) != getattr(image, "name", None):
+                issues.append(
+                    {
+                        "code": "PHOTO_POST_GRAIN_TEXTURE_MISMATCH",
+                        "severity": "error",
+                        "field": "grain_texture",
+                        "expected": getattr(image, "name", None),
+                        "actual": getattr(texture_image, "name", None),
+                    }
+                )
         handlers = getattr(getattr(bpy, "app", None), "handlers", None)
         frame_handlers = getattr(handlers, "frame_change_pre", ()) if handlers is not None else ()
         if config.get("mode") == "SEQUENCE":
-            texture = _collection_get(tree.nodes, f"{POST_PREFIX}Film Grain Texture")
             if image is None or getattr(image, "source", None) != "SEQUENCE":
                 issues.append({"code": "PHOTO_POST_GRAIN_SEQUENCE_MISSING", "severity": "error"})
             if texture is None or not getattr(texture, "use_auto_refresh", False):
