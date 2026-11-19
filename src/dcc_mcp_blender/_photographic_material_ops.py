@@ -205,6 +205,49 @@ def _configure_pbr_nodes(bpy: Any, material: Any, principled: Any, texture_paths
     return loaded
 
 
+def _pbr_texture_nodes(node_tree: Any) -> dict[str, Any | None]:
+    return {
+        map_name: _node(node_tree.nodes, f"{PREFIX}{map_name.title()} Texture", "TEX_IMAGE") for map_name in PBR_MAPS
+    }
+
+
+def _uses_object_coordinates(texture: Any) -> bool:
+    vector = _socket(getattr(texture, "inputs", ()), ("Vector",))
+    if vector is None:
+        return False
+    return any(
+        getattr(getattr(link, "from_node", None), "type", None) == "TEX_COORD"
+        and getattr(getattr(link, "from_socket", None), "name", None) == "Object"
+        for link in getattr(vector, "links", ())
+    )
+
+
+def _linked_from(target: Any, source: Any, source_socket_name: str) -> bool:
+    if target is None or source is None:
+        return False
+
+    def same_node(left: Any, right: Any) -> bool:
+        if left is right:
+            return True
+        left_pointer = getattr(left, "as_pointer", None)
+        right_pointer = getattr(right, "as_pointer", None)
+        if callable(left_pointer) and callable(right_pointer):
+            try:
+                return int(left_pointer()) == int(right_pointer())
+            except (TypeError, ValueError, RuntimeError):
+                pass
+        try:
+            return left == right
+        except (TypeError, ValueError, RuntimeError):
+            return False
+
+    return any(
+        same_node(getattr(link, "from_node", None), source)
+        and getattr(getattr(link, "from_socket", None), "name", None) == source_socket_name
+        for link in getattr(target, "links", ())
+    )
+
+
 def _configure_noise_bump(material: Any, principled: Any) -> dict[str, float]:
     node_tree = material.node_tree
     noise = _new_node(node_tree.nodes, "ShaderNodeTexNoise", f"{PREFIX}Fine Surface Noise")
@@ -399,6 +442,8 @@ def configure_toy_bevel(
         modifier.limit_method = "NONE"
         if hasattr(modifier, "affect"):
             modifier.affect = "EDGES"
+        if hasattr(modifier, "offset_type"):
+            modifier.offset_type = "WIDTH"
         modifier.show_viewport = True
         modifier.show_render = True
         return skill_success(
@@ -410,6 +455,8 @@ def configure_toy_bevel(
                 "width_m": modifier.width,
                 "segments": modifier.segments,
                 "limit_method": modifier.limit_method,
+                "offset_type": getattr(modifier, "offset_type", None),
+                "affect": getattr(modifier, "affect", None),
                 "show_render": bool(modifier.show_render),
             },
         )
@@ -563,12 +610,14 @@ def validate_photographic_material(
             for node in material.node_tree.nodes
             if str(getattr(node, "name", "")).startswith(PREFIX) and getattr(node, "type", None) == "TEX_IMAGE"
         ]
-        if require_pbr_textures and len(texture_nodes) < 3:
+        pbr_nodes = _pbr_texture_nodes(material.node_tree)
+        if require_pbr_textures and any(pbr_nodes[map_name] is None for map_name in PBR_MAPS):
+            missing_maps = [map_name for map_name in PBR_MAPS if pbr_nodes[map_name] is None]
             issue(
                 "PBR_TEXTURES_INCOMPLETE",
                 "texture_maps",
                 PBR_MAPS,
-                [getattr(getattr(node, "image", None), "filepath", None) for node in texture_nodes],
+                missing_maps,
                 "Diffuse, roughness, and GL normal maps are required.",
             )
         for node in texture_nodes:
@@ -582,6 +631,47 @@ def validate_photographic_material(
                         "projection_blend": getattr(node, "projection_blend", None),
                     },
                     "PBR textures use object-space box projection with blend 0.25.",
+                )
+        if require_pbr_textures:
+            for map_name, node in pbr_nodes.items():
+                if node is not None and not _uses_object_coordinates(node):
+                    issue(
+                        "TEXTURE_COORDINATES_MISMATCH",
+                        map_name,
+                        "Object coordinates",
+                        False,
+                        "PBR textures must use object-space coordinates.",
+                    )
+
+        if kind == "PLANT_LEAF":
+            diffuse = pbr_nodes.get("diffuse")
+            alpha_node = _node(material.node_tree.nodes, f"{PREFIX}Leaf Alpha Cutout", "MATH")
+            alpha_input = _socket(getattr(alpha_node, "inputs", ()), ("Value",)) if alpha_node is not None else None
+            principled_alpha = (
+                _socket(getattr(principled, "inputs", ()), ("Alpha",)) if principled is not None else None
+            )
+            if (
+                diffuse is None
+                or alpha_node is None
+                or not _linked_from(alpha_input, diffuse, "Alpha")
+                or not _linked_from(principled_alpha, alpha_node, "Value")
+            ):
+                issue(
+                    "LEAF_ALPHA_CUTOUT_MISSING",
+                    "alpha_cutout",
+                    True,
+                    False,
+                    "Plant leaves need the scanned diffuse alpha connected through a cutout node.",
+                )
+            if principled is not None and not _close(
+                _socket_value(principled, ("Transmission Weight", "Transmission")), 0.04
+            ):
+                issue(
+                    "LEAF_TRANSMISSION_MISMATCH",
+                    "Transmission Weight",
+                    0.04,
+                    _socket_value(principled, ("Transmission Weight", "Transmission")),
+                    "Plant leaves use a small transmission contribution for translucency.",
                 )
 
         bevel = None
@@ -626,14 +716,26 @@ def validate_photographic_material(
                     if (
                         getattr(bevel, "segments", None) != BEVEL_SEGMENTS
                         or getattr(bevel, "limit_method", None) != "NONE"
+                        or getattr(bevel, "offset_type", None) not in {"OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"}
+                        or getattr(bevel, "affect", "EDGES") != "EDGES"
+                        or getattr(bevel, "show_render", True) is not True
                     ):
                         issue(
                             "BEVEL_CONTRACT_MISMATCH",
                             "bevel",
-                            {"segments": 3, "limit_method": "NONE"},
+                            {
+                                "segments": 3,
+                                "limit_method": "NONE",
+                                "offset_type": ["OFFSET", "WIDTH", "DEPTH", "ABSOLUTE"],
+                                "affect": "EDGES",
+                                "show_render": True,
+                            },
                             {
                                 "segments": getattr(bevel, "segments", None),
                                 "limit_method": getattr(bevel, "limit_method", None),
+                                "offset_type": getattr(bevel, "offset_type", None),
+                                "affect": getattr(bevel, "affect", None),
+                                "show_render": getattr(bevel, "show_render", None),
                             },
                             "Bevel every edge with three segments.",
                         )

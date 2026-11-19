@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -16,7 +17,9 @@ from dcc_mcp_blender._photographic_delivery_ops import (
 )
 from dcc_mcp_blender._photographic_post_ops import (
     DEFAULT_HALATION_THRESHOLD,
+    _curve_points,
     _grain_pixels,
+    _values_equal,
     configure_photographic_post,
 )
 from dcc_mcp_blender._photographic_validation_ops import validate_photographic_shot
@@ -26,6 +29,15 @@ def test_photographic_post_defaults_and_grain_are_frame_deterministic():
     assert DEFAULT_HALATION_THRESHOLD == 185.0 / 255.0
     assert _grain_pixels(2, 1337, 1) == _grain_pixels(2, 1337, 1)
     assert _grain_pixels(2, 1337, 1) != _grain_pixels(2, 1337, 2)
+
+
+def test_photographic_post_validation_helpers_compare_color_sequences_and_curve_points():
+    point_a = SimpleNamespace(location=(0.25, 0.18))
+    point_b = SimpleNamespace(location=(0.75, 0.82))
+    node = SimpleNamespace(mapping=SimpleNamespace(curves=[SimpleNamespace(points=[point_a, point_b])]))
+
+    assert _values_equal([1.0, 0.82, 0.62], (1.0, 0.82, 0.62))
+    assert _curve_points(node) == [[0.25, 0.18], [0.75, 0.82]]
 
 
 def test_photographic_post_rejects_invalid_grain_size_without_blender():

@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
-from dcc_mcp_blender._photographic_material_ops import configure_photographic_material
+from dcc_mcp_blender._photographic_material_ops import (
+    _linked_from,
+    _pbr_texture_nodes,
+    _uses_object_coordinates,
+    configure_photographic_material,
+)
 
 
 def test_plant_material_requires_a_diffuse_scan_for_alpha_cutout():
@@ -14,6 +20,37 @@ def test_plant_material_requires_a_diffuse_scan_for_alpha_cutout():
 
     assert result["success"] is False
     assert "diffuse scan" in result["error"]
+
+
+def test_pbr_validation_resolves_each_required_map_and_object_coordinates():
+    coordinate_node = SimpleNamespace(type="TEX_COORD")
+    object_socket = SimpleNamespace(name="Object")
+    vector_socket = SimpleNamespace(
+        name="Vector",
+        links=[SimpleNamespace(from_node=coordinate_node, from_socket=object_socket)],
+    )
+    nodes = [
+        SimpleNamespace(
+            name=f"DCC Photo {map_name.title()} Texture",
+            type="TEX_IMAGE",
+            inputs=[vector_socket],
+        )
+        for map_name in ("diffuse", "roughness", "normal")
+    ]
+
+    resolved = _pbr_texture_nodes(SimpleNamespace(nodes=nodes))
+
+    assert set(resolved) == {"diffuse", "roughness", "normal"}
+    assert all(_uses_object_coordinates(node) for node in resolved.values())
+
+
+def test_leaf_link_validation_accepts_equivalent_blender_node_wrappers():
+    source = SimpleNamespace(as_pointer=lambda: 7)
+    wrapper = SimpleNamespace(as_pointer=lambda: 7)
+    socket = SimpleNamespace(name="Alpha")
+    target = SimpleNamespace(links=[SimpleNamespace(from_node=wrapper, from_socket=socket)])
+
+    assert _linked_from(target, source, "Alpha") is True
 
 
 def test_tools_yaml_declares_material_and_bevel_contracts():
