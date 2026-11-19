@@ -42,6 +42,6 @@ This skill packages the material contract for real-toy shots.
 - Gloss-black eyes use roughness 0.08, coat weight 1.0, and coat roughness 0.03.
 - Plant leaves use alpha cutout nodes, an alpha-capable surface mode, and a small subsurface contribution.
 - `configure_toy_bevel` keeps a render-visible three-segment bevel between 0.3 and 0.7 mm and limits it to no edge subset.
-- `validate_photographic_material` is read-only and reports missing shader, texture, alpha, translucency, or bevel contract details.
+- `validate_photographic_material` is read-only and reports missing shader, texture, alpha, translucency, or bevel contract details. With `require_pbr_textures`, it verifies named diffuse, roughness, and GL normal maps, Object-coordinate box projection, and the 0.25 projection blend.
 
 Use local downloaded scan files explicitly. The skill does not assume a network asset service.

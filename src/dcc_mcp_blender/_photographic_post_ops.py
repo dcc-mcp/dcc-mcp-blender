@@ -690,7 +690,34 @@ def configure_photographic_post(
 def _values_equal(actual: Any, expected: Any) -> bool:
     if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
         return math.isclose(float(actual), float(expected), rel_tol=1e-6, abs_tol=1e-6)
+    if isinstance(expected, (list, tuple)):
+        try:
+            actual_values = list(actual)
+        except (TypeError, ValueError):
+            return False
+        return len(actual_values) == len(expected) and all(
+            _values_equal(item, value) for item, value in zip(actual_values, expected)
+        )
     return actual == expected
+
+
+def _curve_points(node: Any) -> list[list[float]]:
+    mapping = getattr(node, "mapping", None)
+    curves = getattr(mapping, "curves", None)
+    if curves is None or len(curves) == 0:
+        return []
+    points = []
+    for point in getattr(curves[-1], "points", ()):
+        co = getattr(point, "location", None)
+        if co is None:
+            co = getattr(point, "co", None)
+        if co is None:
+            continue
+        try:
+            points.append([float(co.x if hasattr(co, "x") else co[0]), float(co.y if hasattr(co, "y") else co[1])])
+        except (AttributeError, IndexError, TypeError, ValueError):
+            continue
+    return points
 
 
 def validate_photographic_post(scene_name: str | None = None) -> dict:
@@ -717,6 +744,7 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "halation_mix": f"{POST_PREFIX}Halation Screen",
             "s_curve": f"{POST_PREFIX}S Curve",
             "vignette_mask": f"{POST_PREFIX}Vignette Mask",
+            "vignette_darken": f"{POST_PREFIX}Vignette Darken",
             "vignette": f"{POST_PREFIX}Vignette",
             "grain": f"{POST_PREFIX}Film Grain",
         }
@@ -728,6 +756,40 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             issues.append({"code": "PHOTO_POST_OUTPUT_UNLINKED", "severity": "error"})
         raw_settings = _scene_property(scene, SETTINGS_KEY)
         settings = json.loads(raw_settings) if isinstance(raw_settings, str) else raw_settings or {}
+
+        def check_input(
+            node_key: str,
+            socket_names: tuple[str, ...],
+            expected: Any,
+            code: str,
+            field: str,
+        ) -> None:
+            node = nodes.get(node_key)
+            if node is None:
+                return
+            socket = _get_socket(getattr(node, "inputs", ()), socket_names[0])
+            if socket is None:
+                socket = next(
+                    (_get_socket(getattr(node, "inputs", ()), name) for name in socket_names[1:]),
+                    None,
+                )
+            actual = getattr(socket, "default_value", None) if socket is not None else None
+            if isinstance(expected, (list, tuple)):
+                try:
+                    actual = list(actual)[: len(expected)]
+                except (TypeError, ValueError):
+                    pass
+            if not _values_equal(actual, expected):
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": expected,
+                        "actual": actual,
+                    }
+                )
+
         halation = nodes.get("halation")
         if halation is not None:
             threshold_socket = _get_socket(halation.inputs, "Threshold") or _get_socket(
@@ -735,11 +797,78 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             )
             if not _values_equal(getattr(threshold_socket, "default_value", None), settings.get("halation_threshold")):
                 issues.append({"code": "PHOTO_POST_HALATION_THRESHOLD", "severity": "error"})
+            check_input("halation", ("Type",), "FOG_GLOW", "PHOTO_POST_HALATION_TYPE", "halation_type")
+            check_input("halation", ("Quality",), "HIGH", "PHOTO_POST_HALATION_QUALITY", "halation_quality")
+            tint = settings.get("halation_tint")
+            if isinstance(tint, (list, tuple)):
+                check_input("halation", ("Tint",), list(tint), "PHOTO_POST_HALATION_TINT", "halation_tint")
+        check_input(
+            "halation_mix",
+            ("Factor_Float", "Fac"),
+            settings.get("halation_mix"),
+            "PHOTO_POST_HALATION_MIX",
+            "halation_mix",
+        )
+        curve = nodes.get("s_curve")
+        expected_curve_points = settings.get("s_curve_points")
+        if curve is not None and isinstance(expected_curve_points, list):
+            actual_curve_points = _curve_points(curve)
+            if not all(
+                any(_values_equal(actual, expected) for actual in actual_curve_points)
+                for expected in expected_curve_points
+            ):
+                issues.append(
+                    {
+                        "code": "PHOTO_POST_S_CURVE_MISMATCH",
+                        "severity": "error",
+                        "field": "s_curve_points",
+                        "expected": expected_curve_points,
+                        "actual": actual_curve_points,
+                    }
+                )
+        check_input(
+            "vignette_mask",
+            ("Position",),
+            [0.5, 0.5],
+            "PHOTO_POST_VIGNETTE_POSITION",
+            "vignette_position",
+        )
+        check_input(
+            "vignette_mask",
+            ("Size",),
+            [0.82, 0.82],
+            "PHOTO_POST_VIGNETTE_SIZE",
+            "vignette_size",
+        )
+        check_input(
+            "vignette_darken",
+            ("Factor_Float", "Fac"),
+            settings.get("vignette_strength"),
+            "PHOTO_POST_VIGNETTE_STRENGTH",
+            "vignette_strength",
+        )
+        check_input(
+            "grain",
+            ("Factor_Float", "Fac"),
+            settings.get("grain_strength"),
+            "PHOTO_POST_GRAIN_STRENGTH",
+            "grain_strength",
+        )
         grain_config = _scene_property(scene, GRAIN_CONFIG_KEY)
         config = json.loads(grain_config) if isinstance(grain_config, str) else grain_config or {}
         image = bpy.data.images.get(str(config.get("image_name", ""))) if config else None
         if image is None:
             issues.append({"code": "PHOTO_POST_GRAIN_IMAGE_MISSING", "severity": "error"})
+        elif tuple(getattr(image, "size", ())) != (config.get("size"), config.get("size")):
+            issues.append(
+                {
+                    "code": "PHOTO_POST_GRAIN_SIZE_MISMATCH",
+                    "severity": "error",
+                    "field": "grain_size",
+                    "expected": [config.get("size"), config.get("size")],
+                    "actual": list(getattr(image, "size", ())),
+                }
+            )
         handlers = getattr(getattr(bpy, "app", None), "handlers", None)
         frame_handlers = getattr(handlers, "frame_change_pre", ()) if handlers is not None else ()
         if config.get("mode") == "SEQUENCE":

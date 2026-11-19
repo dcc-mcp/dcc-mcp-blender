@@ -533,7 +533,7 @@ def validate_motivated_lighting(
             for obj in bpy.data.objects
             if getattr(obj, "type", None) == "LIGHT" and _custom_get(obj, "dcc_mcp_photographic_source", False)
         ]
-        if kind != "OUTDOOR_HDRI" and len(owned_sources) != 1:
+        if len(owned_sources) != 1:
             issue(
                 "MULTIPLE_MOTIVATED_SOURCES",
                 "owned_light_count",
