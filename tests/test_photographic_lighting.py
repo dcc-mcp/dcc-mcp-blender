@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import yaml
 
 from dcc_mcp_blender._photographic_color_ops import analyze_rgb_pixels
-from dcc_mcp_blender._photographic_lighting_ops import configure_motivated_lighting
+from dcc_mcp_blender._photographic_lighting_ops import _is_polyhaven_source, configure_motivated_lighting
 from tests.conftest import load_and_call
 
 
@@ -17,6 +17,13 @@ def test_outdoor_lighting_requires_an_hdri_path():
 
     assert result["success"] is False
     assert "hdri_path" in result["error"]
+
+
+def test_polyhaven_source_matching_rejects_lookalike_domains():
+    assert _is_polyhaven_source("Poly Haven") is True
+    assert _is_polyhaven_source("https://polyhaven.com/asset/sky") is True
+    assert _is_polyhaven_source("https://assets.polyhaven.com/sky.hdr") is True
+    assert _is_polyhaven_source("https://not-polyhaven.com/sky.hdr") is False
 
 
 def test_tools_yaml_declares_motivated_lighting_contract():

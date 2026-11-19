@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
@@ -281,8 +282,26 @@ def _pbr_link_state(node_tree: Any) -> dict[str, bool]:
 
 
 def _image_has_alpha(image: Any) -> bool:
+    if image is None:
+        return False
+    filepath = getattr(image, "filepath", None) or getattr(image, "filepath_raw", None)
+    if filepath:
+        try:
+            header = Path(str(filepath)).expanduser().read_bytes()[:29]
+        except OSError:
+            header = b""
+        if header.startswith(b"\x89PNG\r\n\x1a\n") and len(header) >= 26:
+            return header[25] in {4, 6}
+        if header.startswith(b"\xff\xd8\xff"):
+            return False
     channels = getattr(image, "channels", None)
     return isinstance(channels, int) and not isinstance(channels, bool) and channels >= 4
+
+
+def _validate_leaf_diffuse_alpha(bpy: Any, path: Path) -> None:
+    image = _load_image(bpy, path, "sRGB")
+    if not _image_has_alpha(image):
+        raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
 
 
 def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
@@ -297,7 +316,12 @@ def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
 
 def _is_polyhaven_source(value: Any) -> bool:
     normalized = "".join(str(value or "").casefold().split())
-    return normalized == "polyhaven" or "polyhaven.com" in normalized
+    if normalized == "polyhaven":
+        return True
+    raw_value = str(value or "").strip()
+    parsed = urlparse(raw_value if "://" in raw_value else f"//{raw_value}")
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    return hostname == "polyhaven.com" or hostname.endswith(".polyhaven.com")
 
 
 def _linked_from(target: Any, source: Any, source_socket_name: str) -> bool:
@@ -456,6 +480,8 @@ def configure_photographic_material(
             raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
         import bpy
 
+        if kind == "PLANT_LEAF":
+            _validate_leaf_diffuse_alpha(bpy, paths["diffuse"])
         material = _material(bpy, material_name)
         if material is None:
             material = bpy.data.materials.new(material_name)
@@ -466,10 +492,6 @@ def configure_photographic_material(
             if getattr(obj, "type", None) != "MESH":
                 return skill_error("Object is not a mesh", f"'{target_object}' cannot receive a mesh material.")
         settings = _configure_material_nodes(bpy, material, kind, color, paths, threshold)
-        if kind == "PLANT_LEAF":
-            diffuse_node = _node(material.node_tree.nodes, f"{PREFIX}Diffuse Texture", "TEX_IMAGE")
-            if diffuse_node is None or not _image_has_alpha(getattr(diffuse_node, "image", None)):
-                raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
         if target_object:
             materials = obj.data.materials
             if len(materials) == 0:
@@ -799,7 +821,7 @@ def validate_photographic_material(
                     False,
                     "Plant leaves need the scanned diffuse alpha connected through a cutout node.",
                 )
-            elif require_pbr_textures and not _image_has_alpha(getattr(diffuse, "image", None)):
+            elif not _image_has_alpha(getattr(diffuse, "image", None)):
                 issue(
                     "LEAF_ALPHA_CHANNEL_MISSING",
                     "diffuse_alpha_channel",

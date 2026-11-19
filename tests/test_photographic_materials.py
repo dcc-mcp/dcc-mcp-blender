@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import yaml
 
 from dcc_mcp_blender._photographic_material_ops import (
+    _image_has_alpha,
+    _is_polyhaven_source,
     _linked_from,
     _pbr_link_state,
     _pbr_texture_nodes,
@@ -21,6 +23,28 @@ def test_plant_material_requires_a_diffuse_scan_for_alpha_cutout():
 
     assert result["success"] is False
     assert "diffuse scan" in result["error"]
+
+
+def test_material_polyhaven_source_matching_rejects_lookalike_domains():
+    assert _is_polyhaven_source("Poly Haven") is True
+    assert _is_polyhaven_source("https://polyhaven.com/asset/sky") is True
+    assert _is_polyhaven_source("https://not-polyhaven.com/sky.hdr") is False
+
+
+def test_image_alpha_validation_reads_png_channel_type(tmp_path):
+    def png_header(color_type):
+        header = bytearray(29)
+        header[:8] = b"\x89PNG\r\n\x1a\n"
+        header[25] = color_type
+        return bytes(header)
+
+    rgba = tmp_path / "rgba.png"
+    rgb = tmp_path / "rgb.png"
+    rgba.write_bytes(png_header(6))
+    rgb.write_bytes(png_header(2))
+
+    assert _image_has_alpha(SimpleNamespace(filepath=str(rgba), channels=4)) is True
+    assert _image_has_alpha(SimpleNamespace(filepath=str(rgb), channels=4)) is False
 
 
 def test_pbr_validation_resolves_each_required_map_and_object_coordinates():

@@ -347,15 +347,17 @@ def _validate_camera(
                 actual=sorted({getattr(point, "interpolation", None) for point in path_points}),
             )
         if path == "rotation_euler":
-            values = [_keyframe_value(point) for point in path_points]
-            values = [value for value in values if value is not None]
-            if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
-                _issue(
-                    issues,
-                    "PHOTO_CAMERA_ROTATION_DISCONTINUITY",
-                    "rotation_euler",
-                    "Camera Euler rotation jumps more than 180 degrees between keys.",
-                )
+            for curve in path_curves:
+                values = [_keyframe_value(point) for point in getattr(curve, "keyframe_points", ())]
+                values = [value for value in values if value is not None]
+                if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
+                    _issue(
+                        issues,
+                        "PHOTO_CAMERA_ROTATION_DISCONTINUITY",
+                        "rotation_euler",
+                        "Camera Euler rotation jumps more than 180 degrees between keys.",
+                    )
+                    break
     return state
 
 

@@ -26,7 +26,7 @@ from dcc_mcp_blender._photographic_post_ops import (
     _values_equal,
     configure_photographic_post,
 )
-from dcc_mcp_blender._photographic_validation_ops import _validate_surface, validate_photographic_shot
+from dcc_mcp_blender._photographic_validation_ops import _validate_camera, _validate_surface, validate_photographic_shot
 
 
 class _ObjectCollection(dict):
@@ -187,6 +187,58 @@ def test_photographic_post_prompt_defaults_are_machine_checked():
     )
     assert issues[0]["code"] == "PHOTO_POST_PROMPT_DEFAULT_MISMATCH"
     assert issues[0]["field"] == "halation_mix"
+
+
+def test_camera_rotation_continuity_is_checked_per_euler_component():
+    frames = (0, 1, 2, 3)
+
+    def curve(array_index, values):
+        return SimpleNamespace(
+            data_path="rotation_euler",
+            array_index=array_index,
+            keyframe_points=[
+                SimpleNamespace(co=(frame, value), interpolation="BEZIER") for frame, value in zip(frames, values)
+            ],
+            modifiers=[],
+        )
+
+    focus = SimpleNamespace(name="Eyes")
+    camera = SimpleNamespace(
+        name="Camera",
+        type="CAMERA",
+        data=SimpleNamespace(
+            type="PERSP",
+            lens=50.0,
+            sensor_width=36.0,
+            dof=SimpleNamespace(
+                use_dof=True,
+                aperture_fstop=4.0,
+                aperture_blades=0,
+                focus_object=focus,
+            ),
+        ),
+        location=(0.0, 0.0, 0.02),
+        animation_data=SimpleNamespace(
+            action=SimpleNamespace(
+                fcurves=[
+                    curve(0, [4.71, 4.71, 4.71, 4.71]),
+                    curve(1, [0.0, 0.0, 0.0, 0.0]),
+                    curve(2, [0.0, 0.0, 0.0, 0.0]),
+                ]
+            )
+        ),
+    )
+
+    issues = []
+    _validate_camera(camera, camera, focus, "CHARACTER", 0.0, (1, 2), issues)
+
+    assert not any(issue["code"] == "PHOTO_CAMERA_ROTATION_DISCONTINUITY" for issue in issues)
+
+    camera.animation_data.action.fcurves[0].keyframe_points[2].co = (2, 8.0)
+    issues = []
+    _validate_camera(camera, camera, focus, "CHARACTER", 0.0, (1, 2), issues)
+
+    assert any(issue["code"] == "PHOTO_CAMERA_ROTATION_DISCONTINUITY" for issue in issues)
 
 
 def test_photographic_post_rejects_invalid_grain_size_without_blender():
