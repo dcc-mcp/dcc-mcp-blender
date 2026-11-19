@@ -879,7 +879,7 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
                     }
                 )
 
-        def check_link(node_key: str, socket_names: tuple[str, ...], code: str, field: str) -> None:
+        def check_unlinked(node_key: str, socket_names: tuple[str, ...], code: str, field: str) -> None:
             node = nodes.get(node_key)
             if node is None:
                 return
@@ -887,14 +887,50 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
                 (_get_socket(getattr(node, "inputs", ()), name) for name in socket_names),
                 None,
             )
-            if socket is None or not getattr(socket, "links", ()):
+            if socket is not None and getattr(socket, "links", ()):
                 issues.append(
                     {
                         "code": code,
                         "severity": "error",
                         "field": field,
-                        "expected": "linked input",
-                        "actual": "unlinked input",
+                        "expected": "unlinked input",
+                        "actual": "linked input",
+                    }
+                )
+
+        def check_link_from(
+            node_key: str,
+            input_names: tuple[str, ...],
+            source_key: str,
+            source_names: tuple[str, ...],
+            code: str,
+            field: str,
+        ) -> None:
+            node = nodes.get(node_key)
+            source = nodes.get(source_key)
+            if node is None or source is None:
+                return
+            target = next(
+                (_get_socket(getattr(node, "inputs", ()), name) for name in input_names),
+                None,
+            )
+            matching_link = (
+                any(
+                    getattr(link, "from_node", None) is source
+                    and getattr(getattr(link, "from_socket", None), "name", None) in source_names
+                    for link in getattr(target, "links", ())
+                )
+                if target is not None
+                else False
+            )
+            if not matching_link:
+                issues.append(
+                    {
+                        "code": code,
+                        "severity": "error",
+                        "field": field,
+                        "expected": f"linked from {source_key} ({', '.join(source_names)})",
+                        "actual": "different or missing source",
                     }
                 )
 
@@ -905,13 +941,35 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             "PHOTO_POST_VIGNETTE_COLOR",
             "vignette_color",
         )
+        check_unlinked("vignette_darken", ("B_Color", "Color2"), "PHOTO_POST_VIGNETTE_COLOR_LINK", "vignette_color")
         check_operation("shadow_weight", "SUBTRACT", "PHOTO_POST_SHADOW_WEIGHT_OPERATION", "shadow_weight_operation")
         check_operation("grain_shadow_mix", "MULTIPLY", "PHOTO_POST_GRAIN_WEIGHT_OPERATION", "grain_weight_operation")
         check_operation("grain_center", "SUBTRACT", "PHOTO_POST_GRAIN_CENTER_OPERATION", "grain_center_operation")
-        check_link("shadow_weight", ("Value_001", "Value 2"), "PHOTO_POST_SHADOW_LINK", "shadow_weight_luma")
-        check_link("grain_shadow_mix", ("Value_001", "Value 2"), "PHOTO_POST_GRAIN_SHADOW_LINK", "grain_shadow_luma")
+        check_link_from(
+            "shadow_weight",
+            ("Value_001", "Value 2"),
+            "shadow_luma",
+            ("Val",),
+            "PHOTO_POST_SHADOW_LINK",
+            "shadow_weight_luma",
+        )
+        check_link_from(
+            "grain_shadow_mix",
+            ("Value_001", "Value 2"),
+            "shadow_weight",
+            ("Value",),
+            "PHOTO_POST_GRAIN_SHADOW_LINK",
+            "grain_shadow_luma",
+        )
         for channel in ("Red", "Green", "Blue"):
-            check_link("grain_color", (channel,), "PHOTO_POST_GRAIN_COLOR_LINK", f"grain_color_{channel.lower()}")
+            check_link_from(
+                "grain_color",
+                (channel,),
+                "grain_shadow_mix",
+                ("Value",),
+                "PHOTO_POST_GRAIN_COLOR_LINK",
+                f"grain_color_{channel.lower()}",
+            )
         grain_config = _scene_property(scene, GRAIN_CONFIG_KEY)
         config = json.loads(grain_config) if isinstance(grain_config, str) else grain_config or {}
         image = bpy.data.images.get(str(config.get("image_name", ""))) if config else None
