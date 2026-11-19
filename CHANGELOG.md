@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.29](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.28...v0.2.29) (2026-11-19)
+
+
+### Features
+
+* add isolated tree diagnostic renders ([d92f183](https://github.com/dcc-mcp/dcc-mcp-blender/commit/d92f183fd009bd0931085dce3b54a0fe618dd306))
+* add photographic Cycles render profiles ([#349](https://github.com/dcc-mcp/dcc-mcp-blender/issues/349)) ([23c531a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/23c531a6423b23a35ff43ad3d321b039b5b51fb6))
+* enforce photographic Blender render contract ([3ae60af](https://github.com/dcc-mcp/dcc-mcp-blender/commit/3ae60af500d607dc435249cb34ab00f61f3704cf))
+* harden photographic shot validation ([7350280](https://github.com/dcc-mcp/dcc-mcp-blender/commit/735028086658f1c8d70e40a70ebe86685a0b5456))
+
+
+### Bug Fixes
+
+* **audio:** add fail-closed native output readback and attributable surplus error ([#346](https://github.com/dcc-mcp/dcc-mcp-blender/issues/346)) ([aadb7b9](https://github.com/dcc-mcp/dcc-mcp-blender/commit/aadb7b91416ff640e53606c682d22cc745e583a4))
+* complete photographic render contract ([#357](https://github.com/dcc-mcp/dcc-mcp-blender/issues/357)) ([fa0ba15](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fa0ba15a91ed26118abc37e1f8481cc69633f745))
+* harden photographic contract validation ([01e5542](https://github.com/dcc-mcp/dcc-mcp-blender/commit/01e5542bd9772935ec70e24736fc7d567ac6cec1))
+* harden tree diagnostic provenance and worker lifecycle ([fad1cbf](https://github.com/dcc-mcp/dcc-mcp-blender/commit/fad1cbf8c477ed53363f3c249642ee9309c92dfe))
+* preserve failed worker status and diagnostic errors ([a0c4e8f](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a0c4e8f98db1a8ab0c242bceeb45f71e8ca7061b))
+* share owned tree render lifecycle and recoverable receipts ([2b60807](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2b60807789489e412f278c92ac509d3cc777b90b))
+* validate photographic post graph ([8422441](https://github.com/dcc-mcp/dcc-mcp-blender/commit/8422441fc7c7b033ae88249c115aa8f7f9fb262a))
+* validate tree workers across fresh headless host lifecycles ([a783d4a](https://github.com/dcc-mcp/dcc-mcp-blender/commit/a783d4a4b940b02692c0d2bd3a5501d4bc8071b1))
+
 ## [0.2.28](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.27...v0.2.28) (2026-11-09)
 
 
