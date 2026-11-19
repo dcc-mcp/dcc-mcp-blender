@@ -48,6 +48,7 @@ def test_photographic_materials_and_bevel_round_trip(material_scene, tmp_path):
         material_kind="PAINTED_TOY",
         target_object=toy.name,
         texture_paths={"diffuse": str(diffuse), "roughness": str(roughness), "normal": str(normal)},
+        texture_source="Poly Haven",
     )
     assert configured["success"] is True, configured
 

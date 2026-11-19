@@ -67,6 +67,7 @@ def test_outdoor_hdri_uses_a_tight_sun(tmp_path):
         energy=2.0,
         hdri_path=str(hdri_path),
         hdri_strength=0.35,
+        hdri_source="Poly Haven",
     )
     assert result["success"] is True, result
     report = validate.main(source_name="E2E Outdoor Sun", source_type="OUTDOOR_HDRI")

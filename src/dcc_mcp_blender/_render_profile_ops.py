@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Any, Iterable
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
@@ -58,6 +60,10 @@ _BASE_PROFILE = {
     "look": "AgX - Medium High Contrast",
     "exposure": 0.0,
 }
+
+
+def _preview_metadata_path(output_path: str) -> Path:
+    return Path(f"{Path(output_path).expanduser().resolve()}.photographic.json")
 
 
 def _profile_values(profile_name: str, scene_kind: str, samples: int | None) -> dict:
@@ -757,7 +763,7 @@ def render_photographic_test_still(
     frame: int | None = None,
     scene_name: str | None = None,
     device_backend: str = "AUTO",
-    allow_cpu_fallback: bool = True,
+    allow_cpu_fallback: bool = False,
 ) -> dict:
     """Render one preview still and restore every temporary scene setting."""
     if not isinstance(output_path, str) or not output_path.strip():
@@ -853,9 +859,42 @@ def render_photographic_test_still(
                 except Exception:
                     pass
 
+        rendered_path = Path(output_path).expanduser().resolve()
+        if not rendered_path.is_file():
+            return skill_error(
+                "Photographic test still missing",
+                f"Blender did not write the requested preview still: {rendered_path}",
+                output_path=output_path,
+            )
+        metadata_path = _preview_metadata_path(output_path)
+        metadata = {
+            "contract": "dcc-mcp-blender.photographic-preview.v1",
+            "still_path": str(Path(output_path).expanduser().resolve()),
+            "scene_name": getattr(scene, "name", scene_name),
+            "frame": frame if frame is not None else old_frame,
+            "profile_name": "PREVIEW",
+            "resolution_x": 3840,
+            "resolution_y": 2160,
+            "resolution_percentage": 25,
+            "samples": 32,
+            "file_format": "JPEG",
+            "device_backend": backend,
+        }
+        try:
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError as exc:
+            return skill_error(
+                "Photographic test still evidence failed",
+                f"Could not write preview metadata: {exc}",
+                output_path=output_path,
+                metadata_path=str(metadata_path),
+            )
+
         return skill_success(
             "Photographic test still rendered",
             output_path=output_path,
+            metadata_path=str(metadata_path),
             frame=frame if frame is not None else old_frame,
             profile_name="PREVIEW",
             resolution_percentage=25,

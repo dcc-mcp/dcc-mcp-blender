@@ -65,6 +65,7 @@ def test_tools_yaml_declares_material_and_bevel_contracts():
     }
     assert tools["configure_toy_bevel"]["input_schema"]["properties"]["width_mm"]["minimum"] == 0.3
     assert tools["configure_toy_bevel"]["input_schema"]["properties"]["segments"]["const"] == 3
+    assert tools["configure_photographic_material"]["input_schema"]["properties"]["texture_source"]["type"] == "string"
     assert (
         tools["configure_photographic_material"]["input_schema"]["properties"]["texture_paths"]["additionalProperties"]
         is False

@@ -141,7 +141,8 @@ tools:
           default: AUTO
         allow_cpu_fallback:
           type: boolean
-          default: true
+          default: false
+          description: "Photographic preview stills require a supported GPU backend by default."
     output_schema: *render_profile_result
     read_only: false
     destructive: false

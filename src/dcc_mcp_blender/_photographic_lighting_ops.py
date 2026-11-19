@@ -25,6 +25,7 @@ SOURCE_LIGHT_TYPES = {
 }
 PREFIX = "DCC Photo Light "
 SUN_ANGLE_DEGREES = 1.2
+HDRI_SOURCE_KEY = "dcc_mcp_photographic_hdri_source"
 
 
 def _finite(value: Any, label: str) -> float:
@@ -89,6 +90,25 @@ def _custom_get(target: Any, key: str, default: Any = None) -> Any:
     if callable(getter):
         return getter(key, default)
     return default
+
+
+def _remove_custom_property(target: Any, key: str) -> None:
+    pop = getattr(target, "pop", None)
+    if callable(pop):
+        try:
+            pop(key, None)
+            return
+        except (TypeError, KeyError, RuntimeError):
+            pass
+    try:
+        del target[key]
+    except (KeyError, TypeError, AttributeError, RuntimeError):
+        pass
+
+
+def _is_polyhaven_source(value: Any) -> bool:
+    normalized = "".join(str(value or "").casefold().split())
+    return normalized == "polyhaven" or "polyhaven.com" in normalized
 
 
 def _remove_owned_lights(bpy: Any, keep_name: str) -> None:
@@ -158,7 +178,14 @@ def _configure_light(
     }
 
 
-def _set_world(bpy: Any, scene: Any, image_path: Path, strength: float, rotation_degrees: float) -> dict[str, Any]:
+def _set_world(
+    bpy: Any,
+    scene: Any,
+    image_path: Path,
+    strength: float,
+    rotation_degrees: float,
+    source: str | None = None,
+) -> dict[str, Any]:
     world = scene.world
     if world is None:
         world = bpy.data.worlds.new("DCC Photographic World")
@@ -195,8 +222,13 @@ def _set_world(bpy: Any, scene: Any, image_path: Path, strength: float, rotation
     world["dcc_mcp_photographic_hdri"] = True
     world["dcc_mcp_photographic_hdri_path"] = str(image_path)
     world["dcc_mcp_photographic_hdri_rotation_degrees"] = rotation_degrees
+    if source is not None:
+        world[HDRI_SOURCE_KEY] = source
+    else:
+        _remove_custom_property(world, HDRI_SOURCE_KEY)
     return {
         "image_path": str(image_path),
+        "source": source,
         "strength": float(background.inputs["Strength"].default_value),
         "rotation_degrees": rotation_degrees,
         "node_names": [texcoord.name, mapping.name, environment.name, background.name, output.name],
@@ -353,6 +385,7 @@ def configure_motivated_lighting(
     hdri_rotation_degrees: float = 0.0,
     hero_object: str | None = None,
     background_object: str | None = None,
+    hdri_source: str | None = None,
 ) -> dict:
     """Create one motivated key source and optional outdoor HDRI environment."""
     try:
@@ -366,6 +399,12 @@ def configure_motivated_lighting(
         strength = _finite(hdri_strength, "hdri_strength")
         if strength <= 0:
             raise ValueError("hdri_strength must be greater than zero")
+        if hdri_source is not None:
+            if not isinstance(hdri_source, str) or not hdri_source.strip():
+                raise ValueError("hdri_source must be a non-empty string when supplied")
+            source = hdri_source.strip()
+        else:
+            source = None
         hdri = _safe_path(hdri_path)
         if kind == "OUTDOOR_HDRI" and hdri is None:
             raise ValueError("OUTDOOR_HDRI requires hdri_path")
@@ -377,7 +416,14 @@ def configure_motivated_lighting(
         light = _configure_light(obj, kind, light_energy, key_color, key_location, key_rotation)
         world = None
         if kind == "OUTDOOR_HDRI" and hdri is not None:
-            world = _set_world(bpy, scene, hdri, strength, _finite(hdri_rotation_degrees, "hdri_rotation_degrees"))
+            world = _set_world(
+                bpy,
+                scene,
+                hdri,
+                strength,
+                _finite(hdri_rotation_degrees, "hdri_rotation_degrees"),
+                source,
+            )
         view = _set_agx(scene)
         relation = _color_relation(bpy, hero_object, background_object)
         return skill_success(
@@ -415,6 +461,7 @@ def validate_motivated_lighting(
     background_object: str | None = None,
     require_agx: bool = True,
     preview_still_path: str | None = None,
+    require_polyhaven_hdri: bool = False,
 ) -> dict:
     """Read-only validation for motivated source, HDRI, AgX, and contrast setup."""
     try:
@@ -464,6 +511,14 @@ def validate_motivated_lighting(
                 getattr(source.data, "energy", None),
                 "The motivated source must emit light.",
             )
+        if bool(getattr(source, "hide_render", False)):
+            issue(
+                "MOTIVATED_SOURCE_HIDDEN",
+                "hide_render",
+                False,
+                True,
+                "The motivated source must be visible to the renderer.",
+            )
         if kind == "OUTDOOR_HDRI":
             actual_angle = math.degrees(float(getattr(source.data, "angle", 0.0)))
             if not math.isclose(actual_angle, SUN_ANGLE_DEGREES, abs_tol=1e-4):
@@ -492,6 +547,15 @@ def validate_motivated_lighting(
                     True,
                     False,
                     "Outdoor lighting requires a loaded HDRI environment.",
+                )
+            world_source = _custom_get(world, HDRI_SOURCE_KEY)
+            if require_polyhaven_hdri and not _is_polyhaven_source(world_source):
+                issue(
+                    "OUTDOOR_HDRI_SOURCE_MISSING",
+                    "hdri_source",
+                    "Poly Haven",
+                    world_source,
+                    "Outdoor photographic lighting requires a Poly Haven HDRI source label.",
                 )
         view_settings = bpy.context.scene.view_settings
         if require_agx and getattr(view_settings, "view_transform", None) != "AgX":
@@ -543,6 +607,21 @@ def validate_motivated_lighting(
                 1,
                 len(owned_sources),
                 "Keep one motivated source per scene.",
+            )
+        unowned_lights = [
+            obj
+            for obj in source_objects
+            if getattr(obj, "type", None) == "LIGHT"
+            and not bool(getattr(obj, "hide_render", False))
+            and not _custom_get(obj, "dcc_mcp_photographic_source", False)
+        ]
+        if unowned_lights:
+            issue(
+                "UNMOTIVATED_LIGHTS_PRESENT",
+                "unowned_lights",
+                [],
+                [getattr(obj, "name", None) for obj in unowned_lights],
+                "Remove or park additional render-visible lights so the scene has one motivated source.",
             )
         color_safety = {
             "performed": False,

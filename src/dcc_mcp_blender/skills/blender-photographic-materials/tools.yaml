@@ -38,6 +38,10 @@ tools:
           minimum: 0
           maximum: 1
           default: 0.5
+        texture_source:
+          type: string
+          minLength: 1
+          description: "Optional provenance label for the supplied scan maps. Use Poly Haven for the photographic shot contract."
     output_schema: &result_schema
       type: object
       additionalProperties: true

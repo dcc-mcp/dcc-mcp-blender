@@ -30,6 +30,10 @@ def test_tools_yaml_declares_motivated_lighting_contract():
         "analyze_photographic_test_still",
     }
     assert "OUTDOOR_HDRI" in tools["configure_motivated_lighting"]["input_schema"]["properties"]["source_type"]["enum"]
+    assert tools["configure_motivated_lighting"]["input_schema"]["properties"]["hdri_source"]["type"] == "string"
+    assert (
+        tools["validate_motivated_lighting"]["input_schema"]["properties"]["require_polyhaven_hdri"]["default"] is False
+    )
     assert tools["validate_motivated_lighting"]["read_only"] is True
 
 

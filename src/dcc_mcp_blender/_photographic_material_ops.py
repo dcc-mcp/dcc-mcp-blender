@@ -11,6 +11,7 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 MATERIAL_KINDS = ("PAINTED_TOY", "GLOSS_BLACK_EYE", "PLANT_LEAF")
 PBR_MAPS = ("diffuse", "roughness", "normal")
 PREFIX = "DCC Photo "
+TEXTURE_SOURCE_KEY = "dcc_mcp_photographic_texture_source"
 BEVEL_WIDTH_MIN_MM = 0.3
 BEVEL_WIDTH_MAX_MM = 0.7
 BEVEL_SEGMENTS = 3
@@ -40,6 +41,20 @@ def _color(value: Any, label: str) -> list[float]:
 
 def _material(bpy: Any, name: str) -> Any:
     return bpy.data.materials.get(name)
+
+
+def _remove_custom_property(owner: Any, key: str) -> None:
+    pop = getattr(owner, "pop", None)
+    if callable(pop):
+        try:
+            pop(key, None)
+            return
+        except (TypeError, KeyError, RuntimeError):
+            pass
+    try:
+        del owner[key]
+    except (KeyError, TypeError, AttributeError, RuntimeError):
+        pass
 
 
 def _object(bpy: Any, name: str) -> Any:
@@ -222,6 +237,21 @@ def _uses_object_coordinates(texture: Any) -> bool:
     )
 
 
+def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
+    getter = getattr(owner, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except (TypeError, ValueError, RuntimeError):
+            pass
+    return getattr(owner, key, default)
+
+
+def _is_polyhaven_source(value: Any) -> bool:
+    normalized = "".join(str(value or "").casefold().split())
+    return normalized == "polyhaven" or "polyhaven.com" in normalized
+
+
 def _linked_from(target: Any, source: Any, source_socket_name: str) -> bool:
     if target is None or source is None:
         return False
@@ -356,6 +386,7 @@ def configure_photographic_material(
     texture_paths: Mapping[str, Any] | None = None,
     target_object: str | None = None,
     alpha_threshold: float = 0.5,
+    texture_source: str | None = None,
 ) -> dict:
     """Create or update a toy material with photographic surface behavior."""
     try:
@@ -364,6 +395,12 @@ def configure_photographic_material(
         threshold = _finite(alpha_threshold, "alpha_threshold")
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("alpha_threshold must be between 0 and 1")
+        if texture_source is not None:
+            if not isinstance(texture_source, str) or not texture_source.strip():
+                raise ValueError("texture_source must be a non-empty string when supplied")
+            source = texture_source.strip()
+        else:
+            source = None
         paths = _path_map(texture_paths)
         if kind == "PLANT_LEAF" and "diffuse" not in paths:
             raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
@@ -385,6 +422,10 @@ def configure_photographic_material(
                 materials.append(material)
             else:
                 materials[0] = material
+        if source is not None:
+            material[TEXTURE_SOURCE_KEY] = source
+        else:
+            _remove_custom_property(material, TEXTURE_SOURCE_KEY)
         return skill_success(
             f"Photographic material configured: {material.name}",
             material_name=material.name,
@@ -401,6 +442,7 @@ def configure_photographic_material(
                 "gloss_black_coat_weight": 1.0,
                 "gloss_black_coat_roughness": 0.03,
                 "box_projection_blend": 0.25,
+                "texture_source": source,
             },
             prompt="Add a 0.3–0.7 mm, three-segment bevel to every toy edge, then validate the material.",
         )
@@ -620,6 +662,15 @@ def validate_photographic_material(
                 missing_maps,
                 "Diffuse, roughness, and GL normal maps are required.",
             )
+        texture_source = _custom_value(material, TEXTURE_SOURCE_KEY)
+        if require_pbr_textures and not _is_polyhaven_source(texture_source):
+            issue(
+                "PBR_TEXTURE_SOURCE_MISMATCH",
+                "texture_source",
+                "Poly Haven",
+                texture_source,
+                "Photographic PBR maps must carry a Poly Haven provenance label.",
+            )
         for node in texture_nodes:
             if getattr(node, "projection", None) != "BOX" or not _close(getattr(node, "projection_blend", None), 0.25):
                 issue(
@@ -634,7 +685,17 @@ def validate_photographic_material(
                 )
         if require_pbr_textures:
             for map_name, node in pbr_nodes.items():
-                if node is not None and not _uses_object_coordinates(node):
+                if node is None:
+                    continue
+                if getattr(node, "image", None) is None:
+                    issue(
+                        "PBR_TEXTURE_IMAGE_MISSING",
+                        map_name,
+                        "loaded image",
+                        None,
+                        "Every photographic PBR map must have a loaded image.",
+                    )
+                if not _uses_object_coordinates(node):
                     issue(
                         "TEXTURE_COORDINATES_MISMATCH",
                         map_name,
