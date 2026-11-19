@@ -60,7 +60,8 @@ tools:
           description: "Optional contract-bound sample override. PREVIEW requires 32, EXTERIOR FINAL requires 64, and INTERIOR FINAL allows 112 to 176."
         allow_cpu_fallback:
           type: boolean
-          default: true
+          default: false
+          description: "CPU fallback is disabled by default for the photographic GPU contract. Set true only for an explicit non-final diagnostic run."
         scene_name:
           type: string
           minLength: 1

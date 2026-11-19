@@ -461,7 +461,7 @@ def validate_motivated_lighting(
     background_object: str | None = None,
     require_agx: bool = True,
     preview_still_path: str | None = None,
-    require_polyhaven_hdri: bool = False,
+    require_polyhaven_hdri: bool = True,
 ) -> dict:
     """Read-only validation for motivated source, HDRI, AgX, and contrast setup."""
     try:

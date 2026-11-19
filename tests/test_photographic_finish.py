@@ -22,6 +22,7 @@ from dcc_mcp_blender._photographic_post_ops import (
     DEFAULT_HALATION_THRESHOLD,
     _curve_points,
     _grain_pixels,
+    _prompt_default_issues,
     _values_equal,
     configure_photographic_post,
 )
@@ -94,21 +95,55 @@ def _fake_shot_bpy():
     )
 
 
-def _pbr_texture_node(map_name):
+def _pbr_material(texture_source="Poly Haven"):
     coordinate_node = SimpleNamespace(type="TEX_COORD")
     object_socket = SimpleNamespace(name="Object")
-    vector_socket = SimpleNamespace(
-        name="Vector",
-        links=[SimpleNamespace(from_node=coordinate_node, from_socket=object_socket)],
+    textures = {}
+    for map_name in ("diffuse", "roughness", "normal"):
+        vector_socket = SimpleNamespace(
+            name="Vector",
+            links=[SimpleNamespace(from_node=coordinate_node, from_socket=object_socket)],
+        )
+        textures[map_name] = SimpleNamespace(
+            name=f"DCC Photo {map_name.title()} Texture",
+            type="TEX_IMAGE",
+            bl_idname="ShaderNodeTexImage",
+            inputs=[vector_socket],
+            outputs=[SimpleNamespace(name="Color")],
+            image=SimpleNamespace(channels=4),
+            projection="BOX",
+            projection_blend=0.25,
+        )
+
+    normal_color = SimpleNamespace(name="Color", links=[])
+    normal_output = SimpleNamespace(name="Normal")
+    normal_map = SimpleNamespace(
+        name="DCC Photo Normal Map",
+        type="NORMAL_MAP",
+        inputs=[normal_color],
+        outputs=[normal_output],
+    )
+    diffuse_output = textures["diffuse"].outputs[0]
+    roughness_output = textures["roughness"].outputs[0]
+    normal_image_output = textures["normal"].outputs[0]
+    normal_color.links.append(SimpleNamespace(from_node=textures["normal"], from_socket=normal_image_output))
+    base_color = SimpleNamespace(name="Base Color", links=[])
+    roughness = SimpleNamespace(name="Roughness", links=[])
+    normal = SimpleNamespace(name="Normal", links=[])
+    base_color.links.append(SimpleNamespace(from_node=textures["diffuse"], from_socket=diffuse_output))
+    roughness.links.append(SimpleNamespace(from_node=textures["roughness"], from_socket=roughness_output))
+    normal.links.append(SimpleNamespace(from_node=normal_map, from_socket=normal_output))
+    principled = SimpleNamespace(
+        name="Principled BSDF",
+        type="BSDF_PRINCIPLED",
+        inputs=[base_color, roughness, normal],
     )
     return SimpleNamespace(
-        name=f"DCC Photo {map_name.title()} Texture",
-        type="TEX_IMAGE",
-        bl_idname="ShaderNodeTexImage",
-        inputs=[vector_socket],
-        image=object(),
-        projection="BOX",
-        projection_blend=0.25,
+        name="Floor Scan",
+        use_nodes=True,
+        dcc_mcp_photographic_texture_source=texture_source,
+        dcc_mcp_photographic_normal_map_convention="OPENGL",
+        node_tree=SimpleNamespace(nodes=[principled, normal_map, *textures.values()]),
     )
 
 
@@ -125,6 +160,33 @@ def test_photographic_post_validation_helpers_compare_color_sequences_and_curve_
 
     assert _values_equal([1.0, 0.82, 0.62], (1.0, 0.82, 0.62))
     assert _curve_points(node) == [[0.25, 0.18], [0.75, 0.82]]
+
+
+def test_photographic_post_prompt_defaults_are_machine_checked():
+    assert (
+        _prompt_default_issues(
+            {
+                "halation_threshold": 185.0 / 255.0,
+                "halation_tint": [1.0, 0.82, 0.62],
+                "halation_mix": 0.34,
+                "vignette_strength": 0.2,
+                "s_curve_points": [[0.25, 0.18], [0.75, 0.82]],
+            }
+        )
+        == []
+    )
+
+    issues = _prompt_default_issues(
+        {
+            "halation_threshold": 185.0 / 255.0,
+            "halation_tint": [1.0, 0.82, 0.62],
+            "halation_mix": 0.25,
+            "vignette_strength": 0.2,
+            "s_curve_points": [[0.25, 0.18], [0.75, 0.82]],
+        }
+    )
+    assert issues[0]["code"] == "PHOTO_POST_PROMPT_DEFAULT_MISMATCH"
+    assert issues[0]["field"] == "halation_mix"
 
 
 def test_photographic_post_rejects_invalid_grain_size_without_blender():
@@ -180,17 +242,12 @@ def test_tools_yaml_declares_photographic_contracts():
     assert properties["require_preview_still"]["default"] is True
     assert properties["require_pbr_textures"]["default"] is True
     assert "render_photographic_test_still" in {tool["name"] for tool in render_profile["tools"]}
+    post_validate = next(tool for tool in post["tools"] if tool["name"] == "validate_photographic_post")
+    assert post_validate["input_schema"]["properties"]["require_prompt_defaults"]["default"] is True
 
 
 def test_complete_surface_validation_requires_polyhaven_pbr_maps():
-    material = SimpleNamespace(
-        name="Floor Scan",
-        use_nodes=True,
-        dcc_mcp_photographic_texture_source="Local file",
-        node_tree=SimpleNamespace(
-            nodes=[_pbr_texture_node(map_name) for map_name in ("diffuse", "roughness", "normal")]
-        ),
-    )
+    material = _pbr_material("Local file")
     surface = SimpleNamespace(
         name="Floor",
         type="MESH",
@@ -210,6 +267,31 @@ def test_complete_surface_validation_requires_polyhaven_pbr_maps():
 
     assert state["pbr"]["valid"] is True
     assert issues == []
+
+
+def test_complete_surface_validation_requires_opengl_normals_and_connected_maps():
+    material = _pbr_material("Poly Haven")
+    surface = SimpleNamespace(
+        name="Floor",
+        type="MESH",
+        dimensions=(2.0, 2.0, 0.02),
+        material_slots=[SimpleNamespace(material=material)],
+    )
+
+    material.dcc_mcp_photographic_normal_map_convention = "DIRECTX"
+    issues = []
+    state = _validate_surface(surface, "floor", issues, 1.0, True)
+
+    assert state["pbr"]["valid"] is False
+    assert any(issue["code"] == "PHOTO_SURFACE_PBR" for issue in issues)
+
+    material.dcc_mcp_photographic_normal_map_convention = "OPENGL"
+    material.node_tree.nodes[0].inputs[0].links = []
+    issues = []
+    state = _validate_surface(surface, "floor", issues, 1.0, True)
+
+    assert state["pbr"]["valid"] is False
+    assert state["pbr"]["materials"][0]["links"]["diffuse"] is False
 
 
 def test_complete_shot_validation_rejects_cpu_backend(monkeypatch):

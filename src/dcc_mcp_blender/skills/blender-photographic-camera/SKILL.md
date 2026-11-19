@@ -41,7 +41,7 @@ This skill packages the physical camera contract for real-toy shots.
   lens, a 1–8 cm floor offset, depth of field, a round aperture, and a focus
   object such as the character's eye target.
 - Character shots use f/2.8–f/5.6. Wide establishing shots use f/11.
-- `animate_photographic_camera` writes eased location and rotation keys one
+- `animate_photographic_camera` writes BEZIER eased location and rotation keys one
   frame past both shot ends. Rotation endpoints are numerically unwrapped so a
   cut cannot introduce an Euler flip through motion blur.
 - `validate_photographic_camera` is read-only and reports missing physical

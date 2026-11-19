@@ -12,8 +12,11 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 from dcc_mcp_blender._animation_ops import action_fcurves
 from dcc_mcp_blender._photographic_lighting_ops import validate_motivated_lighting
 from dcc_mcp_blender._photographic_material_ops import (
+    NORMAL_MAP_CONVENTION,
+    NORMAL_MAP_CONVENTION_KEY,
     PBR_MAPS,
     TEXTURE_SOURCE_KEY,
+    _pbr_link_state,
     _pbr_texture_nodes,
     _uses_object_coordinates,
 )
@@ -127,11 +130,16 @@ def _pbr_surface_state(obj: Any | None) -> dict[str, Any]:
                 "object_coordinates": _uses_object_coordinates(node) if node is not None else False,
             }
         source = _custom_value(material, TEXTURE_SOURCE_KEY)
+        normal_map_convention = _custom_value(material, NORMAL_MAP_CONVENTION_KEY)
+        links = _pbr_link_state(tree)
         material_states.append(
             {
                 "name": getattr(material, "name", None),
                 "texture_source": source,
                 "polyhaven_source": _is_polyhaven_source(source),
+                "normal_map_convention": normal_map_convention,
+                "normal_map_convention_valid": normal_map_convention == NORMAL_MAP_CONVENTION,
+                "links": links,
                 "maps": map_states,
             }
         )
@@ -147,7 +155,12 @@ def _pbr_surface_state(obj: Any | None) -> dict[str, Any]:
             and details["object_coordinates"]
             for details in state["maps"].values()
         )
-        valid_materials.append(maps_valid and state["polyhaven_source"])
+        valid_materials.append(
+            maps_valid
+            and state["polyhaven_source"]
+            and state["normal_map_convention_valid"]
+            and all(state["links"].values())
+        )
         state["contract_satisfied"] = valid_materials[-1]
     return {
         "valid": bool(material_states) and all(valid_materials),
@@ -296,47 +309,53 @@ def _validate_camera(
     if not curves:
         _issue(issues, "PHOTO_CAMERA_ANIMATION_MISSING", "animation", "Every shot requires an eased camera move.")
         return state
-    first_frames = [_keyframe_frame(point) for curve in curves for point in getattr(curve, "keyframe_points", ())]
-    frames = [frame for frame in first_frames if frame is not None]
-    if not frames:
+    start, end = frame_range
+    if not any(
+        _keyframe_frame(point) is not None for curve in curves for point in getattr(curve, "keyframe_points", ())
+    ):
         _issue(
             issues, "PHOTO_CAMERA_KEYS_MISSING", "animation", "Camera animation curves contain no readable keyframes."
         )
         return state
-    start, end = frame_range
-    if min(frames) > start - 1 or max(frames) < end + 1:
-        _issue(
-            issues,
-            "PHOTO_CAMERA_ENDPOINT_EXTENSION",
-            "animation",
-            "Camera animation must extend one frame past both shot endpoints.",
-            expected=[start - 1, end + 1],
-            actual=[min(frames), max(frames)],
-        )
-    if not any(
-        getattr(point, "interpolation", None) == "BEZIER"
-        for curve in curves
-        for point in getattr(curve, "keyframe_points", ())
-    ):
-        _issue(
-            issues,
-            "PHOTO_CAMERA_EASING",
-            "animation",
-            "Camera moves must contain at least one Bezier keyframe.",
-        )
-    for curve in curves:
-        if getattr(curve, "data_path", None) != "rotation_euler":
-            continue
-        points = list(getattr(curve, "keyframe_points", ()))
-        values = [_keyframe_value(point) for point in points]
-        values = [value for value in values if value is not None]
-        if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
+    required_frames = (start - 1, start, end, end + 1)
+    for path in ("location", "rotation_euler"):
+        path_curves = [curve for curve in curves if getattr(curve, "data_path", None) == path]
+        path_points = [point for curve in path_curves for point in getattr(curve, "keyframe_points", ())]
+        actual_frames = [_keyframe_frame(point) for point in path_points]
+        actual_frames = [frame for frame in actual_frames if frame is not None]
+        missing_frames = [
+            expected
+            for expected in required_frames
+            if not any(math.isclose(frame, expected, abs_tol=1e-4) for frame in actual_frames)
+        ]
+        if missing_frames:
             _issue(
                 issues,
-                "PHOTO_CAMERA_ROTATION_DISCONTINUITY",
-                "rotation_euler",
-                "Camera Euler rotation jumps more than 180 degrees between keys.",
+                "PHOTO_CAMERA_ENDPOINT_EXTENSION",
+                f"{path}_keyframe_frames",
+                f"{path} animation must contain every shot endpoint and one frame beyond each end.",
+                expected=list(required_frames),
+                actual=sorted(set(actual_frames)),
             )
+        if any(getattr(point, "interpolation", None) != "BEZIER" for point in path_points):
+            _issue(
+                issues,
+                "PHOTO_CAMERA_EASING",
+                f"{path}_interpolation",
+                "All camera motion keyframes must use BEZIER interpolation.",
+                expected="BEZIER",
+                actual=sorted({getattr(point, "interpolation", None) for point in path_points}),
+            )
+        if path == "rotation_euler":
+            values = [_keyframe_value(point) for point in path_points]
+            values = [value for value in values if value is not None]
+            if any(abs(second - first) > math.pi for first, second in zip(values, values[1:])):
+                _issue(
+                    issues,
+                    "PHOTO_CAMERA_ROTATION_DISCONTINUITY",
+                    "rotation_euler",
+                    "Camera Euler rotation jumps more than 180 degrees between keys.",
+                )
     return state
 
 
@@ -810,7 +829,10 @@ def validate_photographic_shot(
                     )
         post_report = None
         if require_post:
-            post_report = validate_photographic_post(scene_name=getattr(scene, "name", scene_name))
+            post_report = validate_photographic_post(
+                scene_name=getattr(scene, "name", scene_name),
+                require_prompt_defaults=True,
+            )
             if not post_report.get("success") or post_report.get("context", {}).get("valid") is False:
                 _issue(
                     issues,

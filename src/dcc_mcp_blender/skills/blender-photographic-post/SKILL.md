@@ -46,5 +46,9 @@ the scene will be saved and rendered by an isolated Blender worker. The tool
 writes a numbered PNG grain sequence and uses compositor auto-refresh so the
 worker does not depend on an in-memory handler.
 
+The default validation also requires the prompt's fixed 185/255 halation
+threshold, warm tint, 34% screen blend, 20% vignette, and gentle S-curve
+values.
+
 Call `validate_photographic_post` after setup and before a final render.
 

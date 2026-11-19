@@ -42,6 +42,11 @@ tools:
           type: string
           minLength: 1
           description: "Optional provenance label for the supplied scan maps. Use Poly Haven for the photographic shot contract."
+        normal_map_convention:
+          type: string
+          const: OPENGL
+          default: OPENGL
+          description: "The supplied normal map convention. Photographic PBR maps must use OpenGL / GL normals."
     output_schema: &result_schema
       type: object
       additionalProperties: true
@@ -117,7 +122,8 @@ tools:
           minLength: 1
         require_pbr_textures:
           type: boolean
-          default: false
+          default: true
+          description: "Require Poly Haven diffuse, roughness, and OpenGL normal maps with connected object-space box projection."
         bevel_width_mm:
           type: number
           minimum: 0.3

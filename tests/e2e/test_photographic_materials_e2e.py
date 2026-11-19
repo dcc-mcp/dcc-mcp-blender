@@ -73,7 +73,11 @@ def test_gloss_eye_and_leaf_contracts(material_scene, tmp_path):
 
     eye = configure.main(material_name="E2E Gloss Eye", material_kind="GLOSS_BLACK_EYE")
     assert eye["success"] is True, eye
-    eye_report = validate.main(material_name="E2E Gloss Eye", material_kind="GLOSS_BLACK_EYE")
+    eye_report = validate.main(
+        material_name="E2E Gloss Eye",
+        material_kind="GLOSS_BLACK_EYE",
+        require_pbr_textures=False,
+    )
     assert eye_report["context"]["valid"] is True, eye_report
 
     leaf_path = tmp_path / "leaf.png"
@@ -84,5 +88,9 @@ def test_gloss_eye_and_leaf_contracts(material_scene, tmp_path):
         texture_paths={"diffuse": str(leaf_path)},
     )
     assert leaf["success"] is True, leaf
-    leaf_report = validate.main(material_name="E2E Plant Leaf", material_kind="PLANT_LEAF")
+    leaf_report = validate.main(
+        material_name="E2E Plant Leaf",
+        material_kind="PLANT_LEAF",
+        require_pbr_textures=False,
+    )
     assert leaf_report["context"]["valid"] is True, leaf_report

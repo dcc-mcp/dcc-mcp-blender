@@ -40,6 +40,7 @@ DEFAULT_VIGNETTE_STRENGTH = 0.20
 DEFAULT_GRAIN_STRENGTH = 0.015
 DEFAULT_GRAIN_SIZE = 256
 DEFAULT_GRAIN_SEED = 1337
+DEFAULT_S_CURVE_POINTS = ((0.25, 0.18), (0.75, 0.82))
 
 
 def _resolve_scene(bpy: Any, scene_name: str | None) -> tuple[Any | None, dict | None]:
@@ -236,10 +237,10 @@ def _configure_curve(node: Any) -> list[list[float]]:
         raise ValueError("CurveRGB does not expose mapping curves")
     curve = curves[-1]
     points = curve.points
-    points.new(0.25, 0.18)
-    points.new(0.75, 0.82)
+    for location in DEFAULT_S_CURVE_POINTS:
+        points.new(*location)
     mapping.update()
-    return [[0.25, 0.18], [0.75, 0.82]]
+    return [list(location) for location in DEFAULT_S_CURVE_POINTS]
 
 
 def _grain_pixels(size: int, seed: int, frame: int) -> list[float]:
@@ -701,6 +702,32 @@ def _values_equal(actual: Any, expected: Any) -> bool:
     return actual == expected
 
 
+def _prompt_default_issues(settings: Any) -> list[dict[str, Any]]:
+    expected_values = {
+        "halation_threshold": DEFAULT_HALATION_THRESHOLD,
+        "halation_tint": list(DEFAULT_HALATION_TINT),
+        "halation_mix": DEFAULT_HALATION_MIX,
+        "vignette_strength": DEFAULT_VIGNETTE_STRENGTH,
+        "s_curve_points": [list(point) for point in DEFAULT_S_CURVE_POINTS],
+    }
+    if not isinstance(settings, dict):
+        settings = {}
+    issues = []
+    for field, expected in expected_values.items():
+        actual = settings.get(field)
+        if not _values_equal(actual, expected):
+            issues.append(
+                {
+                    "code": "PHOTO_POST_PROMPT_DEFAULT_MISMATCH",
+                    "severity": "error",
+                    "field": field,
+                    "expected": expected,
+                    "actual": actual,
+                }
+            )
+    return issues
+
+
 def _curve_points(node: Any) -> list[list[float]]:
     mapping = getattr(node, "mapping", None)
     curves = getattr(mapping, "curves", None)
@@ -720,7 +747,7 @@ def _curve_points(node: Any) -> list[list[float]]:
     return points
 
 
-def validate_photographic_post(scene_name: str | None = None) -> dict:
+def validate_photographic_post(scene_name: str | None = None, require_prompt_defaults: bool = True) -> dict:
     """Validate the owned compositor stack and frame-changing grain handler."""
     try:
         import bpy
@@ -763,6 +790,8 @@ def validate_photographic_post(scene_name: str | None = None) -> dict:
             issues.append({"code": "PHOTO_POST_OUTPUT_UNLINKED", "severity": "error"})
         raw_settings = _scene_property(scene, SETTINGS_KEY)
         settings = json.loads(raw_settings) if isinstance(raw_settings, str) else raw_settings or {}
+        if require_prompt_defaults:
+            issues.extend(_prompt_default_issues(settings))
 
         def check_input(
             node_key: str,

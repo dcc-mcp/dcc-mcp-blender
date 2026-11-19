@@ -580,7 +580,7 @@ def validate_render_profile(
     scene_kind: str = "EXTERIOR",
     device_backend: str = "AUTO",
     samples: int | None = None,
-    allow_cpu_fallback: bool = True,
+    allow_cpu_fallback: bool = False,
     scene_name: str | None = None,
 ) -> dict:
     """Validate a scene against a named photographic render profile."""
@@ -634,7 +634,7 @@ def apply_render_profile(
     scene_kind: str = "EXTERIOR",
     device_backend: str = "AUTO",
     samples: int | None = None,
-    allow_cpu_fallback: bool = True,
+    allow_cpu_fallback: bool = False,
     scene_name: str | None = None,
 ) -> dict:
     """Apply a photographic Cycles profile atomically and verify readback."""

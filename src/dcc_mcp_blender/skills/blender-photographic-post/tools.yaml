@@ -85,6 +85,10 @@ tools:
         scene_name:
           type: string
           minLength: 1
+        require_prompt_defaults:
+          type: boolean
+          default: true
+          description: "Require the prompt's fixed 185/255 halation threshold, warm tint, 34% screen blend, 20% vignette, and standard gentle S-curve."
     output_schema: *post_result
     read_only: true
     destructive: false
