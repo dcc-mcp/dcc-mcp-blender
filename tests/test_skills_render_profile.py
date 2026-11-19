@@ -235,6 +235,14 @@ def test_auto_backend_can_fall_back_to_cpu_and_reports_when_disabled():
         raise AssertionError("CPU fallback should be rejected when disabled")
 
 
+def test_validate_profile_disables_cpu_fallback_by_default():
+    result = _call("validate_render_profile", _bpy(), profile_name="PREVIEW")
+
+    assert result["success"] is True
+    assert result["context"]["valid"] is False
+    assert result["context"]["issues"][0]["code"] == "RENDER_DEVICE_UNAVAILABLE"
+
+
 def test_unavailable_explicit_gpu_is_rejected_before_scene_mutation():
     scene = _Scene()
     bpy = _bpy(scene)

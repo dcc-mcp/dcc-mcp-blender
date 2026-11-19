@@ -10,7 +10,7 @@ from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 from dcc_mcp_blender._animation_ops import action_fcurves
 
 SHOT_TYPES = ("CHARACTER", "WIDE")
-INTERPOLATIONS = ("BEZIER", "LINEAR", "CONSTANT")
+INTERPOLATIONS = ("BEZIER",)
 LENS_MIN = 24.0
 LENS_MAX = 85.0
 SENSOR_WIDTH = 36.0
@@ -43,7 +43,7 @@ def _normalise_shot_type(value: str) -> str:
 def _normalise_interpolation(value: str) -> str:
     interpolation = str(value or "BEZIER").strip().upper()
     if interpolation not in INTERPOLATIONS:
-        raise ValueError("interpolation must be BEZIER, LINEAR, or CONSTANT")
+        raise ValueError("photographic camera interpolation must be BEZIER")
     return interpolation
 
 
@@ -353,8 +353,8 @@ def animate_photographic_camera(
         if start_frame >= end_frame:
             raise ValueError("frame_start must be less than frame_end")
         extension = int(endpoint_extension_frames)
-        if extension < 1:
-            raise ValueError("endpoint_extension_frames must be at least 1")
+        if extension != 1:
+            raise ValueError("endpoint_extension_frames must be exactly 1")
         mode = _normalise_interpolation(interpolation)
         start_position = _vector(start_location, "start_location")
         end_position = _vector(end_location, "end_location")
@@ -586,18 +586,17 @@ def validate_photographic_camera(
                         [],
                         "Animate rotation_euler for continuous camera motion.",
                     )
-            for curve in animation["fcurves"]:
-                if curve["data_path"] not in {"location", "rotation_euler"}:
-                    continue
-                required_points = [point for point in curve["points"] if first <= point["frame"] <= last]
-                if required_points and any(point["interpolation"] != "BEZIER" for point in required_points):
-                    issue(
-                        "CAMERA_EASING_MISSING",
-                        f"{curve['data_path']}_interpolation",
-                        "BEZIER",
-                        sorted({point["interpolation"] for point in required_points}),
-                        "Camera motion must use eased Bezier interpolation.",
-                    )
+        for curve in animation["fcurves"]:
+            if curve["data_path"] not in {"location", "rotation_euler"}:
+                continue
+            if any(point["interpolation"] != "BEZIER" for point in curve["points"]):
+                issue(
+                    "CAMERA_EASING_MISSING",
+                    f"{curve['data_path']}_interpolation",
+                    "BEZIER",
+                    sorted({point["interpolation"] for point in curve["points"]}),
+                    "Camera motion must use eased Bezier interpolation.",
+                )
 
         for curve in animation["fcurves"]:
             if curve["data_path"] != "rotation_euler":

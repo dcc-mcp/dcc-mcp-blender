@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
@@ -108,7 +109,12 @@ def _remove_custom_property(target: Any, key: str) -> None:
 
 def _is_polyhaven_source(value: Any) -> bool:
     normalized = "".join(str(value or "").casefold().split())
-    return normalized == "polyhaven" or "polyhaven.com" in normalized
+    if normalized == "polyhaven":
+        return True
+    raw_value = str(value or "").strip()
+    parsed = urlparse(raw_value if "://" in raw_value else f"//{raw_value}")
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    return hostname == "polyhaven.com" or hostname.endswith(".polyhaven.com")
 
 
 def _remove_owned_lights(bpy: Any, keep_name: str) -> None:
@@ -461,7 +467,7 @@ def validate_motivated_lighting(
     background_object: str | None = None,
     require_agx: bool = True,
     preview_still_path: str | None = None,
-    require_polyhaven_hdri: bool = False,
+    require_polyhaven_hdri: bool = True,
 ) -> dict:
     """Read-only validation for motivated source, HDRI, AgX, and contrast setup."""
     try:

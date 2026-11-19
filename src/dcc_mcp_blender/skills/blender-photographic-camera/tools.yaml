@@ -103,11 +103,11 @@ tools:
           description: "Euler rotation in degrees. Equivalent angles are unwrapped for continuity."
         interpolation:
           type: string
-          enum: [BEZIER, LINEAR, CONSTANT]
+          enum: [BEZIER]
           default: BEZIER
         endpoint_extension_frames:
           type: integer
-          minimum: 1
+          const: 1
           default: 1
     output_schema: *result_schema
     read_only: false

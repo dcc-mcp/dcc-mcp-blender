@@ -105,8 +105,8 @@ tools:
           description: "Optional local 25% preview still for machine color-safety analysis."
         require_polyhaven_hdri:
           type: boolean
-          default: false
-          description: "Require the outdoor HDRI to carry a Poly Haven provenance label."
+          default: true
+          description: "Require the outdoor HDRI to carry a Poly Haven provenance label. Disable only for a non-contract diagnostic."
     output_schema: *result_schema
     read_only: true
     destructive: false

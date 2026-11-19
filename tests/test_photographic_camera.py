@@ -152,6 +152,81 @@ def test_animation_adds_eased_endpoint_keys_and_unwraps_rotation():
     assert result["context"]["camera_shake_added"] is False
 
 
+def test_animation_rejects_non_eased_interpolation():
+    result = _call(
+        "animate_photographic_camera",
+        _bpy(_Camera()),
+        camera_name="Camera",
+        frame_start=10,
+        frame_end=20,
+        start_location=[0, -1, 0.04],
+        end_location=[0.1, -0.8, 0.04],
+        start_rotation_degrees=[0, 0, 0],
+        end_rotation_degrees=[0, 0, 10],
+        interpolation="LINEAR",
+    )
+
+    assert result["success"] is False
+    assert "BEZIER" in result["error"]
+
+
+def test_animation_rejects_more_than_one_endpoint_extension():
+    result = _call(
+        "animate_photographic_camera",
+        _bpy(_Camera()),
+        camera_name="Camera",
+        frame_start=10,
+        frame_end=20,
+        start_location=[0, -1, 0.04],
+        end_location=[0.1, -0.8, 0.04],
+        start_rotation_degrees=[0, 0, 0],
+        end_rotation_degrees=[0, 0, 10],
+        endpoint_extension_frames=2,
+    )
+
+    assert result["success"] is False
+    assert "exactly 1" in result["error"]
+
+
+def test_validation_rejects_non_bezier_motion_without_explicit_frame_range():
+    camera = _Camera()
+    camera.data.dof.use_dof = True
+    camera.data.dof.aperture_fstop = 4.0
+    camera.data.dof.aperture_blades = 0
+    eyes = SimpleNamespace(name="ToyEyes", type="EMPTY")
+
+    def point(frame, value):
+        return SimpleNamespace(co=(frame, value), interpolation="LINEAR")
+
+    camera.animation_data = SimpleNamespace(
+        action=SimpleNamespace(
+            fcurves=[
+                SimpleNamespace(
+                    data_path="location",
+                    array_index=0,
+                    modifiers=[],
+                    keyframe_points=[point(1, 0.0), point(2, 1.0)],
+                ),
+                SimpleNamespace(
+                    data_path="rotation_euler",
+                    array_index=0,
+                    modifiers=[],
+                    keyframe_points=[point(1, 0.0), point(2, 0.1)],
+                ),
+            ]
+        )
+    )
+
+    result = _call(
+        "validate_photographic_camera",
+        _bpy(camera, eyes),
+        camera_name="Camera",
+    )
+
+    assert result["success"] is True
+    assert any(issue["code"] == "CAMERA_EASING_MISSING" for issue in result["context"]["issues"])
+
+
 def test_validation_reports_missing_focus_and_animation_without_mutating():
     camera = _Camera()
     camera.data.dof.use_dof = True
@@ -206,3 +281,5 @@ def test_tools_yaml_declares_the_photographic_camera_contract():
         "validate_photographic_camera",
     }
     assert tools["configure_photographic_camera"]["input_schema"]["properties"]["lens"]["minimum"] == 24.0
+    assert tools["animate_photographic_camera"]["input_schema"]["properties"]["interpolation"]["enum"] == ["BEZIER"]
+    assert tools["animate_photographic_camera"]["input_schema"]["properties"]["endpoint_extension_frames"]["const"] == 1

@@ -37,11 +37,11 @@ metadata:
 
 This skill packages the material contract for real-toy shots.
 
-- `configure_photographic_material` creates or updates painted toy, gloss-black eye, and plant-leaf materials. Optional diffuse, roughness, and GL normal paths use local object-space box projection with blend 0.25. Pass `texture_source: "Poly Haven"` when the maps come from the required scan library so the complete shot validator can verify provenance metadata.
+- `configure_photographic_material` creates or updates painted toy, gloss-black eye, and plant-leaf materials. Optional diffuse, roughness, and OpenGL / GL normal paths use local object-space box projection with blend 0.25. The PBR validator also verifies that each loaded map is connected to the Principled BSDF. Pass `texture_source: "Poly Haven"` when the maps come from the required scan library so the complete shot validator can verify provenance metadata.
 - Painted toys use Principled roughness 0.48, coat weight 0.25, coat roughness 0.3, and a scale 900 noise bump with 0.03 strength and 0.2 mm distance.
 - Gloss-black eyes use roughness 0.08, coat weight 1.0, and coat roughness 0.03.
 - Plant leaves use alpha cutout nodes, an alpha-capable surface mode, and a small subsurface contribution.
 - `configure_toy_bevel` keeps a render-visible three-segment bevel between 0.3 and 0.7 mm and limits it to no edge subset.
-- `validate_photographic_material` is read-only and reports missing shader, texture, alpha, translucency, or bevel contract details. With `require_pbr_textures`, it verifies named diffuse, roughness, and GL normal maps, Object-coordinate box projection, and the 0.25 projection blend.
+- `validate_photographic_material` is read-only and reports missing shader, texture, alpha, translucency, or bevel contract details. With `require_pbr_textures`, it verifies named Poly Haven diffuse, roughness, and OpenGL normal maps, their Principled BSDF links, Object-coordinate box projection, and the 0.25 projection blend.
 
 Use local downloaded scan files explicitly. The skill does not assume a network asset service.

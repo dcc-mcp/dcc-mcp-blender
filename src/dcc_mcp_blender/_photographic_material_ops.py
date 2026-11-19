@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from dcc_mcp_core.skill import skill_error, skill_exception, skill_success
 
@@ -12,6 +13,8 @@ MATERIAL_KINDS = ("PAINTED_TOY", "GLOSS_BLACK_EYE", "PLANT_LEAF")
 PBR_MAPS = ("diffuse", "roughness", "normal")
 PREFIX = "DCC Photo "
 TEXTURE_SOURCE_KEY = "dcc_mcp_photographic_texture_source"
+NORMAL_MAP_CONVENTION_KEY = "dcc_mcp_photographic_normal_map_convention"
+NORMAL_MAP_CONVENTION = "OPENGL"
 BEVEL_WIDTH_MIN_MM = 0.3
 BEVEL_WIDTH_MAX_MM = 0.7
 BEVEL_SEGMENTS = 3
@@ -22,6 +25,13 @@ def _normalise_kind(value: str) -> str:
     if kind not in MATERIAL_KINDS:
         raise ValueError("material_kind must be PAINTED_TOY, GLOSS_BLACK_EYE, or PLANT_LEAF")
     return kind
+
+
+def _normalise_normal_map_convention(value: Any) -> str:
+    convention = str(value or "").strip().upper()
+    if convention not in {"OPENGL", "GL"}:
+        raise ValueError("normal_map_convention must be OPENGL for the photographic contract")
+    return NORMAL_MAP_CONVENTION
 
 
 def _finite(value: Any, label: str) -> float:
@@ -237,6 +247,63 @@ def _uses_object_coordinates(texture: Any) -> bool:
     )
 
 
+def _pbr_link_state(node_tree: Any) -> dict[str, bool]:
+    principled = _find_principled(node_tree) if node_tree is not None else None
+    nodes = _pbr_texture_nodes(node_tree) if node_tree is not None else {map_name: None for map_name in PBR_MAPS}
+    normal_map = _node(node_tree.nodes, f"{PREFIX}Normal Map", "NORMAL_MAP") if node_tree is not None else None
+    normal_texture = nodes.get("normal")
+    principled_normal = _socket(getattr(principled, "inputs", ()), ("Normal",))
+    normal_map_input = _socket(getattr(normal_map, "inputs", ()), ("Color",))
+    normal_map_output = _socket(getattr(normal_map, "outputs", ()), ("Normal",))
+    normal_texture_linked = _linked_from(normal_map_input, normal_texture, "Color")
+    normal_linked_directly = _linked_from(principled_normal, normal_map, "Normal")
+    normal_linked_through_bump = False
+    if node_tree is not None and normal_map_output is not None:
+        for node in node_tree.nodes:
+            if getattr(node, "type", None) != "BUMP":
+                continue
+            bump_input = _socket(getattr(node, "inputs", ()), ("Normal",))
+            if _linked_from(bump_input, normal_map, "Normal") and _linked_from(principled_normal, node, "Normal"):
+                normal_linked_through_bump = True
+                break
+    return {
+        "diffuse": _linked_from(
+            _socket(getattr(principled, "inputs", ()), ("Base Color",)),
+            nodes.get("diffuse"),
+            "Color",
+        ),
+        "roughness": _linked_from(
+            _socket(getattr(principled, "inputs", ()), ("Roughness",)),
+            nodes.get("roughness"),
+            "Color",
+        ),
+        "normal": normal_texture_linked and (normal_linked_directly or normal_linked_through_bump),
+    }
+
+
+def _image_has_alpha(image: Any) -> bool:
+    if image is None:
+        return False
+    filepath = getattr(image, "filepath", None) or getattr(image, "filepath_raw", None)
+    if filepath:
+        try:
+            header = Path(str(filepath)).expanduser().read_bytes()[:29]
+        except OSError:
+            header = b""
+        if header.startswith(b"\x89PNG\r\n\x1a\n") and len(header) >= 26:
+            return header[25] in {4, 6}
+        if header.startswith(b"\xff\xd8\xff"):
+            return False
+    channels = getattr(image, "channels", None)
+    return isinstance(channels, int) and not isinstance(channels, bool) and channels >= 4
+
+
+def _validate_leaf_diffuse_alpha(bpy: Any, path: Path) -> None:
+    image = _load_image(bpy, path, "sRGB")
+    if not _image_has_alpha(image):
+        raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
+
+
 def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
     getter = getattr(owner, "get", None)
     if callable(getter):
@@ -249,7 +316,12 @@ def _custom_value(owner: Any, key: str, default: Any = None) -> Any:
 
 def _is_polyhaven_source(value: Any) -> bool:
     normalized = "".join(str(value or "").casefold().split())
-    return normalized == "polyhaven" or "polyhaven.com" in normalized
+    if normalized == "polyhaven":
+        return True
+    raw_value = str(value or "").strip()
+    parsed = urlparse(raw_value if "://" in raw_value else f"//{raw_value}")
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    return hostname == "polyhaven.com" or hostname.endswith(".polyhaven.com")
 
 
 def _linked_from(target: Any, source: Any, source_socket_name: str) -> bool:
@@ -387,6 +459,7 @@ def configure_photographic_material(
     target_object: str | None = None,
     alpha_threshold: float = 0.5,
     texture_source: str | None = None,
+    normal_map_convention: str = NORMAL_MAP_CONVENTION,
 ) -> dict:
     """Create or update a toy material with photographic surface behavior."""
     try:
@@ -401,11 +474,14 @@ def configure_photographic_material(
             source = texture_source.strip()
         else:
             source = None
+        convention = _normalise_normal_map_convention(normal_map_convention)
         paths = _path_map(texture_paths)
         if kind == "PLANT_LEAF" and "diffuse" not in paths:
             raise ValueError("PLANT_LEAF requires a diffuse scan with an alpha channel")
         import bpy
 
+        if kind == "PLANT_LEAF":
+            _validate_leaf_diffuse_alpha(bpy, paths["diffuse"])
         material = _material(bpy, material_name)
         if material is None:
             material = bpy.data.materials.new(material_name)
@@ -426,6 +502,7 @@ def configure_photographic_material(
             material[TEXTURE_SOURCE_KEY] = source
         else:
             _remove_custom_property(material, TEXTURE_SOURCE_KEY)
+        material[NORMAL_MAP_CONVENTION_KEY] = convention
         return skill_success(
             f"Photographic material configured: {material.name}",
             material_name=material.name,
@@ -443,6 +520,7 @@ def configure_photographic_material(
                 "gloss_black_coat_roughness": 0.03,
                 "box_projection_blend": 0.25,
                 "texture_source": source,
+                "normal_map_convention": convention,
             },
             prompt="Add a 0.3–0.7 mm, three-segment bevel to every toy edge, then validate the material.",
         )
@@ -526,7 +604,7 @@ def validate_photographic_material(
     material_name: str,
     material_kind: str = "PAINTED_TOY",
     object_name: str | None = None,
-    require_pbr_textures: bool = False,
+    require_pbr_textures: bool = True,
     bevel_width_mm: float = 0.5,
 ) -> dict:
     """Read-only validation for toy material nodes and the edge bevel contract."""
@@ -671,6 +749,15 @@ def validate_photographic_material(
                 texture_source,
                 "Photographic PBR maps must carry a Poly Haven provenance label.",
             )
+        normal_map_convention = _custom_value(material, NORMAL_MAP_CONVENTION_KEY)
+        if require_pbr_textures and normal_map_convention != NORMAL_MAP_CONVENTION:
+            issue(
+                "PBR_NORMAL_CONVENTION_MISMATCH",
+                "normal_map_convention",
+                NORMAL_MAP_CONVENTION,
+                normal_map_convention,
+                "Photographic PBR normal maps must use the OpenGL convention.",
+            )
         for node in texture_nodes:
             if getattr(node, "projection", None) != "BOX" or not _close(getattr(node, "projection_blend", None), 0.25):
                 issue(
@@ -703,6 +790,16 @@ def validate_photographic_material(
                         False,
                         "PBR textures must use object-space coordinates.",
                     )
+            links = _pbr_link_state(material.node_tree)
+            for map_name, valid in links.items():
+                if not valid:
+                    issue(
+                        "PBR_TEXTURE_LINK_MISSING",
+                        map_name,
+                        True,
+                        False,
+                        "Every photographic PBR map must be connected to the Principled BSDF.",
+                    )
 
         if kind == "PLANT_LEAF":
             diffuse = pbr_nodes.get("diffuse")
@@ -723,6 +820,14 @@ def validate_photographic_material(
                     True,
                     False,
                     "Plant leaves need the scanned diffuse alpha connected through a cutout node.",
+                )
+            elif not _image_has_alpha(getattr(diffuse, "image", None)):
+                issue(
+                    "LEAF_ALPHA_CHANNEL_MISSING",
+                    "diffuse_alpha_channel",
+                    True,
+                    False,
+                    "Plant leaves need a scanned diffuse image with an alpha channel.",
                 )
             if principled is not None and not _close(
                 _socket_value(principled, ("Transmission Weight", "Transmission")), 0.04
