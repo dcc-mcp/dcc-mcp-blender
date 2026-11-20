@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.30](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.29...v0.2.30) (2026-11-20)
+
+
+### Features
+
+* add asset build validation contract ([b28bf47](https://github.com/dcc-mcp/dcc-mcp-blender/commit/b28bf47b1b4233f7222e8893d57f36c7c90205ae))
+
 ## [0.2.29](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.28...v0.2.29) (2026-11-19)
 
 
