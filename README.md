@@ -266,8 +266,8 @@ HDRI by Poly Haven (CC0), and
 | **blender-interchange** | `import_file`, `import_fbx`, `import_obj`, `import_usd`, `export_gltf`, `export_usd`, `export_alembic`, `batch_export` |
 | **blender-export-preset** | `list_export_presets`, `save_export_preset`, `load_export_preset`, `delete_export_preset` |
 | **blender-shot-export** | `get_shot_info`, `export_camera` |
-| **blender-validation** | `run_scene_checks`, `validate_mesh`, `validate_materials`, `validate_animation`, `validate_export_readiness`, `validate_photographic_shot`, `get_validation_report` |
-| **blender-pipeline** | `get_asset_metadata`, `tag_asset_metadata`, `clear_asset_metadata`, `set_project_context`, `create_publish_manifest`, `prepare_publish_package` |
+| **blender-validation** | `run_scene_checks`, `validate_mesh`, `validate_materials`, `validate_animation`, `validate_export_readiness`, `validate_photographic_shot`, `validate_asset_build_manifest`, `compare_asset_snapshot`, `get_validation_report` |
+| **blender-pipeline** | `get_asset_metadata`, `tag_asset_metadata`, `clear_asset_metadata`, `set_project_context`, `capture_asset_snapshot`, `create_asset_build_manifest`, `create_publish_manifest`, `prepare_publish_package`, `publish_comfyui_asset` |
 | **blender-materials** | `create_material`, `assign_material`, `assign_face_materials`, `inspect_face_materials`, `set_material_color`, `list_materials`, `delete_material`, `export_materialx`, `import_materialx` |
 | **blender-shader-nodes** | `list_material_nodes`, `set_principled_input`, `list_node_trees`, `list_nodes`, `create_node`, `delete_node`, `list_node_sockets`, `connect_nodes`, `disconnect_nodes`, `list_node_links`, `set_node_input`, `get_node_value`, `create_material_with_nodes`, `assign_texture_node`, `set_principled_inputs` |
 | **blender-compositor** | `setup_compositor_tree`, `set_compositor_enabled`, `clear_compositor_tree`, `create_compositor_node`, `delete_compositor_node`, `connect_compositor_nodes`, `disconnect_compositor_nodes`, `set_compositor_node_value`, `get_compositor_node_value`, `list_compositor_node_links`, `list_compositor_node_types` |

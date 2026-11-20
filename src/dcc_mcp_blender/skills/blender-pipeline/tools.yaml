@@ -276,3 +276,108 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: true
+
+  - name: capture_asset_snapshot
+    description: "Capture a deterministic scene snapshot for rebuild and delivery checks."
+    source_file: scripts/capture_asset_snapshot.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        object_names:
+          type: array
+          items:
+            type: string
+        output_path:
+          type: string
+          minLength: 1
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: create_asset_build_manifest
+    description: "Create a scene-stored asset build contract covering parts, controls, actions, references, and outputs."
+    source_file: scripts/create_asset_build_manifest.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [asset_name, object_names]
+      properties:
+        asset_name:
+          type: string
+          minLength: 1
+        object_names:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        output_path:
+          type: string
+        armature_name:
+          type: string
+        controls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        action_names:
+          type: array
+          items:
+            type: string
+        references:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                additionalProperties: true
+        outputs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true

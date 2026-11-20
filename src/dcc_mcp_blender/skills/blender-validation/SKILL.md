@@ -1,6 +1,6 @@
 ---
 name: blender-validation
-description: "Blender scene, mesh, material, animation, and export readiness validation"
+description: "Blender scene, mesh, material, animation, asset-build, photographic-shot, and export readiness validation"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
 metadata:
@@ -9,10 +9,10 @@ metadata:
     layer: domain
     stage: validation
     version: "1.0.0"
-    tags: [blender, validation, pipeline, scene-checks, export-readiness]
-    search-hint: "validate scene, validate mesh, material validation, animation validation, export readiness, severity report"
-    search-aliases: [scene check, mesh check, validation report, pre-export check, diagnostic, issue scan, sanity check, quality check, lint scene]
-    intent: "Run structured validation checks on Blender scenes — detect issues before export or publish with severity-coded reports."
+    tags: [blender, validation, pipeline, scene-checks, asset-build, snapshot, photographic-shot, export-readiness]
+    search-hint: "validate asset build, build contract, compare snapshot, validate scene, validate mesh, material validation, animation validation, photographic shot, export readiness, severity report"
+    search-aliases: [build validation, contract validation, rebuild check, snapshot compare, scene check, mesh check, validation report, pre-export check, diagnostic, issue scan, sanity check, quality check, lint scene]
+    intent: "Run structured validation checks on Blender scenes, asset build contracts, and photographic shots before export or publish."
     recall-context:
       app_type: blender
       domain: diagnostics
@@ -54,3 +54,9 @@ OptiX or Metal backend, motivated lighting, required preview color safety for
 final shots, and the photographic compositor finish. FINAL validation also
 checks the preview evidence sidecar produced by
 `render_photographic_test_still`.
+
+`validate_asset_build_manifest` checks declared scene parts, armature controls,
+actions, reference approvals, output files, and optional snapshot drift. Use
+`compare_asset_snapshot` when a rebuild should be checked against a saved scene
+state without storing raw mesh data. Set `strict_snapshot` when snapshot drift
+must fail the delivery gate.

@@ -187,8 +187,8 @@ Tool naming: `{skill_name.replace("-","_")}__{script_stem}` (e.g. `blender_scene
 | blender-geometry-nodes | `create_geometry_node_group`, `set_geometry_node_modifier_input` |
 | blender-scripting | `execute_python`, `execute_script_file`, `get_blender_info` |
 | blender-dev | `reload_modules`, `list_addons`, `install_addon`, `remove_addon`, `refresh_addons`, `capture_ui_snapshot`, `start_debug_server`, `get_python_environment` |
-| blender-validation | `run_scene_checks`, `validate_mesh/materials/animation`, `validate_photographic_shot`, `get_validation_report` |
-| blender-pipeline | `get/tag/clear_asset_metadata`, `set_project_context`, `create_publish_manifest` |
+| blender-validation | `run_scene_checks`, `validate_mesh/materials/animation`, `validate_photographic_shot`, `validate_asset_build_manifest`, `compare_asset_snapshot`, `get_validation_report` |
+| blender-pipeline | `get/tag/clear_asset_metadata`, `set_project_context`, `capture_asset_snapshot`, `create_asset_build_manifest`, `create_publish_manifest`, `publish_comfyui_asset` |
 | blender-shot-export | `get_shot_info`, `export_camera` |
 | blender-export-preset | `list/save/load/delete_export_preset` |
 | blender-collection | `create_collection`, `link_to_collection`, `list_collections` |
