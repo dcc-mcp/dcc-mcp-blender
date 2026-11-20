@@ -348,3 +348,86 @@ tools:
       destructive_hint: false
       idempotent_hint: true
       open_world_hint: false
+
+  - name: validate_asset_build_manifest
+    description: "Validate scene parts, controls, actions, references, and outputs against an asset build manifest."
+    source_file: scripts/validate_asset_build_manifest.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        manifest_path:
+          type: string
+          minLength: 1
+        manifest:
+          type: object
+          additionalProperties: true
+        compare_snapshot:
+          type: boolean
+          default: false
+        strict_snapshot:
+          type: boolean
+          default: false
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+
+  - name: compare_asset_snapshot
+    description: "Compare the current scene with a saved snapshot and report deterministic differences."
+    source_file: scripts/compare_asset_snapshot.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 0
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [baseline_path]
+      properties:
+        baseline_path:
+          type: string
+          minLength: 1
+        object_names:
+          type: array
+          items:
+            type: string
+        strict:
+          type: boolean
+          default: false
+    output_schema:
+      type: object
+      additionalProperties: true
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
