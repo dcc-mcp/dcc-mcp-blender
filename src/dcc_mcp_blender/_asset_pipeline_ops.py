@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,16 @@ def _len_or_zero(value: Any) -> int:
         return len(value)
     except Exception:
         return 0
+
+
+def _as_float_list(value: Any, size: Optional[int] = None) -> Optional[List[float]]:
+    try:
+        values = [float(item) for item in value]
+    except (TypeError, ValueError):
+        return None
+    if size is not None and len(values) != size:
+        return None
+    return values
 
 
 def _iter_or_empty(value: Any) -> Iterable[Any]:
@@ -208,6 +219,231 @@ def _object_summary(obj: Any) -> Dict[str, Any]:
         "visibility": _visibility(obj),
         "metadata": _load_json_prop(obj, ASSET_METADATA_KEY),
     }
+
+
+_BOUND_OBJECT_TYPES = {"MESH", "CURVE", "SURFACE", "META", "FONT"}
+_BOUND_AXES = {"X": 0, "Y": 1, "Z": 2}
+
+
+def _normalise_names(value: Any) -> List[str]:
+    """Return unique, non-empty strings while preserving caller order."""
+    if value is None:
+        return []
+    values = [value] if isinstance(value, str) else value
+    result: List[str] = []
+    for item in values or []:
+        name = str(item).strip()
+        if name and name not in result:
+            result.append(name)
+    return result
+
+
+def _world_bound_points(obj: Any) -> List[List[float]]:
+    """Return local bounding-box corners transformed into world space."""
+    raw_bounds = _iter_or_empty(getattr(obj, "bound_box", None))
+    if not raw_bounds:
+        return []
+
+    matrix = getattr(obj, "matrix_world", None)
+    location = _as_float_list(getattr(obj, "location", []), 3) or [0.0, 0.0, 0.0]
+    points: List[List[float]] = []
+    for corner in raw_bounds:
+        local = _as_float_list(corner, 3)
+        if local is None:
+            continue
+        transformed: Optional[List[float]] = None
+        if matrix is not None:
+            try:
+                from mathutils import Vector
+
+                value = matrix @ Vector(local)
+                transformed = _as_float_list(value, 3)
+            except Exception:
+                transformed = None
+        if transformed is None:
+            transformed = [local[index] + location[index] for index in range(3)]
+        points.append(transformed)
+    return points
+
+
+def _select_bound_objects(
+    bpy: Any,
+    object_names: Optional[List[str]],
+    name_prefixes: Optional[List[str]],
+    exclude_name_prefixes: Optional[List[str]],
+    object_types: Optional[List[str]],
+    include_hidden: bool,
+    include_hidden_render: bool,
+) -> Tuple[List[Any], List[Dict[str, Any]]]:
+    names = _normalise_names(object_names)
+    prefixes = _normalise_names(name_prefixes)
+    excluded_prefixes = tuple(_normalise_names(exclude_name_prefixes))
+    allowed_types = {name.upper() for name in _normalise_names(object_types)}
+    if not allowed_types:
+        allowed_types = set(_BOUND_OBJECT_TYPES)
+
+    issues: List[Dict[str, Any]] = []
+    if names and prefixes:
+        issues.append(
+            _issue(
+                "SCENE_BOUNDS_SELECTOR_CONFLICT",
+                "error",
+                "Pass object_names or name_prefixes, not both.",
+            )
+        )
+        return [], issues
+
+    if names:
+        candidates, issues = _objects_for_names(bpy, names)
+    else:
+        candidates = _objects(bpy)
+
+    selected: List[Any] = []
+    for obj in candidates:
+        name = _object_name(obj)
+        object_type = str(getattr(obj, "type", "")).upper()
+        if object_type not in allowed_types:
+            continue
+        if prefixes and not name.startswith(tuple(prefixes)):
+            continue
+        if excluded_prefixes and name.startswith(excluded_prefixes):
+            continue
+        visibility = _visibility(obj)
+        if not include_hidden and visibility["hidden"]:
+            continue
+        if not include_hidden_render and visibility["hide_render"]:
+            continue
+        selected.append(obj)
+    return selected, issues
+
+
+def _scene_bounds(objects: List[Any], width_axis: str, height_axis: str) -> Optional[Dict[str, Any]]:
+    points = [point for obj in objects for point in _world_bound_points(obj)]
+    if not points:
+        return None
+    minimum = [min(point[index] for point in points) for index in range(3)]
+    maximum = [max(point[index] for point in points) for index in range(3)]
+    size = [maximum[index] - minimum[index] for index in range(3)]
+    width = size[_BOUND_AXES[width_axis]]
+    height = size[_BOUND_AXES[height_axis]]
+    return {
+        "min": minimum,
+        "max": maximum,
+        "size": size,
+        "width": width,
+        "height": height,
+        "depth": size[3 - _BOUND_AXES[width_axis] - _BOUND_AXES[height_axis]],
+        "width_height_ratio": width / height if height > 0 else None,
+        "objects": len(objects),
+    }
+
+
+def validate_scene_bounds(
+    object_names: Optional[List[str]] = None,
+    name_prefixes: Optional[List[str]] = None,
+    exclude_name_prefixes: Optional[List[str]] = None,
+    object_types: Optional[List[str]] = None,
+    include_hidden: bool = False,
+    include_hidden_render: bool = False,
+    width_axis: str = "X",
+    height_axis: str = "Z",
+    expected_ratio: Optional[float] = None,
+    ratio_tolerance: float = 0.001,
+) -> dict:
+    """Validate a selected scene projection and return its world-space bounds."""
+    try:
+        import bpy
+
+        width_axis = str(width_axis or "X").upper()
+        height_axis = str(height_axis or "Z").upper()
+        if width_axis not in _BOUND_AXES or height_axis not in _BOUND_AXES or width_axis == height_axis:
+            return skill_error(
+                "Invalid scene bounds axes",
+                "width_axis and height_axis must be distinct values from X, Y, or Z.",
+            )
+        if expected_ratio is not None:
+            try:
+                expected_ratio = float(expected_ratio)
+            except (TypeError, ValueError):
+                return skill_error("Invalid expected ratio", "expected_ratio must be a finite positive number.")
+            if not math.isfinite(expected_ratio) or expected_ratio <= 0:
+                return skill_error("Invalid expected ratio", "expected_ratio must be a finite positive number.")
+        try:
+            ratio_tolerance = float(ratio_tolerance)
+        except (TypeError, ValueError):
+            return skill_error("Invalid ratio tolerance", "ratio_tolerance must be a finite non-negative number.")
+        if not math.isfinite(ratio_tolerance) or ratio_tolerance < 0:
+            return skill_error("Invalid ratio tolerance", "ratio_tolerance must be a finite non-negative number.")
+
+        objects, issues = _select_bound_objects(
+            bpy,
+            object_names,
+            name_prefixes,
+            exclude_name_prefixes,
+            object_types,
+            bool(include_hidden),
+            bool(include_hidden_render),
+        )
+        bounds = _scene_bounds(objects, width_axis, height_axis)
+        if not objects or bounds is None:
+            issues.append(
+                _issue(
+                    "SCENE_BOUNDS_EMPTY",
+                    "error",
+                    "The selector did not produce any objects with usable bounds.",
+                )
+            )
+        elif bounds["height"] <= 0:
+            issues.append(
+                _issue(
+                    "SCENE_BOUNDS_DEGENERATE",
+                    "error",
+                    "The selected projection has zero height.",
+                    details={"height_axis": height_axis, "height": bounds["height"]},
+                )
+            )
+        elif expected_ratio is not None:
+            actual_ratio = bounds["width_height_ratio"]
+            ratio_error = abs(actual_ratio - expected_ratio)
+            if ratio_error > ratio_tolerance:
+                issues.append(
+                    _issue(
+                        "SCENE_BOUNDS_RATIO_MISMATCH",
+                        "error",
+                        f"Projection ratio {actual_ratio:.9g} differs from expected {expected_ratio:.9g}.",
+                        details={
+                            "actual_ratio": actual_ratio,
+                            "expected_ratio": expected_ratio,
+                            "absolute_error": ratio_error,
+                            "tolerance": ratio_tolerance,
+                        },
+                    )
+                )
+        if not issues:
+            issues.append(_issue("SCENE_BOUNDS_VALID", "info", "Scene bounds validation passed."))
+
+        selector = {
+            "object_names": _normalise_names(object_names),
+            "name_prefixes": _normalise_names(name_prefixes),
+            "exclude_name_prefixes": _normalise_names(exclude_name_prefixes),
+            "object_types": sorted({name.upper() for name in _normalise_names(object_types)})
+            or sorted(_BOUND_OBJECT_TYPES),
+            "include_hidden": bool(include_hidden),
+            "include_hidden_render": bool(include_hidden_render),
+        }
+        context = {
+            "selector": selector,
+            "axes": {"width": width_axis, "height": height_axis},
+            "expected_ratio": expected_ratio,
+            "ratio_tolerance": ratio_tolerance,
+            "bounds": bounds,
+        }
+        report = _make_report("scene_bounds", issues, [_object_name(obj) for obj in objects], context)
+        return skill_success("Scene bounds validation completed", report=report, **context)
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message="Failed to validate scene bounds")
 
 
 def _safe_json_path(output_path: str) -> Tuple[Optional[Path], Optional[dict]]:

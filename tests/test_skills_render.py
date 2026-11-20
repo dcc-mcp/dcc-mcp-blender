@@ -123,6 +123,108 @@ def test_device_schema_round_trip_is_actually_exercised():
     assert len(validators) >= 1
 
 
+def test_render_silhouette_restores_scene_and_visibility_state(tmp_path):
+    bpy = make_mock_bpy()
+    scene = bpy.context.scene
+    hero = SimpleNamespace(name="Hero", type="MESH", hide_render=False)
+    display = SimpleNamespace(name="Display_Helper", type="MESH", hide_render=False)
+    other = SimpleNamespace(name="Other", type="MESH", hide_render=False)
+    scene.objects = [hero, display, other]
+    scene.display = SimpleNamespace(
+        shading=SimpleNamespace(
+            light="STUDIO",
+            color_type="MATERIAL",
+            single_color=(0.1, 0.2, 0.3),
+            show_shadows=True,
+            show_cavity=True,
+            show_specular_highlight=True,
+        )
+    )
+    scene.view_settings.view_transform = "AgX"
+    scene.view_settings.look = "AgX - Very High Contrast"
+    scene.world.color = [0.1, 0.2, 0.3]
+    scene.render.engine = "CYCLES"
+    scene.render.filepath = "//beauty.png"
+    scene.render.resolution_x = 1920
+    scene.render.resolution_y = 1080
+    scene.render.resolution_percentage = 75
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_mode = "RGBA"
+
+    output_path = tmp_path / "silhouette.png"
+    result = load_and_call(
+        "blender-render/scripts/render_silhouette.py",
+        bpy,
+        output_path=str(output_path),
+        object_names=["Hero"],
+        exclude_name_prefixes=["Display_"],
+    )
+
+    assert result["success"] is True
+    assert set(result["context"]["hidden_object_names"]) == {"Display_Helper", "Other"}
+    assert bpy.ops.render.render.call_args.kwargs == {"write_still": True}
+    assert scene.render.engine == "CYCLES"
+    assert scene.render.filepath == "//beauty.png"
+    assert scene.render.resolution_x == 1920
+    assert scene.render.resolution_y == 1080
+    assert scene.render.resolution_percentage == 75
+    assert scene.render.image_settings.file_format == "OPEN_EXR"
+    assert scene.render.image_settings.color_mode == "RGBA"
+    assert scene.view_settings.view_transform == "AgX"
+    assert scene.view_settings.look == "AgX - Very High Contrast"
+    assert scene.world.color == (0.1, 0.2, 0.3)
+    assert scene.display.shading.light == "STUDIO"
+    assert scene.display.shading.color_type == "MATERIAL"
+    assert scene.display.shading.show_shadows is True
+    assert hero.hide_render is False
+    assert display.hide_render is False
+    assert other.hide_render is False
+
+
+def test_render_silhouette_restores_scene_state_when_render_fails(tmp_path):
+    bpy = make_mock_bpy()
+    scene = bpy.context.scene
+    hero = SimpleNamespace(name="Hero", type="MESH", hide_render=False)
+    helper = SimpleNamespace(name="Display_Helper", type="MESH", hide_render=True)
+    scene.objects = [hero, helper]
+    scene.display = SimpleNamespace(shading=SimpleNamespace(light="STUDIO", color_type="MATERIAL"))
+    scene.view_settings.view_transform = "AgX"
+    scene.view_settings.look = "AgX - Medium High Contrast"
+    scene.world.color = [0.1, 0.2, 0.3]
+    scene.render.engine = "CYCLES"
+    scene.render.filepath = "//beauty.exr"
+    scene.render.resolution_x = 1920
+    scene.render.resolution_y = 1080
+    scene.render.resolution_percentage = 75
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_mode = "RGBA"
+    bpy.ops.render.render.side_effect = RuntimeError("render failed")
+
+    result = load_and_call(
+        "blender-render/scripts/render_silhouette.py",
+        bpy,
+        output_path=str(tmp_path / "silhouette.png"),
+        object_names=["Hero"],
+    )
+
+    assert result["success"] is False
+    assert result["message"] == "Failed to render silhouette"
+    assert scene.render.engine == "CYCLES"
+    assert scene.render.filepath == "//beauty.exr"
+    assert scene.render.resolution_x == 1920
+    assert scene.render.resolution_y == 1080
+    assert scene.render.resolution_percentage == 75
+    assert scene.render.image_settings.file_format == "OPEN_EXR"
+    assert scene.render.image_settings.color_mode == "RGBA"
+    assert scene.view_settings.view_transform == "AgX"
+    assert scene.view_settings.look == "AgX - Medium High Contrast"
+    assert scene.world.color == (0.1, 0.2, 0.3)
+    assert scene.display.shading.light == "STUDIO"
+    assert scene.display.shading.color_type == "MATERIAL"
+    assert hero.hide_render is False
+    assert helper.hide_render is True
+
+
 class TestGetRenderInfo:
     def test_returns_engine_and_resolution(self):
         bpy = make_mock_bpy()
