@@ -341,7 +341,9 @@ def create_groom_guides(
             )
         vertices = list(getattr(getattr(scalp, "data", None), "vertices", []))
         if not vertices:
-            return skill_error(f"Mesh has no vertices: {scalp_object_name}", "Cannot attach groom guides to an empty mesh.")
+            return skill_error(
+                f"Mesh has no vertices: {scalp_object_name}", "Cannot attach groom guides to an empty mesh."
+            )
         root_vertices = _select_root_vertices(vertices, root_height_min_value, root_height_max_value)
         if bpy.data.objects.get(groom_name) is not None:
             if not replace_existing:
@@ -351,7 +353,9 @@ def create_groom_guides(
                 )
             _remove_existing_groom(bpy, groom_name)
             if bpy.data.objects.get(groom_name) is not None:
-                return skill_error(f"Could not replace groom: {groom_name}", "The existing object is not a generated groom.")
+                return skill_error(
+                    f"Could not replace groom: {groom_name}", "The existing object is not a generated groom."
+                )
 
         bias = _normalize(_vector(direction_bias) or _UP)
         rng = random.Random(int(seed))
@@ -370,9 +374,7 @@ def create_groom_guides(
             vertex = root_vertices[indices[guide_index % len(indices)]]
             root = _transform_point(scalp, getattr(vertex, "co", _UP))
             normal = _transform_normal(scalp, getattr(vertex, "normal", _UP))
-            direction = _normalize(
-                _add(_scale(normal, normal_weight_value), _scale(bias, 1.0 - normal_weight_value))
-            )
+            direction = _normalize(_add(_scale(normal, normal_weight_value), _scale(bias, 1.0 - normal_weight_value)))
             side = _normalize(_cross(direction, _UP), fallback=(1.0, 0.0, 0.0))
             other_side = _normalize(_cross(direction, side), fallback=(0.0, 1.0, 0.0))
             phase = rng.uniform(0.0, math.tau)
@@ -450,11 +452,7 @@ def inspect_grooms(object_name: str | None = None) -> dict:
                     "Inspect only objects created by blender-groom.",
                 )
             return skill_success("Groom inspected", groom=_summary(obj))
-        grooms = [
-            _summary(obj)
-            for obj in bpy.data.objects
-            if _custom_get(obj, _GROOM_MARKER) == _GROOM_VERSION
-        ]
+        grooms = [_summary(obj) for obj in bpy.data.objects if _custom_get(obj, _GROOM_MARKER) == _GROOM_VERSION]
         return skill_success("Grooms inspected", grooms=grooms, count=len(grooms))
     except ImportError:
         return skill_error("Blender not available", "bpy could not be imported")
@@ -484,7 +482,9 @@ def set_groom_style(
         return skill_error("Invalid style parameters", "width, length_scale, and roughness must be numeric.")
     if width_value is not None and (not math.isfinite(width_value) or not 0.000001 < width_value <= 1.0):
         return skill_error("Invalid width", "width must be greater than 0 and no more than 1 Blender unit.")
-    if length_scale_value is not None and (not math.isfinite(length_scale_value) or not 0.0 < length_scale_value <= 10.0):
+    if length_scale_value is not None and (
+        not math.isfinite(length_scale_value) or not 0.0 < length_scale_value <= 10.0
+    ):
         return skill_error("Invalid length_scale", "length_scale must be greater than 0 and no more than 10.")
     if roughness_value is not None and (not math.isfinite(roughness_value) or not 0.0 <= roughness_value <= 1.0):
         return skill_error("Invalid roughness", "roughness must be between 0 and 1.")
@@ -526,7 +526,12 @@ def set_groom_style(
         materials = list(getattr(curve_data, "materials", []))
         existing_material = materials[0] if materials else None
         selected_material_name = material_name or getattr(existing_material, "name", _DEFAULT_MATERIAL_NAME)
-        if material_name is not None or hair_color is not None or roughness_value is not None or existing_material is None:
+        if (
+            material_name is not None
+            or hair_color is not None
+            or roughness_value is not None
+            or existing_material is None
+        ):
             material = _ensure_material(bpy, selected_material_name, color_values, roughness_value)
             if materials:
                 curve_data.materials[0] = material
