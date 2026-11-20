@@ -75,6 +75,13 @@ multi-layer EXR or display-ready PNG / JPEG / TIFF / BMP output so the
 interactive Blender process remains responsive; poll with `get_render_job` and
 cancel only through the returned job id.
 
+Use `render_silhouette` for reference-fit diagnostics and hard-surface
+presentation checks. It temporarily switches the active scene to a flat
+Workbench pass, optionally filters objects by exact name or name prefix, writes
+a PNG, and restores render settings, viewport shading, world color, and every
+object's render visibility in a `finally` path. It does not save or overwrite
+the Blender scene.
+
 `start_render_job` launches a detached worker and returns a `job_id`
 immediately. `dcc-mcp-cli --wait` polls the core `jobs_get_status` registry,
 which does not track these owned background processes, so it returns before the
