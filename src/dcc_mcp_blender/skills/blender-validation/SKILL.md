@@ -60,3 +60,11 @@ actions, reference approvals, output files, and optional snapshot drift. Use
 `compare_asset_snapshot` when a rebuild should be checked against a saved scene
 state without storing raw mesh data. Set `strict_snapshot` when snapshot drift
 must fail the delivery gate.
+
+Use `validate_scene_bounds` for reference-driven modeling and delivery checks
+that depend on a selected world-space projection. Select objects by exact names
+or name prefixes, exclude presentation helpers by prefix, and compare the
+resulting width-to-height ratio with an explicit tolerance. The tool reports
+the measured bounds and the stable issue codes `SCENE_BOUNDS_EMPTY`,
+`SCENE_BOUNDS_DEGENERATE`, and `SCENE_BOUNDS_RATIO_MISMATCH` without changing
+the scene.
