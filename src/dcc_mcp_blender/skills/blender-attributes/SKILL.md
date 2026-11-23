@@ -15,7 +15,7 @@ metadata:
     intent: "Read, create, update, delete, and rename custom properties on Blender objects, matching Maya's attribute editor surface."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: scene
       workflow_stage: authoring
       task_category: mutate
     preconditions:

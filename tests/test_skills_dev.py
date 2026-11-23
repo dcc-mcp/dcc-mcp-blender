@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 from tests.conftest import load_and_call, make_mock_bpy
@@ -45,6 +47,32 @@ class TestDevPathAndReload:
         assert result["success"] is True
         assert str(tmp_path.resolve()) in result["context"]["added"]
         assert sys.path[0] == str(tmp_path.resolve())
+
+    def test_attach_project_extends_loaded_package_search_path(self, tmp_path, monkeypatch):
+        source_root = tmp_path / "src"
+        package_root = source_root / "dcc_mcp_blender"
+        package_root.mkdir(parents=True)
+
+        import dcc_mcp_blender
+
+        dev_ops_path = Path(__file__).parents[1] / "src" / "dcc_mcp_blender" / "_dev_ops.py"
+        dev_ops_spec = importlib.util.spec_from_file_location("dcc_mcp_blender._dev_ops", dev_ops_path)
+        dev_ops = importlib.util.module_from_spec(dev_ops_spec)
+        dev_ops_spec.loader.exec_module(dev_ops)
+        monkeypatch.setitem(sys.modules, "dcc_mcp_blender._dev_ops", dev_ops)
+
+        monkeypatch.setattr(dcc_mcp_blender, "__path__", [], raising=False)
+
+        result = load_and_call(
+            "blender-dev/scripts/attach_project.py",
+            make_mock_bpy(),
+            project_root=str(tmp_path),
+            extra_paths=["src"],
+        )
+
+        assert result["success"] is True
+        assert str(package_root.resolve()) in result["context"]["package_paths_added"]
+        assert str(package_root.resolve()) in dcc_mcp_blender.__path__
 
     def test_reload_modules_reloads_loaded_module(self):
         result = load_and_call(

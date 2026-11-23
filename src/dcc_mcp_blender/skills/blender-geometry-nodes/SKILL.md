@@ -15,7 +15,7 @@ metadata:
     intent: "Create and manage Blender Geometry Nodes groups, assign them as modifiers, and set exposed input values."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: modeling
       workflow_stage: authoring
       task_category: mutate
     preconditions:

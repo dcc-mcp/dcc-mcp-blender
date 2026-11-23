@@ -21,7 +21,7 @@ metadata:
     intent: "Create and edit armatures, bones, constraints, shape keys, and drivers for character rigging and deformation."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: character
       workflow_stage: rigging
       task_category: mutate
     preconditions:

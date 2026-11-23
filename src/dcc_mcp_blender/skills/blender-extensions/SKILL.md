@@ -11,6 +11,11 @@ metadata:
     version: "0.1.0"
     tags: [blender, extension, addon, package, install]
     search-hint: "install Blender extension ZIP legacy addon package from disk"
+    recall-context:
+      app_type: blender
+      domain: pipeline
+      workflow_stage: bootstrap
+      task_category: mutate
     intent: "Validate a provider-downloaded add-on package and install it through Blender's supported extension APIs."
     preconditions:
       - type: software

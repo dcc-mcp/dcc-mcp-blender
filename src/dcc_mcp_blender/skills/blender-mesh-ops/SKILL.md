@@ -24,7 +24,7 @@ metadata:
     intent: "Build and verify polygon models through the shared cross-DCC modeling vocabulary."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: modeling
       workflow_stage: modeling
       task_category: mutate
     preconditions:

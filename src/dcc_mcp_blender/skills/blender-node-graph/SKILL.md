@@ -15,7 +15,7 @@ metadata:
     intent: "Introspect all Blender node graph types (compositor, material, geometry) and expose compositor-specific node tree information."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: lookdev
       workflow_stage: lookdev
       task_category: read_only
     preconditions:

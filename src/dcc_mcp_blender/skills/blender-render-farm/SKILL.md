@@ -24,6 +24,11 @@ metadata:
       submit render job, distributed render, deadline queue, farm submission,
       validate scene for farm, render job spec, render job status, flamenco,
       cancel render, render farm status, list render jobs
+    recall-context:
+      app_type: blender
+      domain: render
+      workflow_stage: pipeline
+      task_category: submit
     depends:
     - blender-render
     tools: tools.yaml

@@ -15,7 +15,7 @@ metadata:
     intent: "Run structured validation checks on Blender scenes, asset build contracts, and photographic shots before export or publish."
     recall-context:
       app_type: blender
-      domain: diagnostics
+      domain: pipeline
       workflow_stage: validation
       task_category: query
     preconditions:

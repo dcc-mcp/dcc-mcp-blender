@@ -312,8 +312,25 @@ export defect.
   Re-import the asset with `import_file` and inspect it with `get_mesh_info`, run
   `blender-validation` checks such as `validate_mesh` and `validate_export_readiness`,
   or use an external glTF validator.
+| **blender-groom** | `create_groom_guides`, `inspect_grooms`, `set_groom_style` |
+| **blender-groom** | `create_groom_guides`, `inspect_grooms`, `set_groom_style`, `shape_groom_guides`, `thin_groom_guides`, `duplicate_groom`, `delete_groom`, `validate_groom_attachment` |
 
 See [`src/dcc_mcp_blender/skills/SKILLS_INDEX.md`](src/dcc_mcp_blender/skills/SKILLS_INDEX.md) for staged loading guidance, task-to-skill chains, and side-effect profiles for all bundled skills.
+
+### External asset generator to Blender hairstyle workflow
+
+The selected external asset-generation skill owns model generation and local
+asset download. It must return a validated `AssetDescriptor` before the Blender
+workflow starts. Import the selected file through `blender-interchange`, then
+use `blender-groom.create_groom_guides` on the scalp mesh, use
+`blender-groom.shape_groom_guides` for combing and taper, and call
+`blender-groom.set_groom_style` for root-preserving length, width, and material
+changes. Use `blender-groom.validate_groom_attachment` after editing or moving
+the source mesh, then run `blender-validation` before saving or exporting.
+
+External generator failures stop this workflow. A procedural substitute or a
+different generator requires explicit user confirmation before any fallback
+scene is created.
 
 ---
 

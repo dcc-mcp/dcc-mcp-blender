@@ -20,7 +20,7 @@ metadata:
     intent: "Create, inspect, and edit UV maps — unwrap, project, pack, normalize, and copy UV data for texture authoring."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: lookdev
       workflow_stage: texture_prep
       task_category: mutate
     preconditions:
