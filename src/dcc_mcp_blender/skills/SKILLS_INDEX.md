@@ -2,6 +2,27 @@
 
 This index helps agents choose typed Blender skills before falling back to raw Python. Load the narrowest skill that matches the task, then chain adjacent skills when a workflow crosses domains.
 
+## Domain-first map
+
+Use the first skill in each group as the normal entry point, then load the
+adjacent skill that owns the next operation. The domain names are canonical
+search facets used by skill metadata and agent routing.
+
+| Domain | Preferred entry skill | Adjacent skills | Typical requests |
+|---|---|---|---|
+| Scene and organization | `blender-scene` | `blender-objects`, `blender-collection`, `blender-scene-assembly`, `blender-attributes` | open, save, inspect, transform, group, link, parent, metadata |
+| Modeling and geometry | `blender-objects` | `blender-mesh`, `blender-mesh-ops`, `blender-geometry`, `blender-geometry-nodes`, `blender-groom` | primitives, topology, modifiers, procedural geometry, hair guides |
+| UV, materials, and lookdev | `blender-materials` | `blender-uv-ops`, `blender-shader-nodes`, `blender-material-library`, `blender-texture-bake`, `blender-node-graph` | UVs, shaders, textures, node graphs, baking |
+| Character and animation | `blender-rigging` | `blender-pose-library`, `blender-expressions`, `blender-animation` | armatures, poses, drivers, keyframes, retiming |
+| Simulation | `blender-physics` | `blender-groom` for guide authoring before simulation | cloth, particles, fields, rigid bodies, caches |
+| Camera, lighting, and rendering | `blender-camera` | `blender-lighting`, `blender-light-rig`, `blender-render`, `blender-render-farm`, `blender-shot-export` | framing, lights, local render, farm render, shot delivery |
+| Interchange, assets, and pipeline | `blender-asset-source` | `blender-import-to-scene`, `blender-interchange`, `blender-export-preset`, `blender-pipeline`, `blender-validation`, `blender-extensions` | discover, import, export, publish, validate, install |
+| Diagnostics and automation | `blender-dev` | `blender-scripting` | add-on diagnostics, UI metadata, custom Python, runtime inspection |
+
+Prefer canonical Blender terms in tool descriptions and add common DCC terms
+as aliases. Keep destructive operations explicit and keep `blender-scripting`
+as the final escalation path after typed skills have been checked.
+
 ## Stage Map
 
 | Skill | Stage | Purpose | Default-load policy | Side-effect profile | Discovery terms |
@@ -56,6 +77,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | `blender-node-graph` | authoring, node graph, lookdev | Discover all node graphs (material, geometry, compositor) and inspect compositor node trees. | Load for cross-graph discovery or compositor inspection before shader/geometry node edits. | Read-only graph introspection. | node graph, compositor nodes, all node graphs, cross-graph, node tree discovery |
 | `blender-scene-assembly` | scene, pipeline, assembly | Merge .blend files, append/link data blocks, manage view layers, and inspect external references. | Load when assembling scenes from external files or managing view layers. | Mutating except view layer listing and external reference inspection. | merge scene, append blend, link blend, view layer, library linking, scene assembly |
 | `blender-scripting` | diagnostics, escape hatch | Execute Python snippets or script files and inspect Blender runtime info. | Load last, after checking typed skills and only when custom logic is required. | Potentially arbitrary; use with explicit user intent. | python, script, custom, escape hatch, blender info |
+| `blender-dev` | diagnostics, development | Inspect add-ons, Python environment, structured UI metadata, module reloads, debug listeners, and development entrypoints. | Load for adapter/add-on debugging before falling back to arbitrary scripting; avoid for normal scene authoring. | Mixed: read-only diagnostics plus explicit development code execution, path mutation, module reload, and add-on enable/disable. | addon diagnostics, reload modules, run check, debug server, UI snapshot, Python environment |
 
 ## Common Task Chains
 

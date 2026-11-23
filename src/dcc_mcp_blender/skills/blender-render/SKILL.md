@@ -15,7 +15,7 @@ metadata:
     intent: "Configure render settings, render live or saved scenes, submit/query/cancel isolated animation jobs, and capture viewport images."
     recall-context:
       app_type: blender
-      domain: rendering
+      domain: render
       workflow_stage: render
       task_category: mutate
     preconditions:

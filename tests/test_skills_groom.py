@@ -40,6 +40,7 @@ class _NamedStore:
 class _Point:
     def __init__(self, co):
         self.co = tuple(co)
+        self.radius = 1.0
 
 
 class _Points(list):
@@ -71,6 +72,9 @@ class _Splines:
 
     def __len__(self):
         return len(self.items)
+
+    def remove(self, spline):
+        self.items.remove(spline)
 
 
 class _CurveData:
@@ -288,3 +292,112 @@ def test_inspect_grooms_lists_only_generated_outputs():
     assert result["context"]["count"] == 1
     assert result["context"]["grooms"][0]["guide_count"] == 2
     assert result["context"]["grooms"][0]["parameters"]["guide_count"] == 2
+
+
+def test_shape_groom_guides_preserves_roots_and_applies_taper():
+    bpy, objects = _bpy_fixture()
+    _add_scalp(objects)
+    load_and_call(
+        "blender-groom/scripts/create_groom_guides.py",
+        bpy,
+        scalp_object_name="Scalp",
+        groom_name="Hair Groom",
+        guide_count=1,
+        segments=3,
+        length=2.0,
+        curl=0.0,
+    )
+    groom = objects.get("Hair Groom")
+    points = groom.data.splines.items[0].points
+    root = points[0].co
+
+    result = load_and_call(
+        "blender-groom/scripts/shape_groom_guides.py",
+        bpy,
+        object_name="Hair Groom",
+        direction_bias=[1.0, 0.0, 0.0],
+        taper=1.0,
+    )
+
+    assert result["success"] is True
+    assert points[0].co == root
+    assert points[0].radius == 1.0
+    assert points[-1].radius == 0.01
+    assert result["context"]["shape"]["direction_bias"] == [1.0, 0.0, 0.0]
+
+
+def test_thin_duplicate_and_delete_groom_guides():
+    bpy, objects = _bpy_fixture()
+    _add_scalp(objects)
+    load_and_call(
+        "blender-groom/scripts/create_groom_guides.py",
+        bpy,
+        scalp_object_name="Scalp",
+        groom_name="Hair Groom",
+        guide_count=4,
+        segments=2,
+        root_height_min=0.0,
+    )
+
+    thinned = load_and_call(
+        "blender-groom/scripts/thin_groom_guides.py",
+        bpy,
+        object_name="Hair Groom",
+        density=0.5,
+        seed=5,
+    )
+    assert thinned["success"] is True
+    assert thinned["context"]["guide_count"] == 2
+
+    duplicated = load_and_call(
+        "blender-groom/scripts/duplicate_groom.py",
+        bpy,
+        object_name="Hair Groom",
+        new_object_name="Hair Groom Variant",
+    )
+    assert duplicated["success"] is True
+    assert objects.get("Hair Groom Variant").get("dcc_mcp_groom") == 1
+    assert duplicated["context"]["guide_count"] == 2
+
+    deleted = load_and_call(
+        "blender-groom/scripts/delete_groom.py",
+        bpy,
+        object_name="Hair Groom Variant",
+    )
+    assert deleted["success"] is True
+    assert objects.get("Hair Groom Variant") is None
+
+
+def test_validate_groom_attachment_reports_root_distance():
+    bpy, objects = _bpy_fixture()
+    _add_scalp(objects)
+    load_and_call(
+        "blender-groom/scripts/create_groom_guides.py",
+        bpy,
+        scalp_object_name="Scalp",
+        groom_name="Hair Groom",
+        guide_count=2,
+        segments=2,
+        root_height_min=0.0,
+    )
+
+    attached = load_and_call(
+        "blender-groom/scripts/validate_groom_attachment.py",
+        bpy,
+        object_name="Hair Groom",
+        tolerance=0.001,
+    )
+    assert attached["success"] is True
+    assert attached["context"]["valid"] is True
+    assert attached["context"]["detached_root_count"] == 0
+
+    groom = objects.get("Hair Groom")
+    groom.data.splines.items[0].points[0].co = (10.0, 10.0, 10.0, 1.0)
+    detached = load_and_call(
+        "blender-groom/scripts/validate_groom_attachment.py",
+        bpy,
+        object_name="Hair Groom",
+        tolerance=0.001,
+    )
+    assert detached["context"]["valid"] is False
+    assert detached["context"]["detached_root_count"] == 1

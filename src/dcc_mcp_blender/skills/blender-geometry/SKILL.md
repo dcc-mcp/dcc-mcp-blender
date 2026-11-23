@@ -15,7 +15,7 @@ metadata:
     intent: "Create basic geometry primitives and save/export Blender files with file existence checks."
     recall-context:
       app_type: blender
-      domain: authoring
+      domain: modeling
       workflow_stage: authoring
       task_category: mutate
     preconditions:

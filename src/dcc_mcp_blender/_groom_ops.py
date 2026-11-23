@@ -20,17 +20,20 @@ _GROOM_VERSION = 1
 _GROOM_SOURCE_KEY = "dcc_mcp_groom_source_object"
 _GROOM_PARAMETERS_KEY = "dcc_mcp_groom_parameters"
 _GROOM_STYLE_KEY = "dcc_mcp_groom_style"
+_GROOM_SHAPE_KEY = "dcc_mcp_groom_shape"
 _DEFAULT_MATERIAL_NAME = "DCC MCP Groom Hair"
 _DEFAULT_COLOR = (0.035, 0.012, 0.006, 1.0)
 _UP = (0.0, 0.0, 1.0)
 
 
 def _vector(value: Sequence[float]) -> Tuple[float, float, float] | None:
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence) or len(value) != 3:
+    if isinstance(value, (str, bytes)):
         return None
     try:
+        if len(value) != 3:  # type: ignore[arg-type]
+            return None
         result = (float(value[0]), float(value[1]), float(value[2]))
-    except (TypeError, ValueError):
+    except (IndexError, KeyError, TypeError, ValueError):
         return None
     if not all(math.isfinite(component) for component in result):
         return None
@@ -255,8 +258,54 @@ def _summary(obj: Any) -> dict:
         "source_object": _custom_get(obj, _GROOM_SOURCE_KEY),
         "parameters": _json_value(_custom_get(obj, _GROOM_PARAMETERS_KEY, {}), {}),
         "style": _json_value(_custom_get(obj, _GROOM_STYLE_KEY, {}), {}),
+        "shape": _json_value(_custom_get(obj, _GROOM_SHAPE_KEY, {}), {}),
+        "hide_viewport": bool(getattr(obj, "hide_viewport", False)),
+        "hide_render": bool(getattr(obj, "hide_render", False)),
         "material_names": [getattr(material, "name", None) for material in getattr(curve_data, "materials", [])],
     }
+
+
+def _generated_groom(bpy: Any, object_name: str) -> tuple[Any | None, dict | None]:
+    """Return a generated groom object or a consistent skill error."""
+    groom = bpy.data.objects.get(object_name)
+    if groom is None:
+        return None, skill_error(f"Object not found: {object_name}", "Pass a generated groom object name.")
+    if _custom_get(groom, _GROOM_MARKER) != _GROOM_VERSION or getattr(groom, "type", None) != "CURVE":
+        return None, skill_error(
+            f"Object is not a generated groom: {object_name}",
+            "This operation is restricted to blender-groom output.",
+        )
+    return groom, None
+
+
+def _copy_curve_data(bpy: Any, source_data: Any, name: str) -> Any:
+    """Copy curve data, with a small fallback for Blender test doubles."""
+    copier = getattr(source_data, "copy", None)
+    if callable(copier):
+        copied = copier()
+        copied.name = name
+        return copied
+
+    copied = bpy.data.curves.new(name=name, type="CURVE")
+    for attribute in ("dimensions", "resolution_u", "bevel_depth", "bevel_resolution"):
+        if hasattr(source_data, attribute):
+            setattr(copied, attribute, getattr(source_data, attribute))
+    for source_spline in getattr(source_data, "splines", []):
+        spline_type = getattr(source_spline, "type", "NURBS")
+        target_spline = copied.splines.new(spline_type)
+        source_points = list(getattr(source_spline, "points", []))
+        if source_points:
+            target_spline.points.add(len(source_points) - 1)
+        for source_point, target_point in zip(source_points, getattr(target_spline, "points", [])):
+            target_point.co = tuple(source_point.co)
+            if hasattr(source_point, "radius"):
+                target_point.radius = source_point.radius
+        for attribute in ("order_u", "use_endpoint_u", "use_cyclic_u", "resolution_u"):
+            if hasattr(source_spline, attribute) and hasattr(target_spline, attribute):
+                setattr(target_spline, attribute, getattr(source_spline, attribute))
+    for material in getattr(source_data, "materials", []):
+        copied.materials.append(material)
+    return copied
 
 
 def _select_root_vertices(vertices: list[Any], root_height_min: float, root_height_max: float) -> list[Any]:
@@ -558,3 +607,362 @@ def set_groom_style(
         return skill_error("Blender not available", "bpy could not be imported")
     except Exception as exc:
         return skill_exception(exc, message=f"Failed to update groom style: {object_name}")
+
+
+def shape_groom_guides(
+    object_name: str,
+    length_scale: float | None = None,
+    direction_bias: Sequence[float] | None = None,
+    direction_strength: float | None = None,
+    curl: float | None = None,
+    taper: float | None = None,
+    seed: int = 0,
+) -> dict:
+    """Comb and shape generated guides while preserving every root point."""
+    if all(value is None for value in (length_scale, direction_bias, curl, taper)):
+        return skill_error(
+            "No guide shape changes",
+            "Pass at least one of length_scale, direction_bias, curl, or taper.",
+        )
+    if direction_strength is not None and direction_bias is None:
+        return skill_error("Invalid direction_strength", "direction_strength requires direction_bias.")
+    try:
+        length_scale_value = float(length_scale) if length_scale is not None else 1.0
+        direction_strength_value = float(direction_strength) if direction_strength is not None else 1.0
+        curl_value = float(curl) if curl is not None else None
+        taper_value = float(taper) if taper is not None else None
+    except (TypeError, ValueError):
+        return skill_error(
+            "Invalid guide shape parameters",
+            "length_scale, direction_strength, curl, and taper must be numeric.",
+        )
+    if not math.isfinite(length_scale_value) or not 0.0 < length_scale_value <= 10.0:
+        return skill_error("Invalid length_scale", "length_scale must be greater than 0 and no more than 10.")
+    if not math.isfinite(direction_strength_value) or not 0.0 <= direction_strength_value <= 1.0:
+        return skill_error("Invalid direction_strength", "direction_strength must be between 0 and 1.")
+    if curl_value is not None and (not math.isfinite(curl_value) or not 0.0 <= curl_value <= 1.0):
+        return skill_error("Invalid curl", "curl must be between 0 and 1.")
+    if taper_value is not None and (not math.isfinite(taper_value) or not 0.0 <= taper_value <= 1.0):
+        return skill_error("Invalid taper", "taper must be between 0 and 1.")
+    bias = _vector(direction_bias) if direction_bias is not None else None
+    if direction_bias is not None and bias is None:
+        return skill_error("Invalid direction_bias", "direction_bias must contain three finite numbers.")
+    try:
+        if isinstance(seed, bool):
+            raise ValueError
+        seed_value = int(seed)
+    except (TypeError, ValueError):
+        return skill_error("Invalid seed", "seed must be an integer.")
+
+    try:
+        import bpy
+
+        groom, error = _generated_groom(bpy, object_name)
+        if error:
+            return error
+        curve_data = groom.data
+        rng = random.Random(seed_value)
+        changed_points = 0
+        for spline in getattr(curve_data, "splines", []):
+            points = list(getattr(spline, "points", []))
+            if len(points) < 2:
+                continue
+            root = tuple(float(points[0].co[index]) for index in range(3))
+            endpoint = tuple(float(points[-1].co[index]) for index in range(3))
+            endpoint_vector = _sub(endpoint, root)
+            current_direction = _normalize(endpoint_vector)
+            if bias is not None:
+                current_direction = _normalize(
+                    _add(
+                        _scale(current_direction, 1.0 - direction_strength_value),
+                        _scale(bias, direction_strength_value),
+                    )
+                )
+            if bias is not None or length_scale is not None:
+                for point in points[1:]:
+                    current = tuple(float(point.co[index]) for index in range(3))
+                    current_length = math.sqrt(_dot(_sub(current, root), _sub(current, root)))
+                    shaped = _add(root, _scale(current_direction, current_length * length_scale_value))
+                    point.co = (*shaped, 1.0)
+                    changed_points += 1
+            if curl_value is not None:
+                side = _normalize(_cross(current_direction, _UP), fallback=(1.0, 0.0, 0.0))
+                other_side = _normalize(_cross(current_direction, side), fallback=(0.0, 1.0, 0.0))
+                phase = rng.uniform(0.0, math.tau)
+                guide_length = math.sqrt(_dot(endpoint_vector, endpoint_vector)) * length_scale_value
+                amplitude = guide_length * curl_value * 0.25
+                for point_index, point in enumerate(points[1:], start=1):
+                    t = point_index / float(len(points) - 1)
+                    wave = math.sin(math.pi * t + phase) * amplitude * t
+                    current = tuple(float(point.co[index]) for index in range(3))
+                    lateral = _add(
+                        _scale(side, wave),
+                        _scale(other_side, math.cos(math.pi * t + phase) * amplitude * 0.35 * t),
+                    )
+                    point.co = (*_add(current, lateral), 1.0)
+                    changed_points += 1
+            if taper_value is not None:
+                for point_index, point in enumerate(points):
+                    if hasattr(point, "radius"):
+                        t = point_index / float(len(points) - 1)
+                        point.radius = max(0.01, 1.0 - taper_value * t)
+
+        shape = _json_value(_custom_get(groom, _GROOM_SHAPE_KEY, {}), {})
+        if not isinstance(shape, dict):
+            shape = {}
+        if length_scale is not None:
+            shape["length_scale"] = length_scale_value
+        if bias is not None:
+            shape["direction_bias"] = list(_normalize(bias))
+            shape["direction_strength"] = direction_strength_value
+        if curl_value is not None:
+            shape["curl"] = curl_value
+            shape["seed"] = seed_value
+        if taper_value is not None:
+            shape["taper"] = taper_value
+        _custom_set(groom, _GROOM_SHAPE_KEY, json.dumps(shape, sort_keys=True))
+        return skill_success(
+            f"Shaped groom guides: {object_name}",
+            object_name=object_name,
+            guide_count=len(list(getattr(curve_data, "splines", []))),
+            point_count=_point_count(groom),
+            changed_point_count=changed_points,
+            shape=shape,
+            prompt="Use inspect_grooms to read back guide shape metadata before saving or exporting.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to shape groom guides: {object_name}")
+
+
+def thin_groom_guides(object_name: str, density: float, seed: int = 0) -> dict:
+    """Reduce guide count deterministically while keeping a representative sample."""
+    try:
+        density_value = float(density)
+    except (TypeError, ValueError):
+        return skill_error("Invalid density", "density must be numeric.")
+    if not math.isfinite(density_value) or not 0.0 < density_value <= 1.0:
+        return skill_error("Invalid density", "density must be greater than 0 and no more than 1.")
+    try:
+        if isinstance(seed, bool):
+            raise ValueError
+        seed_value = int(seed)
+    except (TypeError, ValueError):
+        return skill_error("Invalid seed", "seed must be an integer.")
+
+    try:
+        import bpy
+
+        groom, error = _generated_groom(bpy, object_name)
+        if error:
+            return error
+        splines = list(getattr(groom.data, "splines", []))
+        current_count = len(splines)
+        target_count = max(1, int(round(current_count * density_value))) if current_count else 0
+        if target_count < current_count:
+            rng = random.Random(seed_value)
+            keep_indices = set(rng.sample(range(current_count), target_count))
+            for index, spline in enumerate(splines):
+                if index not in keep_indices:
+                    groom.data.splines.remove(spline)
+        actual_count = len(list(getattr(groom.data, "splines", [])))
+        parameters = _json_value(_custom_get(groom, _GROOM_PARAMETERS_KEY, {}), {})
+        if not isinstance(parameters, dict):
+            parameters = {}
+        parameters["guide_count"] = actual_count
+        parameters["density"] = density_value
+        parameters["density_seed"] = seed_value
+        _custom_set(groom, _GROOM_PARAMETERS_KEY, json.dumps(parameters, sort_keys=True))
+        return skill_success(
+            f"Thinned groom guides: {object_name}",
+            object_name=object_name,
+            density=density_value,
+            seed=seed_value,
+            guide_count=actual_count,
+            removed_guide_count=current_count - actual_count,
+            point_count=_point_count(groom),
+            prompt="Use inspect_grooms to verify the reduced guide count and then tune style if needed.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to thin groom guides: {object_name}")
+
+
+def duplicate_groom(
+    object_name: str,
+    new_object_name: str,
+    collection_name: str | None = None,
+    replace_existing: bool = False,
+) -> dict:
+    """Create a generated groom variant with independent curve data."""
+    if not new_object_name or not new_object_name.strip():
+        return skill_error("Invalid new_object_name", "new_object_name must be a non-empty string.")
+    if new_object_name == object_name:
+        return skill_error("Invalid new_object_name", "new_object_name must differ from object_name.")
+    try:
+        import bpy
+
+        source, error = _generated_groom(bpy, object_name)
+        if error:
+            return error
+        existing = bpy.data.objects.get(new_object_name)
+        if existing is not None:
+            if not replace_existing:
+                return skill_error(
+                    f"Object already exists: {new_object_name}",
+                    "Set replace_existing=true only when replacing a generated groom variant.",
+                )
+            if _custom_get(existing, _GROOM_MARKER) != _GROOM_VERSION:
+                return skill_error(
+                    f"Could not replace object: {new_object_name}",
+                    "The existing object is not a generated groom.",
+                )
+            _remove_existing_groom(bpy, new_object_name)
+        curve_data = _copy_curve_data(bpy, source.data, new_object_name)
+        collection = _ensure_collection(bpy, collection_name)
+        duplicate = bpy.data.objects.new(new_object_name, curve_data)
+        collection.objects.link(duplicate)
+        for key in (_GROOM_MARKER, _GROOM_SOURCE_KEY, _GROOM_PARAMETERS_KEY, _GROOM_STYLE_KEY, _GROOM_SHAPE_KEY):
+            value = _custom_get(source, key, None)
+            if value is not None:
+                _custom_set(duplicate, key, value)
+        return skill_success(
+            f"Duplicated groom: {new_object_name}",
+            object_name=new_object_name,
+            source_groom=object_name,
+            guide_count=len(list(getattr(curve_data, "splines", []))),
+            point_count=_point_count(duplicate),
+            collection_name=getattr(collection, "name", collection_name),
+            prompt="Use set_groom_style or shape_groom_guides to create a groom variant.",
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to duplicate groom: {object_name}")
+
+
+def delete_groom(object_name: str, remove_unused_materials: bool = False) -> dict:
+    """Delete one generated groom and release its curve data."""
+    try:
+        import bpy
+
+        groom, error = _generated_groom(bpy, object_name)
+        if error:
+            return error
+        materials = list(getattr(groom.data, "materials", []))
+        data = getattr(groom, "data", None)
+        bpy.data.objects.remove(groom, do_unlink=True)
+        if data is not None and getattr(data, "users", 1) == 0:
+            remover = getattr(bpy.data.curves, "remove", None)
+            if callable(remover):
+                remover(data)
+        removed_materials = []
+        if remove_unused_materials:
+            material_store = getattr(bpy.data, "materials", None)
+            remover = getattr(material_store, "remove", None)
+            for material in materials:
+                if getattr(material, "users", 1) == 0 and callable(remover):
+                    remover(material)
+                    removed_materials.append(getattr(material, "name", None))
+        return skill_success(
+            f"Deleted groom: {object_name}",
+            object_name=object_name,
+            removed_materials=removed_materials,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to delete groom: {object_name}")
+
+
+def validate_groom_attachment(object_name: str, tolerance: float = 0.001, sample_limit: int = 128) -> dict:
+    """Check that guide roots still have a nearby vertex on the source mesh."""
+    try:
+        tolerance_value = float(tolerance)
+    except (TypeError, ValueError):
+        return skill_error("Invalid tolerance", "tolerance must be numeric.")
+    if not math.isfinite(tolerance_value) or not 0.0 < tolerance_value <= 10.0:
+        return skill_error("Invalid tolerance", "tolerance must be greater than 0 and no more than 10.")
+    if isinstance(sample_limit, bool) or not isinstance(sample_limit, int) or not 1 <= sample_limit <= 4096:
+        return skill_error("Invalid sample_limit", "sample_limit must be an integer between 1 and 4096.")
+
+    try:
+        import bpy
+
+        groom, error = _generated_groom(bpy, object_name)
+        if error:
+            return error
+        source_name = _custom_get(groom, _GROOM_SOURCE_KEY)
+        source = bpy.data.objects.get(source_name) if source_name else None
+        if source is None or getattr(source, "type", None) != "MESH":
+            return skill_success(
+                f"Groom attachment checked: {object_name}",
+                object_name=object_name,
+                valid=False,
+                source_object=source_name,
+                reason="source_mesh_missing",
+                sample_count=0,
+                detached_root_count=0,
+            )
+        vertices = list(getattr(getattr(source, "data", None), "vertices", []))
+        if not vertices:
+            return skill_success(
+                f"Groom attachment checked: {object_name}",
+                object_name=object_name,
+                valid=False,
+                source_object=source_name,
+                reason="source_mesh_empty",
+                sample_count=0,
+                detached_root_count=0,
+            )
+        splines = list(getattr(getattr(groom, "data", None), "splines", []))
+        sampled_splines = splines[:sample_limit]
+        if len(splines) > sample_limit:
+            stride = max(1, len(splines) // sample_limit)
+            sampled_splines = [splines[index] for index in range(0, len(splines), stride)][:sample_limit]
+        vertex_positions = [
+            _transform_point(source, getattr(vertex, "co", _UP))
+            for vertex in vertices
+            if _vector(getattr(vertex, "co", None)) is not None
+        ]
+        if not vertex_positions:
+            return skill_success(
+                f"Groom attachment checked: {object_name}",
+                object_name=object_name,
+                valid=False,
+                source_object=source_name,
+                reason="source_mesh_has_no_valid_vertices",
+                sample_count=0,
+                detached_root_count=0,
+            )
+        detached_count = 0
+        max_distance = 0.0
+        for spline in sampled_splines:
+            points = list(getattr(spline, "points", []))
+            if not points:
+                continue
+            root = tuple(float(points[0].co[index]) for index in range(3))
+            nearest_distance = min(
+                math.sqrt(_dot(_sub(root, vertex_position), _sub(root, vertex_position)))
+                for vertex_position in vertex_positions
+            )
+            max_distance = max(max_distance, nearest_distance)
+            if nearest_distance > tolerance_value:
+                detached_count += 1
+        sample_count = len(sampled_splines)
+        return skill_success(
+            f"Groom attachment checked: {object_name}",
+            object_name=object_name,
+            source_object=source_name,
+            valid=detached_count == 0,
+            sample_count=sample_count,
+            detached_root_count=detached_count,
+            tolerance=tolerance_value,
+            max_root_distance=max_distance,
+        )
+    except ImportError:
+        return skill_error("Blender not available", "bpy could not be imported")
+    except Exception as exc:
+        return skill_exception(exc, message=f"Failed to validate groom attachment: {object_name}")
