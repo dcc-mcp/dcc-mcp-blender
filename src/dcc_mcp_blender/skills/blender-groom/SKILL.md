@@ -41,19 +41,21 @@ metadata:
 
 # blender-groom
 
-This skill is the Blender-side stage after an external generator such as the
-Hyper3D marketplace skill returns an FBX or GLB. It creates one editable curve
-object containing many poly splines. Roots are placed on source mesh vertices,
-so every generated strand has a deterministic attachment point and can be
-shortened or widened without losing its root.
+This skill is the Blender-side stage after an external asset-generation skill
+returns a validated AssetDescriptor for an FBX or GLB. It creates one editable
+curve object containing many poly splines. Roots are placed on source mesh
+vertices, so every generated strand has a deterministic attachment point and
+can be shortened or widened without losing its root.
 
 ## Workflow
 
-1. Use the installed `hyper3d` skill with `create_rodin_task` and up to five
-   labeled reference views when a three-view head asset is needed.
-2. Wait with `get_task_status`, then call `download_assets` with the returned
-   `task_uuid` and `subscription_key`.
-3. Import the downloaded FBX through `blender-import-to-scene` or
+1. Obtain a validated `AssetDescriptor` from the selected external
+   asset-generation skill. Provider-specific submission, status, and download
+   operations belong to that skill, not to this Blender-side skill.
+2. If the upstream provider operation fails, stop the workflow and return the
+   provider error. Do not create a procedural substitute or switch generators
+   until the user explicitly confirms that fallback is allowed.
+3. Import the asset through `blender-import-to-scene` or
    `blender-interchange.import_fbx`.
 4. Call `create_groom_guides` on the scalp mesh. Keep the generated groom in a
    separate collection so the imported head remains easy to inspect. For a

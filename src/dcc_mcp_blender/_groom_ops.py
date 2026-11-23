@@ -1,9 +1,9 @@
 """Typed guide-curve grooming helpers for imported character meshes.
 
-The Hyper3D marketplace skill owns image or multiview generation. This module
-owns the Blender-side handoff after an asset has been imported: it attaches
-deterministic guide curves to a source mesh, creates a simple hair material,
-and exposes safe style edits with readback metadata.
+An external asset-generation skill owns image or multiview generation. This
+module owns the Blender-side handoff after an asset has been imported: it
+attaches deterministic guide curves to a source mesh, creates a simple hair
+material, and exposes safe style edits with readback metadata.
 """
 
 from __future__ import annotations

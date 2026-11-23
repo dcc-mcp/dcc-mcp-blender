@@ -81,7 +81,7 @@ This index helps agents choose typed Blender skills before falling back to raw P
 | Distributed render farm | `blender-render` -> `blender-render-farm` (validate, write job, submit, monitor) |
 | Studio lookdev setup | `blender-materials` -> `blender-material-library` -> `blender-light-rig` -> `blender-render` |
 | Asset discovery and import | `blender-asset-source` -> `blender-interchange` (``import_file`` / ``import_fbx`` / ``import_obj`` / ``import_usd``) |
-| Hyper3D head to groom | marketplace `hyper3d` (`create_rodin_task` -> `get_task_status` -> `download_assets`) -> `blender-import-to-scene` or `blender-interchange` -> `blender-groom` -> `blender-validation` |
+| External generated head to groom | selected asset-generator skill -> `blender-import-to-scene` or `blender-interchange` -> `blender-groom` -> `blender-validation` |
 | Attribute CRUD on objects | `blender-objects` -> `blender-attributes` |
 | Scene composition with external files | `blender-scene-assembly` -> `blender-collection` -> `blender-scene` |
 | View layer management | `blender-scene-assembly` (``list_view_layers`` / ``create_view_layer`` / ``set_active_view_layer``) |
