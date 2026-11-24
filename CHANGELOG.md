@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.31](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.30...v0.2.31) (2026-11-24)
+
+
+### Documentation
+
+* remove provider-specific groom guidance ([#374](https://github.com/dcc-mcp/dcc-mcp-blender/issues/374)) ([2c5cbc2](https://github.com/dcc-mcp/dcc-mcp-blender/commit/2c5cbc229fbd4e9e78ddeda819ec54fbb9da8650))
+
 ## [0.2.30](https://github.com/dcc-mcp/dcc-mcp-blender/compare/v0.2.29...v0.2.30) (2026-11-20)
 
 
