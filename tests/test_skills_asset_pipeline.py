@@ -86,6 +86,35 @@ def _bpy_with_image(image, connected=True):
 
 
 class TestValidationSkills:
+    def test_export_model_state_returns_versioned_evidence(self):
+        cube = _FakeObject(materials=[SimpleNamespace(name="BodyMat")], uv_layers=1)
+        root = _FakeObject(name="Root", type="EMPTY", vertices=0, polygons=0, uv_layers=0)
+        cube.parent = root
+        bpy = _make_bpy(root, cube)
+
+        result = load_and_call("blender-validation/scripts/export_model_state.py", bpy, object_names=["Cube"])
+
+        assert result["success"] is True
+        state = result["context"]["state"]
+        assert state["schema_name"] == "dcc-mcp/model-state"
+        assert state["schema_version"] == 1
+        assert state["parts"] == ["Cube"]
+        assert state["hierarchy"] == ["Root/Cube"]
+        assert state["meshes"][0]["uv_sets"] == 1
+        assert state["meshes"][0]["material"] == "BodyMat"
+        assert "non_manifold" in state["unavailable"]
+        assert state["partial"] is True
+
+    def test_export_model_state_rejects_missing_scope_objects(self):
+        result = load_and_call(
+            "blender-validation/scripts/export_model_state.py",
+            _make_bpy(_FakeObject()),
+            object_names=["Missing"],
+        )
+
+        assert result["success"] is False
+        assert result["error"] == "modeling_scope_missing"
+
     def test_validate_mesh_passes_with_info_report(self):
         cube = _FakeObject()
         bpy = _make_bpy(cube)

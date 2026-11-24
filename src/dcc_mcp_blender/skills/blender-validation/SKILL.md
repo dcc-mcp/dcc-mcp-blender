@@ -1,6 +1,6 @@
 ---
 name: blender-validation
-description: "Blender scene, mesh, material, animation, asset-build, photographic-shot, and export readiness validation"
+description: "Blender modeling-state, scene, mesh, material, animation, asset-build, photographic-shot, and export readiness validation"
 license: "MIT"
 allowed-tools: ["Bash", "Read"]
 metadata:
@@ -9,9 +9,9 @@ metadata:
     layer: domain
     stage: validation
     version: "1.0.0"
-    tags: [blender, validation, pipeline, scene-checks, asset-build, snapshot, photographic-shot, export-readiness]
-    search-hint: "validate asset build, build contract, compare snapshot, validate scene, validate mesh, material validation, animation validation, photographic shot, export readiness, severity report"
-    search-aliases: [build validation, contract validation, rebuild check, snapshot compare, scene check, mesh check, validation report, pre-export check, diagnostic, issue scan, sanity check, quality check, lint scene]
+    tags: [blender, modeling, model-state, reference-fit, validation, pipeline, scene-checks, asset-build, snapshot, photographic-shot, export-readiness]
+    search-hint: "export model state, model-state, reference fit, modeling acceptance, validate asset build, build contract, compare snapshot, validate scene, validate mesh, material validation, animation validation, photographic shot, export readiness, severity report"
+    search-aliases: [modeling state, reference driven modeling, reference fit, build validation, contract validation, rebuild check, snapshot compare, scene check, mesh check, validation report, pre-export check, diagnostic, issue scan, sanity check, quality check, lint scene]
     intent: "Run structured validation checks on Blender scenes, asset build contracts, and photographic shots before export or publish."
     recall-context:
       app_type: blender
@@ -41,6 +41,11 @@ Validation tools return structured reports with stable issue codes and
 `info`/`warning`/`error` severities. Use these checks before interchange/export
 tools or local publish preparation so agents can reason over machine-readable
 failure causes instead of scraping arbitrary script output.
+
+`export_model_state` is the modeling entry point for cross-DCC acceptance. Use
+it after a modeling mutation and before export or publish. It returns the
+versioned `dcc-mcp/model-state@1` shape and marks partial or unavailable host
+evidence explicitly so a later spec check can report `unknown`.
 
 `validate_photographic_shot` checks the complete real-toy contract before a
 render. Supply the hero, eye-focus target, background, floor, wall, and
