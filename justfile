@@ -381,3 +381,8 @@ blender-dev: blender-link verify-deps
 # Windows: only refresh symlinks (skip maturin develop) after you already built core.
 @blender-dev-relink-core-win:
     powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-dev-build-link-core-win.ps1 -BlenderVersion {{ blender-version }} -SkipBuild
+
+
+# Verify the pinned VX and just toolchain.
+toolchain-ci:
+    vx just@1.58 --version
